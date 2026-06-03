@@ -728,27 +728,29 @@ function ResultBlock({
   items: string[];
   tone: "match" | "gap" | "signal";
 }) {
-  const toneClass = {
-    match: "bg-[#EAF4FF] text-[#043873] border-[#A7CEFC]",
-    gap: "bg-[#FFF7D6] text-[#664B00] border-[#FFE492]",
-    signal: "bg-[#EEF7F3] text-[#0B6D4F] border-[#BCE5D4]",
+  const chipClass = {
+    match: "border-[#A7CEFC] bg-[#EAF4FF] text-[#043873]",
+    gap: "border-[#FFE492] bg-[#FFF4C2] text-[#5F4700]",
+    signal: "border-[#A7CEFC] bg-[#F4F9FF] text-[#043873]",
   }[tone];
 
   return (
-    <div>
-      <h3 className="mb-3 flex items-center gap-2 text-sm font-extrabold">
-        <Icon size={18} className="text-[#4F9CF9]" aria-hidden="true" />
+    <div className="border-b border-[#DDE8F6] pb-5 last:border-b-0 last:pb-0">
+      <h3 className="mb-4 flex items-center gap-3 text-lg font-extrabold text-[#212529]">
+        <span className="grid size-6 place-items-center rounded-full border border-[#4F9CF9] text-[#4F9CF9]">
+          <Icon size={14} strokeWidth={2.5} aria-hidden="true" />
+        </span>
         {title}
       </h3>
       <div className="flex flex-wrap gap-2">
         {items.length ? (
           items.map((item) => (
-            <span key={item} className={`rounded-md border px-3 py-2 text-xs font-bold ${toneClass}`}>
+            <span key={item} className={`rounded-md border px-4 py-2 text-sm font-bold ${chipClass}`}>
               {item}
             </span>
           ))
         ) : (
-          <span className="rounded-md border border-[#DDE8F6] px-3 py-2 text-xs font-bold text-[#4F5F6F]">
+          <span className="rounded-md border border-[#DDE8F6] bg-white px-4 py-2 text-sm font-bold text-[#4F5F6F]">
             No strong signals found yet
           </span>
         )}
