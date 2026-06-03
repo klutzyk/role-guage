@@ -9,23 +9,24 @@ type SkillDefinition = {
 
 const skillTaxonomy: SkillDefinition[] = [
   { name: "Python", category: "Language", weight: 9, aliases: ["python", "pandas", "numpy"] },
-  { name: "SQL", category: "Data", weight: 9, aliases: ["sql", "mysql", "postgres", "postgresql", "query"] },
+  { name: "SQL", category: "Data", weight: 9, aliases: ["sql", "mysql", "postgres", "postgresql", "sql queries"] },
   { name: "TypeScript", category: "Language", weight: 7, aliases: ["typescript", "ts"] },
-  { name: "JavaScript", category: "Language", weight: 6, aliases: ["javascript", "js"] },
+  { name: "JavaScript", category: "Language", weight: 6, aliases: ["javascript"] },
   { name: "React", category: "Frontend", weight: 7, aliases: ["react", "react.js", "reactjs"] },
   { name: "Next.js", category: "Frontend", weight: 6, aliases: ["next.js", "nextjs", "next js"] },
+  { name: "Node.js", category: "Backend", weight: 7, aliases: ["node.js", "nodejs", "node js", "nestjs", "nest.js"] },
   { name: "PostgreSQL", category: "Backend", weight: 6, aliases: ["postgresql", "postgres"] },
   { name: "Machine learning", category: "Data", weight: 8, aliases: ["machine learning", "ml", "predictive modelling", "predictive modeling"] },
   { name: "NLP", category: "Data", weight: 6, aliases: ["nlp", "natural language processing", "text classification"] },
-  { name: "Dashboards", category: "Data", weight: 7, aliases: ["dashboard", "dashboards", "reporting", "reports"] },
-  { name: "Data analysis", category: "Data", weight: 8, aliases: ["data analysis", "analytics", "insights", "analysis"] },
+  { name: "Dashboards", category: "Data", weight: 7, aliases: ["dashboard", "dashboards", "bi dashboard", "reporting dashboard"] },
+  { name: "Data analysis", category: "Data", weight: 8, aliases: ["data analysis", "data analytics", "business analytics"] },
   { name: "Power BI", category: "Data", weight: 6, aliases: ["power bi", "powerbi"] },
   { name: "Tableau", category: "Data", weight: 5, aliases: ["tableau"] },
   { name: "AWS", category: "Cloud", weight: 6, aliases: ["aws", "amazon web services"] },
   { name: "Azure", category: "Cloud", weight: 6, aliases: ["azure"] },
   { name: "GCP", category: "Cloud", weight: 6, aliases: ["gcp", "google cloud"] },
   { name: "Docker", category: "Cloud", weight: 5, aliases: ["docker", "container"] },
-  { name: "REST APIs", category: "Backend", weight: 7, aliases: ["rest api", "rest apis", "api", "apis"] },
+  { name: "REST APIs", category: "Backend", weight: 7, aliases: ["rest api", "rest apis", "backend api", "backend apis", "building apis"] },
   { name: "LLM tools", category: "Product", weight: 5, aliases: ["llm", "large language model", "openai", "gemini", "generative ai"] },
   { name: "Experimentation", category: "Product", weight: 5, aliases: ["experiment", "experimentation", "a/b", "ab test"] },
   { name: "Stakeholder communication", category: "Product", weight: 8, aliases: ["stakeholder", "communication", "presenting", "presentation"] },
@@ -42,9 +43,9 @@ const roleSignalMap = [
   { name: "Hybrid", aliases: ["hybrid"] },
   { name: "Graduate", aliases: ["graduate", "entry level", "entry-level"] },
   { name: "Junior", aliases: ["junior", "associate"] },
-  { name: "Senior", aliases: ["senior", "lead", "principal"] },
-  { name: "Data role", aliases: ["data analyst", "data scientist", "analytics", "bi developer"] },
-  { name: "Product role", aliases: ["product", "product engineer", "product analyst"] },
+  { name: "Senior", aliases: ["senior software engineer", "senior data analyst", "senior developer", "lead engineer", "principal engineer"] },
+  { name: "Data role", aliases: ["data analyst", "data scientist", "bi developer"] },
+  { name: "Product role", aliases: ["product engineer", "product analyst", "product manager"] },
   { name: "Stakeholder-facing", aliases: ["stakeholder", "client-facing", "customer-facing"] },
 ];
 
@@ -104,7 +105,7 @@ function extractSkills(text: string) {
   const normalized = normalize(text);
 
   return skillTaxonomy.filter((skill) =>
-    skill.aliases.some((alias) => normalized.includes(normalize(alias))),
+    skill.aliases.some((alias) => hasAlias(normalized, alias)),
   );
 }
 
@@ -115,7 +116,7 @@ function detectMustHaveSkills(job: string, jobSkills: SkillDefinition[]) {
   return jobSkills.filter((skill) =>
     sentences.some((sentence) =>
       mustHavePatterns.some((pattern) => sentence.includes(pattern)) &&
-      skill.aliases.some((alias) => sentence.includes(normalize(alias))),
+      skill.aliases.some((alias) => hasAlias(sentence, alias)),
     ),
   );
 }
@@ -124,7 +125,7 @@ function extractSignals(text: string) {
   const normalized = normalize(text);
 
   return roleSignalMap
-    .filter((signal) => signal.aliases.some((alias) => normalized.includes(normalize(alias))))
+    .filter((signal) => signal.aliases.some((alias) => hasAlias(normalized, alias)))
     .map((signal) => signal.name);
 }
 
@@ -134,6 +135,14 @@ function sumWeights(skills: SkillDefinition[]) {
 
 function normalize(text: string) {
   return text.toLowerCase().replace(/\s+/g, " ");
+}
+
+function hasAlias(normalizedText: string, alias: string) {
+  const normalizedAlias = normalize(alias);
+  const escapedAlias = normalizedAlias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(^|[^a-z0-9+#.])${escapedAlias}([^a-z0-9+#.]|$)`, "i");
+
+  return pattern.test(normalizedText);
 }
 
 function getRecommendation(score: number, mustHaveMisses: number) {
