@@ -1,5 +1,7 @@
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { NextRequest, NextResponse } from "next/server";
-import { PDFParse } from "pdf-parse";
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 export const runtime = "nodejs";
 
@@ -20,9 +22,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const parser = new PDFParse({ data: buffer });
-    const parsed = await parser.getText();
+    const data = new Uint8Array(await file.arrayBuffer());
+    const parsed = await extractPdfText(data);
     const text = cleanText(parsed.text);
 
     if (text.length < 80) {
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       filename: file.name,
-      pages: parsed.pages.length,
+      pages: parsed.pages,
       text: text.length > 10000 ? `${text.slice(0, 10000)}...` : text,
     });
   } catch {
@@ -49,6 +50,30 @@ export async function POST(request: NextRequest) {
       { status: 422 },
     );
   }
+}
+
+async function extractPdfText(data: Uint8Array) {
+  GlobalWorkerOptions.workerSrc = pathToFileURL(
+    path.join(process.cwd(), "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"),
+  ).href;
+
+  const document = await getDocument({ data }).promise;
+  const pages: string[] = [];
+
+  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+    const page = await document.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const pageText = content.items
+      .map((item) => ("str" in item ? item.str : ""))
+      .join(" ");
+
+    pages.push(pageText);
+  }
+
+  return {
+    pages: document.numPages,
+    text: pages.join("\n\n"),
+  };
 }
 
 function cleanText(value: string) {
