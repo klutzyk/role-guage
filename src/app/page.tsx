@@ -7,6 +7,8 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  Clipboard,
+  Download,
   FileText,
   Gauge,
   Link,
@@ -22,7 +24,7 @@ import {
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { ChangeEvent, FormEvent, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useMemo, useState, useSyncExternalStore } from "react";
 
 type AnalysisResult = {
   score: number;
@@ -30,6 +32,16 @@ type AnalysisResult = {
   matchedSkills: string[];
   missingSkills: string[];
   roleSignals: string[];
+  scoreBreakdown: Array<{
+    label: string;
+    value: string;
+    detail: string;
+  }>;
+  skillGroups: {
+    coreMatched: string[];
+    coreMissing: string[];
+    niceToHaveMatched: string[];
+  };
   bullets: string[];
   summary: string;
 };
@@ -43,6 +55,27 @@ type ImportedJob = {
 };
 
 type InputMode = "import" | "paste";
+type ApplicationStatus = "Saved" | "Applied" | "Interview" | "Rejected" | "Offer";
+
+type JobMeta = {
+  title: string;
+  company: string;
+  location: string;
+  sourceUrl: string;
+};
+
+type TrackedApplication = JobMeta & {
+  id: string;
+  score: number;
+  level: string;
+  status: ApplicationStatus;
+  notes: string;
+  savedAt: string;
+  matchedSkills: string[];
+  missingSkills: string[];
+  roleSignals: string[];
+  summary: string;
+};
 
 const sampleResume = `Software Engineer with 4 years of experience building web applications, REST APIs, dashboards, and data pipelines. Skilled in Python, TypeScript, React, PostgreSQL, machine learning, data analysis, cloud deployment, and stakeholder communication. Completed a Master of Data Science in Australia with projects in NLP, predictive modelling, and business analytics.`;
 
@@ -103,12 +136,37 @@ const dataMetrics: Array<[string, string, LucideIcon]> = [
   ["Contacts", "16", Users],
 ];
 
+const emptyJobMeta: JobMeta = {
+  title: "",
+  company: "",
+  location: "",
+  sourceUrl: "",
+};
+
+const trackerStorageKey = "roleready.applications.v1";
+const trackerChangeEvent = "roleready-applications-changed";
+const applicationStatuses: ApplicationStatus[] = ["Saved", "Applied", "Interview", "Rejected", "Offer"];
+let cachedTrackerRaw = "";
+let cachedTrackerApplications: TrackedApplication[] = [];
+const emptyTrackerApplications: TrackedApplication[] = [];
+
 export default function Home() {
   const [resume, setResume] = useState(sampleResume);
   const [job, setJob] = useState(sampleJob);
   const [jobUrl, setJobUrl] = useState("");
+  const [jobMeta, setJobMeta] = useState<JobMeta>({
+    title: "Data Analyst / AI Product Engineer",
+    company: "Sample company",
+    location: "Sydney",
+    sourceUrl: "",
+  });
   const [inputMode, setInputMode] = useState<InputMode>("import");
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const applications = useSyncExternalStore(
+    subscribeToTracker,
+    getTrackerSnapshot,
+    getTrackerServerSnapshot,
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [isImportingJob, setIsImportingJob] = useState(false);
   const [isExtractingResume, setIsExtractingResume] = useState(false);
@@ -162,10 +220,13 @@ export default function Home() {
         throw new Error(data.error ?? "Could not import this job URL.");
       }
 
-      const heading = [data.title, data.company, data.location]
-        .filter(Boolean)
-        .join(" | ");
-      setJob(heading ? `${heading}\n\n${data.description}` : data.description);
+      setJob(data.description);
+      setJobMeta({
+        title: cleanImportedTitle(data.title ?? ""),
+        company: data.company ?? "",
+        location: data.location ?? "",
+        sourceUrl: data.sourceUrl ?? jobUrl,
+      });
       setImportMessage("Job description imported. Review it, then generate the fit report.");
     } catch (caughtError) {
       setError(
@@ -215,6 +276,79 @@ export default function Home() {
     }
   }
 
+  function saveCurrentApplication() {
+    if (!result) {
+      setError("Generate a fit report before saving this application.");
+      return;
+    }
+
+    const inferredMeta = inferJobMeta(job, jobMeta);
+    const application: TrackedApplication = {
+      id: crypto.randomUUID(),
+      ...inferredMeta,
+      score: result.score,
+      level: result.level,
+      status: "Saved",
+      notes: "",
+      savedAt: new Date().toISOString(),
+      matchedSkills: result.matchedSkills,
+      missingSkills: result.missingSkills,
+      roleSignals: result.roleSignals,
+      summary: result.summary,
+    };
+
+    writeTrackerApplications((current) => [application, ...current]);
+    setImportMessage("Saved to application tracker.");
+  }
+
+  function updateApplicationStatus(id: string, status: ApplicationStatus) {
+    writeTrackerApplications((current) =>
+      current.map((application) =>
+        application.id === id ? { ...application, status } : application,
+      ),
+    );
+  }
+
+  function updateApplicationNotes(id: string, notes: string) {
+    writeTrackerApplications((current) =>
+      current.map((application) =>
+        application.id === id ? { ...application, notes } : application,
+      ),
+    );
+  }
+
+  function removeApplication(id: string) {
+    writeTrackerApplications((current) => current.filter((application) => application.id !== id));
+  }
+
+  async function copyReport() {
+    if (!result) {
+      setError("Generate a fit report before copying it.");
+      return;
+    }
+
+    await navigator.clipboard.writeText(buildReportText(result, inferJobMeta(job, jobMeta)));
+    setImportMessage("Fit report copied to clipboard.");
+  }
+
+  function downloadReport() {
+    if (!result) {
+      setError("Generate a fit report before exporting it.");
+      return;
+    }
+
+    const meta = inferJobMeta(job, jobMeta);
+    const blob = new Blob([buildReportText(result, meta)], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+
+    anchor.href = url;
+    anchor.download = `${slugify(meta.title || "role-ready-report")}.txt`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setImportMessage("Fit report downloaded.");
+  }
+
   const activeResult =
     result ??
     ({
@@ -223,6 +357,28 @@ export default function Home() {
       matchedSkills: ["Python", "SQL", "React", "PostgreSQL", "Machine learning"],
       missingSkills: ["Experimentation", "LLM tools", "Cloud platforms"],
       roleSignals: ["Sydney", "AI product", "Stakeholder-facing", "Dashboards"],
+      scoreBreakdown: [
+        {
+          label: "Weighted skill coverage",
+          value: "78%",
+          detail: "5 of 8 detected job skills matched",
+        },
+        {
+          label: "Resume evidence bonus",
+          value: "+12",
+          detail: "8 relevant resume skills detected",
+        },
+        {
+          label: "Must-have penalty",
+          value: "0",
+          detail: "No detected must-have gaps",
+        },
+      ],
+      skillGroups: {
+        coreMatched: ["Python", "SQL", "React", "Machine learning"],
+        coreMissing: ["Experimentation"],
+        niceToHaveMatched: ["PostgreSQL"],
+      },
       bullets: [
         "Built data-backed web applications using Python, TypeScript, React, and PostgreSQL.",
         "Created dashboards and analytics workflows that convert messy business data into clear decisions.",
@@ -360,7 +516,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-[1.04fr_0.96fr]">
+          <div className="grid items-start gap-6 lg:grid-cols-[1.04fr_0.96fr] lg:items-stretch">
             <form onSubmit={analyzeRole} className="rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(0,0,0,0.22)] md:p-7">
               <div className="mb-5 flex items-start justify-between gap-4">
                 <div>
@@ -375,6 +531,7 @@ export default function Home() {
                     setResume("");
                     setJob("");
                     setJobUrl("");
+                    setJobMeta(emptyJobMeta);
                     setResult(null);
                     setError("");
                     setImportMessage("");
@@ -469,6 +626,27 @@ export default function Home() {
                       </p>
                     </div>
 
+                    <div className="grid min-w-0 gap-3 rounded-md border border-[#DDE8F6] bg-white p-4 md:grid-cols-3">
+                      <SmallInput
+                        label="Job title"
+                        value={jobMeta.title}
+                        onChange={(value) => setJobMeta((current) => ({ ...current, title: value }))}
+                        placeholder="Software Engineer"
+                      />
+                      <SmallInput
+                        label="Company"
+                        value={jobMeta.company}
+                        onChange={(value) => setJobMeta((current) => ({ ...current, company: value }))}
+                        placeholder="Company"
+                      />
+                      <SmallInput
+                        label="Location"
+                        value={jobMeta.location}
+                        onChange={(value) => setJobMeta((current) => ({ ...current, location: value }))}
+                        placeholder="Sydney / Remote"
+                      />
+                    </div>
+
                     <div className="grid gap-4 md:grid-cols-2">
                       <InputPanel
                         compact
@@ -521,8 +699,8 @@ export default function Home() {
               </button>
             </form>
 
-            <aside className="grid gap-5">
-              <section className="rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(0,0,0,0.16)] md:p-7">
+            <aside className="grid h-full content-start gap-5 lg:grid-rows-[auto_1fr]">
+              <section className="rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(0,0,0,0.16)] md:p-6">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-sm font-bold text-[#4F9CF9]">Match signal</p>
@@ -533,15 +711,142 @@ export default function Home() {
                   </div>
                 </div>
                 <p className="mt-5 leading-8 text-[#4F5F6F]">{activeResult.summary}</p>
+                <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                  {activeResult.scoreBreakdown.map((item) => (
+                    <div key={item.label} className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-2.5">
+                      <p className="text-lg font-extrabold text-[#043873]">{item.value}</p>
+                      <p className="mt-1 text-[11px] font-bold leading-4 text-[#212529]">{item.label}</p>
+                      <p className="mt-1 text-[11px] leading-4 text-[#4F5F6F]">{item.detail}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                  <button
+                    type="button"
+                    onClick={saveCurrentApplication}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97]"
+                  >
+                    <BriefcaseBusiness size={16} aria-hidden="true" />
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={copyReport}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#A7CEFC] bg-[#F4F9FF] px-4 text-sm font-bold text-[#043873] transition hover:bg-[#EAF4FF]"
+                  >
+                    <Clipboard size={16} aria-hidden="true" />
+                    Copy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={downloadReport}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#FFE492] bg-[#FFF4C2] px-4 text-sm font-bold text-[#5F4700] transition hover:bg-[#FFE492]"
+                  >
+                    <Download size={16} aria-hidden="true" />
+                    Export
+                  </button>
+                </div>
               </section>
 
-              <section className="grid gap-4 rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(0,0,0,0.16)] md:p-7">
-                <ResultBlock title="Matched skills" icon={CheckCircle2} items={activeResult.matchedSkills} tone="match" />
-                <ResultBlock title="Gaps to cover" icon={Target} items={activeResult.missingSkills} tone="gap" />
-                <ResultBlock title="Role signals" icon={Network} items={activeResult.roleSignals} tone="signal" />
-              </section>
+              <div className="grid h-full items-stretch gap-4 xl:grid-cols-2">
+                <section className="grid h-full content-start gap-3 rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(0,0,0,0.16)]">
+                  <CompactResultBlock title="Matched skills" icon={CheckCircle2} items={activeResult.matchedSkills} tone="match" limit={4} />
+                  <CompactResultBlock title="Gaps to cover" icon={Target} items={activeResult.missingSkills} tone="gap" limit={3} />
+                  <CompactResultBlock title="Role signals" icon={Network} items={activeResult.roleSignals} tone="signal" limit={3} />
+                </section>
+
+                <section className="grid h-full content-start gap-3 rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(0,0,0,0.16)]">
+                  <h3 className="text-base font-extrabold">Score explanation</h3>
+                  <CompactResultBlock title="Core matched" icon={CheckCircle2} items={activeResult.skillGroups.coreMatched} tone="match" limit={3} />
+                  <CompactResultBlock title="Core missing" icon={Target} items={activeResult.skillGroups.coreMissing} tone="gap" limit={2} />
+                  <CompactResultBlock title="Nice-to-have matched" icon={Network} items={activeResult.skillGroups.niceToHaveMatched} tone="signal" limit={2} />
+                </section>
+              </div>
+
             </aside>
           </div>
+        </div>
+      </section>
+
+      <section id="tracker" className="bg-[#F8FBFF] py-16 md:py-24">
+        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
+          <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+            <div>
+              <h2 className="text-4xl font-extrabold leading-tight md:text-5xl">
+                Application <span className="yellow-mark">tracker</span>
+              </h2>
+              <p className="mt-4 max-w-2xl leading-8 text-[#4F5F6F]">
+                Save fit reports, update statuses, and keep notes in your browser while the database layer is still on the roadmap.
+              </p>
+            </div>
+            <p className="rounded-md border border-[#DDE8F6] bg-white px-4 py-3 text-sm font-bold text-[#043873]">
+              {applications.length} saved
+            </p>
+          </div>
+
+          {applications.length ? (
+            <div className="grid gap-4">
+              {applications.map((application) => (
+                <article key={application.id} className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
+                  <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-xl font-extrabold">{application.title || "Untitled role"}</h3>
+                        <span className="rounded-md bg-[#FFE492] px-3 py-1 text-sm font-extrabold text-[#043873]">
+                          {application.score}%
+                        </span>
+                        <span className="rounded-md border border-[#A7CEFC] bg-[#F4F9FF] px-3 py-1 text-sm font-bold text-[#043873]">
+                          {application.level}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
+                        {[application.company, application.location].filter(Boolean).join(" | ") || "No company/location saved"}
+                      </p>
+                      <p className="mt-3 text-sm leading-6 text-[#4F5F6F]">{application.summary}</p>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+                      <select
+                        value={application.status}
+                        onChange={(event) => updateApplicationStatus(application.id, event.target.value as ApplicationStatus)}
+                        className="h-11 rounded-md border border-[#DDE8F6] bg-white px-3 text-sm font-bold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
+                      >
+                        {applicationStatuses.map((status) => (
+                          <option key={status} value={status}>{status}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => removeApplication(application.id)}
+                        className="h-11 rounded-md border border-[#FFE492] px-3 text-sm font-bold text-[#5F4700] transition hover:bg-[#FFF4C2]"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                    <TrackerSkillList label="Matched" items={application.matchedSkills} />
+                    <TrackerSkillList label="Missing" items={application.missingSkills} />
+                  </div>
+                  <label className="mt-4 grid gap-2">
+                    <span className="text-sm font-bold text-[#212529]">Notes</span>
+                    <textarea
+                      value={application.notes}
+                      onChange={(event) => updateApplicationNotes(application.id, event.target.value)}
+                      className="min-h-20 resize-y rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-3 text-sm leading-6 outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
+                      placeholder="Next action, recruiter contact, application link, interview notes..."
+                    />
+                  </label>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-md border border-[#DDE8F6] bg-white p-8 text-center shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
+              <p className="text-lg font-extrabold text-[#043873]">No saved applications yet</p>
+              <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
+                Generate a fit report, then use Save to add it here.
+              </p>
+            </div>
+          )}
         </div>
       </section>
 
@@ -686,6 +991,158 @@ export default function Home() {
   );
 }
 
+function inferJobMeta(jobText: string, current: JobMeta): JobMeta {
+  const firstLine = jobText
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+
+  return {
+    title: current.title || firstLine?.slice(0, 90) || "Untitled role",
+    company: current.company,
+    location: current.location,
+    sourceUrl: current.sourceUrl,
+  };
+}
+
+function subscribeToTracker(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener(trackerChangeEvent, onStoreChange);
+
+  return () => {
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener(trackerChangeEvent, onStoreChange);
+  };
+}
+
+function getTrackerSnapshot() {
+  const raw = window.localStorage.getItem(trackerStorageKey) ?? "[]";
+
+  if (raw === cachedTrackerRaw) {
+    return cachedTrackerApplications;
+  }
+
+  cachedTrackerRaw = raw;
+
+  try {
+    const parsed = JSON.parse(raw) as TrackedApplication[];
+    cachedTrackerApplications = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    cachedTrackerApplications = [];
+  }
+
+  return cachedTrackerApplications;
+}
+
+function getTrackerServerSnapshot() {
+  return emptyTrackerApplications;
+}
+
+function writeTrackerApplications(
+  update: (current: TrackedApplication[]) => TrackedApplication[],
+) {
+  const nextApplications = update(getTrackerSnapshot());
+  const raw = JSON.stringify(nextApplications);
+
+  cachedTrackerRaw = raw;
+  cachedTrackerApplications = nextApplications;
+  window.localStorage.setItem(trackerStorageKey, raw);
+  window.dispatchEvent(new Event(trackerChangeEvent));
+}
+
+function cleanImportedTitle(title: string) {
+  return title
+    .replace(/\s+-\s+SEEK$/i, "")
+    .replace(/\s+Job in .+$/i, "")
+    .replace(/\s+\|\s+.+$/i, "")
+    .trim();
+}
+
+function buildReportText(result: AnalysisResult, meta: JobMeta) {
+  return [
+    "RoleReady Fit Report",
+    "",
+    `Role: ${meta.title || "Untitled role"}`,
+    `Company: ${meta.company || "Not provided"}`,
+    `Location: ${meta.location || "Not provided"}`,
+    meta.sourceUrl ? `Source: ${meta.sourceUrl}` : "",
+    "",
+    `Score: ${result.score}%`,
+    `Recommendation: ${result.level}`,
+    "",
+    "Summary",
+    result.summary,
+    "",
+    "Score Breakdown",
+    ...result.scoreBreakdown.map((item) => `- ${item.label}: ${item.value} (${item.detail})`),
+    "",
+    "Matched Skills",
+    result.matchedSkills.length ? result.matchedSkills.map((item) => `- ${item}`).join("\n") : "- None detected",
+    "",
+    "Gaps To Cover",
+    result.missingSkills.length ? result.missingSkills.map((item) => `- ${item}`).join("\n") : "- None detected",
+    "",
+    "Role Signals",
+    result.roleSignals.length ? result.roleSignals.map((item) => `- ${item}`).join("\n") : "- None detected",
+    "",
+    "Recommended Actions",
+    ...result.bullets.map((item) => `- ${item}`),
+  ].join("\n");
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80);
+}
+
+function SmallInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <label className="grid min-w-0 gap-2">
+      <span className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F5F6F]">{label}</span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 min-w-0 truncate rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15"
+        placeholder={placeholder}
+      />
+    </label>
+  );
+}
+
+function TrackerSkillList({ label, items }: { label: string; items: string[] }) {
+  return (
+    <div>
+      <p className="mb-2 text-sm font-bold text-[#212529]">{label}</p>
+      <div className="flex flex-wrap gap-2">
+        {items.length ? (
+          items.slice(0, 8).map((item) => (
+            <span key={item} className="rounded-md border border-[#A7CEFC] bg-[#F4F9FF] px-3 py-1.5 text-xs font-bold text-[#043873]">
+              {item}
+            </span>
+          ))
+        ) : (
+          <span className="rounded-md border border-[#DDE8F6] bg-white px-3 py-1.5 text-xs font-bold text-[#4F5F6F]">
+            None
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function InputPanel({
   icon: Icon,
   label,
@@ -717,16 +1174,18 @@ function InputPanel({
   );
 }
 
-function ResultBlock({
+function CompactResultBlock({
   title,
   icon: Icon,
   items,
   tone,
+  limit = 4,
 }: {
   title: string;
   icon: LucideIcon;
   items: string[];
   tone: "match" | "gap" | "signal";
+  limit?: number;
 }) {
   const chipClass = {
     match: "border-[#A7CEFC] bg-[#EAF4FF] text-[#043873]",
@@ -734,24 +1193,34 @@ function ResultBlock({
     signal: "border-[#A7CEFC] bg-[#F4F9FF] text-[#043873]",
   }[tone];
 
+  const visibleItems = items.slice(0, limit);
+  const hiddenCount = Math.max(items.length - visibleItems.length, 0);
+
   return (
-    <div className="border-b border-[#DDE8F6] pb-5 last:border-b-0 last:pb-0">
-      <h3 className="mb-4 flex items-center gap-3 text-lg font-extrabold text-[#212529]">
-        <span className="grid size-6 place-items-center rounded-full border border-[#4F9CF9] text-[#4F9CF9]">
-          <Icon size={14} strokeWidth={2.5} aria-hidden="true" />
+    <div className="border-b border-[#DDE8F6] pb-3 last:border-b-0 last:pb-0">
+      <h3 className="mb-2 flex items-center gap-2 text-sm font-extrabold text-[#212529]">
+        <span className="grid size-5 shrink-0 place-items-center rounded-full border border-[#4F9CF9] text-[#4F9CF9]">
+          <Icon size={12} strokeWidth={2.5} aria-hidden="true" />
         </span>
-        {title}
+        <span className="leading-tight">{title}</span>
       </h3>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5">
         {items.length ? (
-          items.map((item) => (
-            <span key={item} className={`rounded-md border px-4 py-2 text-sm font-bold ${chipClass}`}>
+          <>
+          {visibleItems.map((item) => (
+            <span key={item} className={`rounded-md border px-2.5 py-1.5 text-xs font-bold leading-tight ${chipClass}`}>
               {item}
             </span>
-          ))
+          ))}
+          {hiddenCount ? (
+            <span className="rounded-md border border-[#DDE8F6] bg-white px-2.5 py-1.5 text-xs font-bold leading-tight text-[#4F5F6F]">
+              +{hiddenCount} more
+            </span>
+          ) : null}
+          </>
         ) : (
-          <span className="rounded-md border border-[#DDE8F6] bg-white px-4 py-2 text-sm font-bold text-[#4F5F6F]">
-            No strong signals found yet
+          <span className="rounded-md border border-[#DDE8F6] bg-white px-2.5 py-1.5 text-xs font-bold text-[#4F5F6F]">
+            None
           </span>
         )}
       </div>

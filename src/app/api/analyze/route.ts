@@ -96,6 +96,39 @@ export async function POST(request: NextRequest) {
     matchedSkills: matchedSkills.map((skill) => skill.name).slice(0, 10),
     missingSkills: missingSkills.map((skill) => skill.name).slice(0, 10),
     roleSignals: roleSignals.length ? roleSignals : ["Role intent unclear"],
+    scoreBreakdown: [
+      {
+        label: "Weighted skill coverage",
+        value: `${Math.round(coverage * 100)}%`,
+        detail: `${matchedSkills.length} of ${jobSkills.length || 0} detected job skills matched`,
+      },
+      {
+        label: "Resume evidence bonus",
+        value: `+${Math.round(evidenceBonus)}`,
+        detail: `${resumeSkills.length} relevant resume skills detected`,
+      },
+      {
+        label: "Must-have penalty",
+        value: mustHavePenalty ? `-${mustHavePenalty}` : "0",
+        detail: mustHaveMisses.length
+          ? `${mustHaveMisses.length} must-have skill gap detected`
+          : "No detected must-have gaps",
+      },
+    ],
+    skillGroups: {
+      coreMatched: matchedSkills
+        .filter((skill) => skill.weight >= 7)
+        .map((skill) => skill.name)
+        .slice(0, 8),
+      coreMissing: missingSkills
+        .filter((skill) => skill.weight >= 7 || mustHaveMisses.some((item) => item.name === skill.name))
+        .map((skill) => skill.name)
+        .slice(0, 8),
+      niceToHaveMatched: matchedSkills
+        .filter((skill) => skill.weight < 7)
+        .map((skill) => skill.name)
+        .slice(0, 8),
+    },
     bullets: buildActionItems(matchedSkills, missingSkills, mustHaveMisses),
     summary: buildSummary(score, matchedSkills, missingSkills, mustHaveMisses, recommendation.action),
   });

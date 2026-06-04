@@ -16,9 +16,13 @@ This first version includes:
 - Must-have requirement detection
 - Role signal extraction
 - Actionable resume/application recommendations
+- Score explanation with weighted coverage, evidence bonus, and must-have penalty
+- Job metadata capture for title, company, location, and source URL
+- Local application tracker with status and notes
+- Copy/download fit report export
 - Responsive SaaS landing page interface
 
-The matching route works without paid model usage, so the product can be demoed immediately. Optional writing assistance can be added later for resume rewriting, cover letters, and richer explanations.
+The matching route works without paid model usage, so the product can be demoed immediately. Saved applications are stored in browser `localStorage` until database/auth are added. Optional writing assistance can be added later for resume rewriting, cover letters, and richer explanations.
 
 Job URL import works best with company career pages and public ATS pages. Some large job boards block automated extraction, so the app keeps manual paste as the fallback.
 
@@ -37,7 +41,6 @@ Planned additions:
 - PostgreSQL
 - Prisma
 - Auth
-- Saved applications dashboard
 - Optional AI writing assistant
 
 ## Getting Started
