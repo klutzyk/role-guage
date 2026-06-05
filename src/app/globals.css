@@ -28,13 +28,6 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
-.blue-wave {
-  background-image:
-    radial-gradient(circle at 12% 28%, rgba(79, 156, 249, 0.24), transparent 24rem),
-    radial-gradient(circle at 85% 42%, rgba(167, 206, 252, 0.2), transparent 20rem),
-    repeating-radial-gradient(ellipse at 50% 52%, rgba(167, 206, 252, 0.22) 0 1px, transparent 1px 11px);
-}
-
 .yellow-mark {
   position: relative;
 }

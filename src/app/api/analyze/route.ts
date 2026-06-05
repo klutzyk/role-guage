@@ -113,17 +113,17 @@ export async function POST(request: NextRequest) {
     roleSignals: roleSignals.length ? roleSignals : ["Role intent unclear"],
     scoreBreakdown: [
       {
-        label: "Weighted skill coverage",
+        label: "Matched job skills",
         value: `${Math.round(coverage * 100)}%`,
         detail: `${matchedSkills.length} of ${jobSkills.length || 0} detected job skills matched`,
       },
       {
-        label: "Resume evidence bonus",
+        label: "Resume matches",
         value: `+${Math.round(evidenceBonus)}`,
         detail: `${resumeSkills.length} relevant resume skills detected`,
       },
       {
-        label: "Must-have penalty",
+        label: "Required gaps",
         value: mustHavePenalty ? `-${mustHavePenalty}` : "0",
         detail: mustHaveMisses.length
           ? `${mustHaveMisses.length} must-have skill gap detected`
@@ -281,7 +281,7 @@ function buildResumeBullets(matched: SkillDefinition[], missing: SkillDefinition
 
   return [
     `Built and improved ${primary} workflows, connecting technical delivery to measurable user or business outcomes.`,
-    `Used ${secondary} to turn ambiguous requirements into clear dashboards, tools, or decisions for stakeholders.`,
+    `Used ${secondary} to turn ambiguous requirements into clear dashboards, tools, or decisions.`,
     `Add one honest proof point for ${gap}, even if it comes from a project, coursework, or self-directed build.`,
   ];
 }

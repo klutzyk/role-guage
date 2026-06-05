@@ -14,7 +14,6 @@ import {
   Network,
   Plus,
   Radar,
-  ShieldCheck,
   Target,
   Upload,
   Users,
@@ -381,17 +380,17 @@ export default function Home() {
       roleSignals: ["Sydney", "AI product", "Stakeholder-facing", "Dashboards"],
       scoreBreakdown: [
         {
-          label: "Weighted skill coverage",
+          label: "Matched job skills",
           value: "78%",
           detail: "5 of 8 detected job skills matched",
         },
         {
-          label: "Resume evidence bonus",
+          label: "Resume matches",
           value: "+12",
           detail: "8 relevant resume skills detected",
         },
         {
-          label: "Must-have penalty",
+          label: "Required gaps",
           value: "0",
           detail: "No detected must-have gaps",
         },
@@ -413,7 +412,7 @@ export default function Home() {
       },
       resumeBullets: [
         "Built data-backed web applications that connected Python, SQL, and React workflows to measurable user outcomes.",
-        "Created dashboards and analytics workflows that helped stakeholders make faster product decisions.",
+        "Created dashboards and analytics workflows that made product decisions clearer.",
         "Add one honest proof point for experimentation, even if it comes from coursework or a self-directed project.",
       ],
       interviewPrep: [
@@ -429,7 +428,7 @@ export default function Home() {
         "Add a truthful mention of experimentation if you have evidence for it.",
       ],
       summary:
-        "Your profile is credible for this role. Emphasize data products, stakeholder outcomes, and the strongest matched skills before applying.",
+        "Your profile is credible for this role. Lead with the strongest matched skills and tighten the visible gaps before applying.",
     } satisfies AnalysisResult);
 
   return (
@@ -456,20 +455,23 @@ export default function Home() {
         </div>
       </header>
 
-      <section id="analyze" className="py-8 md:py-12">
-        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
-          <div className="mx-auto mb-7 max-w-3xl text-center">
-            <p className="text-sm font-extrabold uppercase tracking-[0.16em] text-[#4F9CF9]">Resume job match checker</p>
-            <h1 className="mt-3 text-4xl font-extrabold leading-tight text-[#043873] md:text-6xl">
+      <section id="analyze" className="pb-8 md:pb-12">
+        <div className="bg-[#043873] text-white">
+          <div className="mx-auto max-w-7xl px-5 py-10 text-center md:px-8 md:py-14 lg:px-10">
+            <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#A7CEFC]">Resume job match checker</p>
+            <h1 className="mx-auto mt-3 max-w-4xl text-4xl font-bold leading-tight md:text-6xl">
               Know if a job is worth applying for
             </h1>
-            <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-[#4F5F6F]">
-              Upload your resume, import a job ad, and get a fit score, skill gaps, resume bullets, interview prep, and a saved next step.
+            <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-white/82">
+              Upload your resume, import a job ad, and get a clear fit decision before you spend time applying.
             </p>
           </div>
+        </div>
 
-          <div className="grid items-start gap-5 lg:grid-cols-[1.02fr_0.98fr] lg:items-stretch">
-            <form onSubmit={analyzeRole} className="rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(0,0,0,0.22)] md:p-7">
+        <div className="mx-auto -mt-6 max-w-7xl px-5 md:px-8 lg:px-10">
+
+          <div className="grid items-start gap-5 lg:grid-cols-[1.05fr_0.95fr] lg:items-stretch">
+            <form onSubmit={analyzeRole} className="h-full rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(4,56,115,0.14)] md:p-7">
               <div className="mb-5 flex items-start justify-between gap-4">
                 <div>
                   <h3 className="text-2xl font-extrabold">Role matcher</h3>
@@ -543,14 +545,10 @@ export default function Home() {
                 {inputMode === "import" ? (
                   <>
                     <div className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
-                      <div className="mb-3 flex items-center gap-2 text-sm font-bold">
-                        <Upload size={16} className="text-[#4F9CF9]" aria-hidden="true" />
-                        Resume PDF import
-                      </div>
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <div className="flex justify-center">
                         <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97]">
                           {isExtractingResume ? <Loader2 className="animate-spin" size={17} aria-hidden="true" /> : <Upload size={17} aria-hidden="true" />}
-                          {isExtractingResume ? "Extracting PDF" : "Upload resume PDF"}
+                          {isExtractingResume ? "Extracting PDF" : "Upload Resume PDF"}
                           <input
                             type="file"
                             accept="application/pdf"
@@ -559,16 +557,13 @@ export default function Home() {
                             disabled={isExtractingResume}
                           />
                         </label>
-                        <p className="text-sm leading-6 text-[#4F5F6F]">
-                          Upload a text-based PDF resume, then review the extracted text below.
-                        </p>
                       </div>
                     </div>
 
                     <div className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
                       <label className="mb-3 flex items-center gap-2 text-sm font-bold" htmlFor="job-url">
                         <Link size={16} className="text-[#4F9CF9]" aria-hidden="true" />
-                        Job URL import
+                        Paste the URL of the job ad
                       </label>
                       <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                         <input
@@ -667,12 +662,12 @@ export default function Home() {
               </button>
             </form>
 
-            <aside className="grid h-full content-start gap-5 lg:grid-rows-[auto_1fr]">
-              <section className="rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(0,0,0,0.16)] md:p-6">
+            <aside className="grid h-full gap-5">
+              <section className="rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(4,56,115,0.14)] md:p-6">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-sm font-bold text-[#4F9CF9]">Recommended move</p>
-                  <h3 className="mt-2 text-3xl font-bold">{activeResult.decision}</h3>
+                    <h3 className="mt-2 text-4xl font-bold text-[#043873]">{activeResult.decision}</h3>
                     <p className="mt-1 text-sm font-bold text-[#4F5F6F]">{activeResult.level}</p>
                   </div>
                   <div className="grid size-24 place-items-center rounded-md bg-[#FFE492] text-[#043873]">
@@ -693,15 +688,6 @@ export default function Home() {
                     <div key={label} className="rounded-md border border-[#DDE8F6] bg-white p-2.5">
                       <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#4F5F6F]">{label}</p>
                       <p className="mt-1 truncate text-sm font-bold text-[#043873]">{value}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                  {activeResult.scoreBreakdown.map((item) => (
-                    <div key={item.label} className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-2.5">
-                      <p className="text-lg font-bold text-[#043873]">{item.value}</p>
-                      <p className="mt-1 text-[11px] font-bold leading-4 text-[#212529]">{item.label}</p>
-                      <p className="mt-1 text-[11px] leading-4 text-[#4F5F6F]">{item.detail}</p>
                     </div>
                   ))}
                 </div>
@@ -733,22 +719,86 @@ export default function Home() {
                 </div>
               </section>
 
-              <div className="grid h-full items-stretch gap-4 xl:grid-cols-2">
-                <section className="grid h-full content-start gap-3 rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(0,0,0,0.16)]">
-                  <CompactResultBlock title="Matched skills" icon={CheckCircle2} items={activeResult.matchedSkills} tone="match" limit={4} />
-                  <CompactResultBlock title="Gaps to cover" icon={Target} items={activeResult.missingSkills} tone="gap" limit={3} />
-                  <CompactResultBlock title="Role signals" icon={Network} items={activeResult.roleSignals} tone="signal" limit={3} />
-                </section>
+              <section className="rounded-md bg-white p-5 shadow-[0_18px_60px_rgba(4,56,115,0.1)]">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-bold text-[#212529]">Fit details</h2>
+                    <p className="mt-1 text-xs leading-5 text-[#4F5F6F]">Evidence behind the recommendation.</p>
+                  </div>
+                  <div className="rounded-md bg-[#FFE492] px-3 py-2 text-sm font-bold text-[#043873]">
+                    {activeResult.score}% fit
+                  </div>
+                </div>
+                <div className="mb-4 grid gap-2 sm:grid-cols-3">
+                  {activeResult.scoreBreakdown.map((item) => (
+                    <div key={item.label} className="rounded-md border border-[#DDE8F6] bg-white p-2">
+                      <p className="text-sm font-bold text-[#043873]">{item.value}</p>
+                      <p className="mt-1 text-[10px] font-semibold leading-4 text-[#4F5F6F]">{item.label}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <section className="grid content-start gap-3 rounded-md border border-[#DDE8F6] p-4">
+                    <CompactResultBlock title="Matched skills" icon={CheckCircle2} items={activeResult.matchedSkills} tone="match" limit={4} />
+                    <CompactResultBlock title="Gaps to cover" icon={Target} items={activeResult.missingSkills} tone="gap" limit={3} />
+                    <CompactResultBlock title="Role signals" icon={Network} items={activeResult.roleSignals} tone="signal" limit={3} />
+                  </section>
 
-                <section className="grid h-full content-start gap-3 rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(0,0,0,0.16)]">
-                  <h3 className="text-base font-bold">Score explanation</h3>
-                  <CompactResultBlock title="Core matched" icon={CheckCircle2} items={activeResult.skillGroups.coreMatched} tone="match" limit={3} />
-                  <CompactResultBlock title="Core missing" icon={Target} items={activeResult.skillGroups.coreMissing} tone="gap" limit={2} />
-                  <CompactResultBlock title="Nice-to-have matched" icon={Network} items={activeResult.skillGroups.niceToHaveMatched} tone="signal" limit={2} />
-                </section>
-              </div>
-
+                  <section className="grid content-start gap-3 rounded-md border border-[#DDE8F6] p-4">
+                    <h3 className="text-base font-bold">Score explanation</h3>
+                    <CompactResultBlock title="Core matched" icon={CheckCircle2} items={activeResult.skillGroups.coreMatched} tone="match" limit={3} />
+                    <CompactResultBlock title="Core missing" icon={Target} items={activeResult.skillGroups.coreMissing} tone="gap" limit={2} />
+                    <CompactResultBlock title="Nice-to-have matched" icon={Network} items={activeResult.skillGroups.niceToHaveMatched} tone="signal" limit={2} />
+                  </section>
+                </div>
+              </section>
             </aside>
+          </div>
+        </div>
+      </section>
+
+      <section id="application-kit" className="bg-[#043873] py-16 text-white md:py-24">
+        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
+          <div className="mb-10 grid gap-5 lg:grid-cols-[0.85fr_1.15fr] lg:items-end">
+            <div>
+              <h2 className="text-4xl font-extrabold leading-tight md:text-5xl">
+                Your application <span className="text-[#FFE492]">kit</span>
+              </h2>
+              <p className="mt-5 max-w-2xl leading-8 text-white/82">
+                Turn the match result into practical assets you can use before applying, interviewing, or contacting someone at the company.
+              </p>
+            </div>
+            <div className="rounded-md border border-[#DDE8F6] bg-white p-4 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
+              <p className="text-sm font-bold text-[#043873]">Current role recommendation</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="rounded-md bg-[#043873] px-3 py-2 text-sm font-extrabold text-white">{activeResult.decision}</span>
+                <span className="rounded-md bg-[#FFE492] px-3 py-2 text-sm font-extrabold text-[#043873]">{activeResult.score}% fit</span>
+                <span className="rounded-md border border-[#A7CEFC] bg-white px-3 py-2 text-sm font-semibold text-[#043873]">{activeResult.timeToApply}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-3">
+            <ApplicationKitCard
+              title="Keyword plan"
+              items={[
+                `Lead with: ${activeResult.keywordPlan.headline}`,
+                ...activeResult.keywordPlan.keep.slice(0, 4).map((item) => `Keep visible: ${item}`),
+                ...activeResult.keywordPlan.add.slice(0, 4).map((item) => `Add proof for: ${item}`),
+              ]}
+            />
+            <ApplicationKitCard title="Resume bullet drafts" items={activeResult.resumeBullets} />
+            <ApplicationKitCard title="Interview prep" items={activeResult.interviewPrep} />
+          </div>
+
+          <div className="mt-5 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+            <section className="rounded-md border border-[#DDE8F6] bg-white p-6 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
+              <h3 className="text-xl font-bold text-[#212529]">Outreach note</h3>
+              <p className="mt-4 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 text-[#4F5F6F]">
+                {activeResult.outreachMessage}
+              </p>
+            </section>
+            <ApplicationKitCard title="ATS sanity checks" items={activeResult.atsNotes} />
           </div>
         </div>
       </section>
@@ -780,66 +830,14 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="application-kit" className="bg-[#F8FBFF] py-16 md:py-24">
-        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
-          <div className="mb-10 grid gap-5 lg:grid-cols-[0.85fr_1.15fr] lg:items-end">
-            <div>
-              <h2 className="text-4xl font-extrabold leading-tight md:text-5xl">
-                Your application <span className="yellow-mark">kit</span>
-              </h2>
-              <p className="mt-5 max-w-2xl leading-8 text-[#4F5F6F]">
-                Turn the match result into practical assets you can use before applying, interviewing, or contacting someone at the company.
-              </p>
-            </div>
-            <div className="rounded-md border border-[#DDE8F6] bg-white p-4 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
-              <p className="text-sm font-bold text-[#043873]">Current role recommendation</p>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="rounded-md bg-[#043873] px-3 py-2 text-sm font-extrabold text-white">{activeResult.decision}</span>
-                <span className="rounded-md bg-[#FFE492] px-3 py-2 text-sm font-extrabold text-[#043873]">{activeResult.score}% fit</span>
-                <span className="rounded-md border border-[#A7CEFC] bg-white px-3 py-2 text-sm font-semibold text-[#043873]">{activeResult.timeToApply}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-5 lg:grid-cols-3">
-            <ApplicationKitCard
-              title="Keyword plan"
-              icon={Target}
-              items={[
-                `Lead with: ${activeResult.keywordPlan.headline}`,
-                ...activeResult.keywordPlan.keep.slice(0, 4).map((item) => `Keep visible: ${item}`),
-                ...activeResult.keywordPlan.add.slice(0, 4).map((item) => `Add proof for: ${item}`),
-              ]}
-            />
-            <ApplicationKitCard title="Resume bullet drafts" icon={FileText} items={activeResult.resumeBullets} />
-            <ApplicationKitCard title="Interview prep" icon={Users} items={activeResult.interviewPrep} />
-          </div>
-
-          <div className="mt-5 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-            <section className="rounded-md border border-[#DDE8F6] bg-white p-6 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
-              <div className="flex items-center gap-3">
-                <span className="grid size-9 place-items-center rounded-md bg-[#A7CEFC]/45 text-[#043873]">
-                  <Network size={18} aria-hidden="true" />
-                </span>
-                <h3 className="text-xl font-extrabold">Outreach note</h3>
-              </div>
-              <p className="mt-4 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 text-[#4F5F6F]">
-                {activeResult.outreachMessage}
-              </p>
-            </section>
-            <ApplicationKitCard title="ATS sanity checks" icon={ShieldCheck} items={activeResult.atsNotes} />
-          </div>
-        </div>
-      </section>
-
-      <section id="tracker" className="bg-[#F8FBFF] py-16 md:py-24">
+      <section id="tracker" className="bg-[#043873] py-16 text-white md:py-24">
         <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
           <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
             <div>
               <h2 className="text-4xl font-extrabold leading-tight md:text-5xl">
-                Application <span className="yellow-mark">tracker</span>
+                Application <span className="text-[#FFE492]">tracker</span>
               </h2>
-              <p className="mt-4 max-w-2xl leading-8 text-[#4F5F6F]">
+              <p className="mt-4 max-w-2xl leading-8 text-white/82">
                 Save fit reports, update statuses, and keep notes so every application has a clear next action.
               </p>
             </div>
@@ -964,7 +962,7 @@ export default function Home() {
         </div>
       </section>
 
-      <footer className="blue-wave bg-[#043873] text-white">
+      <footer className="bg-[#043873] text-white">
         <div className="mx-auto max-w-7xl px-5 py-14 text-center md:px-8 lg:px-10">
           <h2 className="text-4xl font-extrabold">Try ApplyPilot today</h2>
           <p className="mx-auto mt-5 max-w-xl leading-8 text-white/82">
@@ -1164,25 +1162,17 @@ function TrackerSkillList({ label, items }: { label: string; items: string[] }) 
 
 function ApplicationKitCard({
   title,
-  icon: Icon,
   items,
 }: {
   title: string;
-  icon: LucideIcon;
   items: string[];
 }) {
   return (
     <section className="rounded-md border border-[#DDE8F6] bg-white p-6 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
-      <div className="flex items-center gap-3">
-        <span className="grid size-9 place-items-center rounded-md bg-[#A7CEFC]/45 text-[#043873]">
-          <Icon size={18} aria-hidden="true" />
-        </span>
-        <h3 className="text-xl font-extrabold">{title}</h3>
-      </div>
+      <h3 className="text-xl font-bold text-[#212529]">{title}</h3>
       <ul className="mt-5 grid gap-3 text-sm leading-6 text-[#4F5F6F]">
         {items.map((item) => (
-          <li key={item} className="flex gap-3">
-            <CheckCircle2 size={16} className="mt-1 shrink-0 text-[#4F9CF9]" aria-hidden="true" />
+          <li key={item} className="border-l-2 border-[#A7CEFC] pl-3">
             <span>{item}</span>
           </li>
         ))}
@@ -1235,13 +1225,14 @@ function CompactResultBlock({
   tone: "match" | "gap" | "signal";
   limit?: number;
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const chipClass = {
     match: "border-[#A7CEFC] bg-white text-[#043873]",
     gap: "border-[#FFE492] bg-[#FFE492] text-[#043873]",
     signal: "border-[#A7CEFC] bg-[#A7CEFC] text-[#043873]",
   }[tone];
 
-  const visibleItems = items.slice(0, limit);
+  const visibleItems = isExpanded ? items : items.slice(0, limit);
   const hiddenCount = Math.max(items.length - visibleItems.length, 0);
 
   return (
@@ -1261,9 +1252,13 @@ function CompactResultBlock({
             </span>
           ))}
           {hiddenCount ? (
-            <span className="rounded-md border border-[#DDE8F6] bg-white px-2.5 py-1.5 text-xs font-semibold leading-tight text-[#4F5F6F]">
+            <button
+              type="button"
+              onClick={() => setIsExpanded(true)}
+              className="rounded-md border border-[#DDE8F6] bg-white px-2.5 py-1.5 text-xs font-semibold leading-tight text-[#4F5F6F] transition hover:border-[#A7CEFC] hover:text-[#043873]"
+            >
               +{hiddenCount} more
-            </span>
+            </button>
           ) : null}
           </>
         ) : (
