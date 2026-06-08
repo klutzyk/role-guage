@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
       headers: {
         Accept: "text/html,application/xhtml+xml",
         "User-Agent":
-          "Mozilla/5.0 (compatible; ApplyPilotJobImporter/0.1; +https://applypilot.local)",
+          "Mozilla/5.0 (compatible; RoleGuageJobImporter/0.1; +https://roleguage.local)",
       },
       redirect: "follow",
       signal: AbortSignal.timeout(10000),

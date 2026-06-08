@@ -9,11 +9,14 @@ import {
   Download,
   FileText,
   Gauge,
+  ListChecks,
   Link,
   Loader2,
   Network,
   Plus,
   Radar,
+  SearchCheck,
+  ShieldCheck,
   Target,
   Upload,
   Users,
@@ -62,6 +65,25 @@ type ImportedJob = {
   sourceUrl: string;
 };
 
+type DiscoveredJob = {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  description: string;
+  applyUrl: string;
+  source: string;
+  postedAt: string;
+  tags: string[];
+  score: number;
+  level: string;
+  decision: AnalysisResult["decision"];
+  summary: string;
+  nextStep: string;
+  matchedSkills: string[];
+  missingSkills: string[];
+};
+
 type InputMode = "import" | "paste";
 type ApplicationStatus = "Saved" | "Applied" | "Interview" | "Rejected" | "Offer";
 
@@ -96,22 +118,22 @@ const plans = [
   {
     name: "Starter",
     price: "$0",
-    copy: "For deciding whether a few roles are worth your time.",
-    items: ["3 role checks", "Fit score", "Skill gaps", "Manual paste workflow"],
+    copy: "For checking a few roles before you spend time applying.",
+    items: ["3 role checks", "Fit score", "Evidence gaps", "Manual paste workflow"],
     featured: false,
   },
   {
     name: "Active Search",
     price: "$19",
-    copy: "For applicants who want every application to be targeted.",
-    items: ["Unlimited role checks", "Resume PDF import", "Job URL import", "Application tracker", "Exportable fit report"],
+    copy: "For jobseekers who want every application to be targeted.",
+    items: ["Unlimited role checks", "Resume PDF import", "Job URL import", "Application tracker", "Exportable fit reports"],
     featured: true,
   },
   {
     name: "Career Sprint",
     price: "$99",
-    copy: "For a deeper job-search reset with human review.",
-    items: ["Profile audit", "Target role strategy", "Portfolio project plan", "Resume review"],
+    copy: "For a deeper job-search reset with structured review.",
+    items: ["Profile audit", "Target role strategy", "Portfolio project plan", "Resume review notes"],
     featured: false,
   },
 ];
@@ -119,10 +141,43 @@ const plans = [
 const jobTools: Array<[string, string, LucideIcon]> = [
   ["Resume job match", "Upload a resume and compare it with a real job ad.", Gauge],
   ["Job URL import", "Pull job text from public company and ATS pages.", Link],
-  ["Skill gap finder", "See must-have gaps before applying.", Target],
-  ["Resume bullet drafts", "Turn matched evidence into targeted bullet ideas.", FileText],
+  ["Evidence gap finder", "See missing proof before applying.", Target],
+  ["Resume bullet guidance", "Turn matched evidence into targeted bullet ideas.", FileText],
   ["Interview prep", "Prepare stories for matched skills and visible gaps.", Users],
   ["Application tracker", "Save the decision, status, notes, and next step.", BriefcaseBusiness],
+];
+
+const workflowSteps: Array<[string, string, LucideIcon]> = [
+  ["Upload once", "Keep a reusable resume profile in your browser and reuse it across role checks.", Upload],
+  ["Import a role", "Paste a job URL or drop in the job description when the site blocks import.", SearchCheck],
+  ["Check the fit", "Get a clear Apply, Tailor, Build, or Skip recommendation with the evidence behind it.", Gauge],
+  ["Apply with a plan", "Use the generated kit to tighten bullets, prep interviews, and track next actions.", ListChecks],
+];
+
+const trustItems = [
+  "No fake experience suggestions",
+  "Manual review before anything is used",
+  "Local-first saved profile and tracker",
+  "Copy, save, or export every report",
+];
+
+const faqs: Array<[string, string]> = [
+  [
+    "Is this just ChatGPT with a nicer screen?",
+    "No. RoleGuage is built around a repeatable job-search workflow: import a role, score fit, expose evidence gaps, generate an application kit, and save the decision to a tracker.",
+  ],
+  [
+    "Does it rewrite my resume with fake skills?",
+    "No. It highlights what your resume already supports and separates missing evidence from matched evidence.",
+  ],
+  [
+    "Can it import jobs from LinkedIn or SEEK?",
+    "Some large job boards block automated extraction. RoleGuage keeps URL import for public pages and a copy-text fallback for blocked job boards.",
+  ],
+  [
+    "Where is my resume stored?",
+    "In this MVP, saved profiles and applications stay in your browser localStorage. A production version should add accounts, encrypted storage, and delete controls.",
+  ],
 ];
 
 const emptyJobMeta: JobMeta = {
@@ -132,9 +187,11 @@ const emptyJobMeta: JobMeta = {
   sourceUrl: "",
 };
 
-const trackerStorageKey = "applypilot.applications.v1";
-const trackerChangeEvent = "applypilot-applications-changed";
-const resumeProfileStorageKey = "applypilot.resume-profile.v1";
+const trackerStorageKey = "roleguage.applications.v1";
+const legacyTrackerStorageKey = "applypilot.applications.v1";
+const trackerChangeEvent = "roleguage-applications-changed";
+const resumeProfileStorageKey = "roleguage.resume-profile.v1";
+const legacyResumeProfileStorageKey = "applypilot.resume-profile.v1";
 const applicationStatuses: ApplicationStatus[] = ["Saved", "Applied", "Interview", "Rejected", "Offer"];
 let cachedTrackerRaw = "";
 let cachedTrackerApplications: TrackedApplication[] = [];
@@ -162,6 +219,11 @@ export default function Home() {
   const [isExtractingResume, setIsExtractingResume] = useState(false);
   const [error, setError] = useState("");
   const [importMessage, setImportMessage] = useState("");
+  const [jobSearchQuery, setJobSearchQuery] = useState("data analyst python sql");
+  const [jobSearchLocation, setJobSearchLocation] = useState("Australia");
+  const [discoveredJobs, setDiscoveredJobs] = useState<DiscoveredJob[]>([]);
+  const [isDiscoveringJobs, setIsDiscoveringJobs] = useState(false);
+  const [jobDiscoveryError, setJobDiscoveryError] = useState("");
 
   const canAnalyze = useMemo(
     () => resume.trim().length > 80 && job.trim().length > 80,
@@ -188,7 +250,7 @@ export default function Home() {
       const data = (await response.json()) as AnalysisResult;
       setResult(data);
     } catch {
-      setError("ApplyPilot could not analyze this role yet. Try again.");
+      setError("RoleGuage could not analyze this role yet. Try again.");
     } finally {
       setIsLoading(false);
     }
@@ -267,6 +329,54 @@ export default function Home() {
     }
   }
 
+  async function discoverMatchingJobs(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setJobDiscoveryError("");
+    setIsDiscoveringJobs(true);
+
+    try {
+      const response = await fetch("/api/discover-jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resume,
+          query: jobSearchQuery,
+          location: jobSearchLocation,
+        }),
+      });
+      const data = (await response.json()) as { jobs?: DiscoveredJob[]; error?: string };
+
+      if (!response.ok || !data.jobs) {
+        throw new Error(data.error ?? "Could not find matching jobs right now.");
+      }
+
+      setDiscoveredJobs(data.jobs);
+    } catch (caughtError) {
+      setJobDiscoveryError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not find matching jobs right now.",
+      );
+    } finally {
+      setIsDiscoveringJobs(false);
+    }
+  }
+
+  function loadDiscoveredJob(jobToLoad: DiscoveredJob) {
+    setJob(jobToLoad.description);
+    setJobMeta({
+      title: jobToLoad.title,
+      company: jobToLoad.company,
+      location: jobToLoad.location,
+      sourceUrl: jobToLoad.applyUrl,
+    });
+    setInputMode("paste");
+    setResult(null);
+    setImportMessage("Loaded this job into the matcher. Generate a full fit report when ready.");
+    setError("");
+    document.getElementById("analyze")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   function saveCurrentApplication() {
     if (!result) {
       setError("Generate a fit report before saving this application.");
@@ -327,7 +437,9 @@ export default function Home() {
   }
 
   function useSavedResumeProfile() {
-    const savedResume = window.localStorage.getItem(resumeProfileStorageKey);
+    const savedResume =
+      window.localStorage.getItem(resumeProfileStorageKey) ??
+      window.localStorage.getItem(legacyResumeProfileStorageKey);
 
     if (!savedResume) {
       setError("No saved resume profile found in this browser yet.");
@@ -361,7 +473,7 @@ export default function Home() {
     const anchor = document.createElement("a");
 
     anchor.href = url;
-    anchor.download = `${slugify(meta.title || "apply-pilot-report")}.txt`;
+    anchor.download = `${slugify(meta.title || "roleguage-report")}.txt`;
     anchor.click();
     URL.revokeObjectURL(url);
     setImportMessage("Fit report downloaded.");
@@ -440,10 +552,12 @@ export default function Home() {
             <span className="grid size-8 place-items-center rounded-md bg-[#043873] text-white">
               <Radar size={20} aria-hidden="true" />
             </span>
-            <span className="text-xl">ApplyPilot</span>
+            <span className="text-xl">RoleGuage</span>
           </a>
 
           <nav className="hidden items-center gap-6 text-sm font-semibold text-[#4F5F6F] md:flex">
+            <a href="#job-matches" className="hover:text-[#043873]">Jobs</a>
+            <a href="#workflow" className="hover:text-[#043873]">Workflow</a>
             <a href="#tools" className="hover:text-[#043873]">Tools</a>
             <a href="#application-kit" className="hover:text-[#043873]">Kit</a>
             <a href="#tracker" className="hover:text-[#043873]">Tracker</a>
@@ -459,13 +573,20 @@ export default function Home() {
       <section id="analyze" className="pb-8 md:pb-12">
         <div className="bg-[#043873] text-white">
           <div className="mx-auto max-w-7xl px-5 py-10 text-center md:px-8 md:py-14 lg:px-10">
-            {/* <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#A7CEFC]">Resume job match checker</p> */}
-            <h1 className="mx-auto mt-3 max-w-7xl whitespace-nowrap text-4xl font-bold leading-tight md:text-6xl lg:text-5xl xl:text-6xl">
+            <p className="text-sm font-bold uppercase text-[#A7CEFC]">Resume job match checker</p>
+            <h1 className="mx-auto mt-3 max-w-7xl text-4xl font-bold leading-tight md:text-6xl lg:whitespace-nowrap lg:text-5xl xl:text-6xl">
               Tailor your resume to any job ad
             </h1>
             <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-white/82">
-              Upload your resume, import a job ad, and get truthful tailoring notes before you apply.
+              Upload your resume, import a job ad, and get a clear fit decision, evidence gaps, and application notes before you apply.
             </p>
+            <div className="mx-auto mt-5 flex max-w-3xl flex-wrap justify-center gap-2">
+              {trustItems.map((item) => (
+                <span key={item} className="rounded-md border border-white/15 bg-white/8 px-3 py-2 text-xs font-semibold text-white/86">
+                  {item}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -477,7 +598,7 @@ export default function Home() {
                 <div>
                   <h3 className="text-2xl font-extrabold">Role matcher</h3>
                   <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
-                    Use the sample content or paste your own resume and job ad.
+                    Start with the sample, upload your resume, or paste your own job ad.
                   </p>
                 </div>
                 <div className="flex shrink-0 gap-2">
@@ -678,7 +799,7 @@ export default function Home() {
                 </div>
                 <p className="mt-5 leading-7 text-[#4F5F6F]">{activeResult.summary}</p>
                 <div className="mt-4 rounded-md border border-[#A7CEFC] bg-white p-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#043873]">Next best action</p>
+                  <p className="text-xs font-bold uppercase text-[#043873]">Next best action</p>
                   <p className="mt-2 text-sm font-semibold leading-6 text-[#212529]">{activeResult.nextStep}</p>
                 </div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-3">
@@ -688,7 +809,7 @@ export default function Home() {
                     ["Headline", activeResult.keywordPlan.headline],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-md border border-[#DDE8F6] bg-white p-2.5">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#4F5F6F]">{label}</p>
+                      <p className="text-[11px] font-bold uppercase text-[#4F5F6F]">{label}</p>
                       <p className="mt-1 truncate text-sm font-bold text-[#043873]">{value}</p>
                     </div>
                   ))}
@@ -760,6 +881,121 @@ export default function Home() {
         </div>
       </section>
 
+      <section id="job-matches" className="bg-[#F8FBFF] py-10 md:py-14">
+        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
+          <div className="grid gap-6 lg:grid-cols-[0.78fr_1.22fr] lg:items-start">
+            <div className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_14px_40px_rgba(4,56,115,0.08)] md:p-6">
+              <p className="text-sm font-bold uppercase text-[#4F9CF9]">Job discovery</p>
+              <h2 className="mt-3 text-3xl font-extrabold leading-tight text-[#043873]">
+                Find roles that fit your resume.
+              </h2>
+              <p className="mt-3 text-sm leading-7 text-[#4F5F6F]">
+                Search public job feeds, score each listing against your current resume, and open the original job link when it is worth applying.
+              </p>
+
+              <form onSubmit={discoverMatchingJobs} className="mt-5 grid gap-3">
+                <label className="grid gap-2">
+                  <span className="text-xs font-bold uppercase text-[#4F5F6F]">Target role or keywords</span>
+                  <input
+                    value={jobSearchQuery}
+                    onChange={(event) => setJobSearchQuery(event.target.value)}
+                    className="h-12 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-4 text-sm outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15"
+                    placeholder="data analyst python sql"
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className="text-xs font-bold uppercase text-[#4F5F6F]">Location</span>
+                  <input
+                    value={jobSearchLocation}
+                    onChange={(event) => setJobSearchLocation(event.target.value)}
+                    className="h-12 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-4 text-sm outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15"
+                    placeholder="Australia, Remote, United States..."
+                  />
+                </label>
+                <button
+                  type="submit"
+                  disabled={resume.trim().length < 80 || isDiscoveringJobs}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#043873] px-5 text-sm font-bold text-white transition hover:bg-[#0b4c97] disabled:cursor-not-allowed disabled:bg-[#A7CEFC]"
+                >
+                  {isDiscoveringJobs ? <Loader2 className="animate-spin" size={17} aria-hidden="true" /> : <SearchCheck size={17} aria-hidden="true" />}
+                  {isDiscoveringJobs ? "Finding jobs" : "Find matching jobs"}
+                </button>
+              </form>
+
+              {jobDiscoveryError ? (
+                <p className="mt-4 text-sm font-semibold text-red-600">{jobDiscoveryError}</p>
+              ) : null}
+              <p className="mt-4 text-xs leading-5 text-[#4F5F6F]">
+                Current sources: Himalayas and Arbeitnow public feeds. Some local boards require paid or approved APIs, so direct SEEK/Indeed/LinkedIn coverage should be a later integration.
+              </p>
+            </div>
+
+            <div className="grid gap-3">
+              <div className="flex flex-col justify-between gap-2 rounded-md border border-[#DDE8F6] bg-white p-4 sm:flex-row sm:items-center">
+                <div>
+                  <h3 className="text-xl font-extrabold text-[#212529]">Best fitting jobs</h3>
+                  <p className="mt-1 text-sm leading-6 text-[#4F5F6F]">
+                    Ranked by resume fit, not by paid placement.
+                  </p>
+                </div>
+                <span className="rounded-md bg-[#FFE492] px-3 py-2 text-sm font-bold text-[#043873]">
+                  {discoveredJobs.length ? `${discoveredJobs.length} matches` : "Ready to search"}
+                </span>
+              </div>
+
+              {discoveredJobs.length ? (
+                discoveredJobs.map((jobMatch) => (
+                  <JobMatchCard
+                    key={jobMatch.id}
+                    job={jobMatch}
+                    onLoad={() => loadDiscoveredJob(jobMatch)}
+                  />
+                ))
+              ) : (
+                <div className="rounded-md border border-dashed border-[#A7CEFC] bg-white p-8 text-center">
+                  <p className="text-lg font-extrabold text-[#043873]">No job matches loaded yet</p>
+                  <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#4F5F6F]">
+                    Upload or paste your resume, choose a target role, then search to see ranked job listings with direct apply links.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="workflow" className="bg-white py-10 md:py-14">
+        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
+          <div className="grid gap-7 lg:grid-cols-[0.82fr_1.18fr] lg:items-start">
+            <div>
+              <p className="text-sm font-bold uppercase text-[#4F9CF9]">How it works</p>
+              <h2 className="mt-3 text-3xl font-extrabold leading-tight text-[#043873] md:text-5xl">
+                One workflow from job ad to application plan.
+              </h2>
+              <p className="mt-4 max-w-xl text-sm leading-7 text-[#4F5F6F]">
+                RoleGuage is designed for jobseekers who want to apply with focus, not guesswork. It keeps the useful parts of AI job tools and removes the noisy parts: no fake skills, no black-box score, no forced account before the first check.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {workflowSteps.map(([title, copy, Icon], index) => (
+                <article key={title} className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="grid size-10 place-items-center rounded-md bg-[#043873] text-white">
+                      <Icon size={19} aria-hidden="true" />
+                    </span>
+                    <span className="rounded-md bg-[#FFE492] px-2.5 py-1 text-xs font-bold text-[#043873]">
+                      0{index + 1}
+                    </span>
+                  </div>
+                  <h3 className="mt-5 text-lg font-extrabold text-[#212529]">{title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">{copy}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {hasGeneratedReport ? (
       <section id="application-kit" className="bg-[#043873] pb-14 pt-8 text-white md:pb-20 md:pt-12">
         <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
@@ -769,7 +1005,7 @@ export default function Home() {
                 Your application <span className="text-[#FFE492]">kit</span>
               </h2>
               <p className="mt-5 max-w-2xl leading-8 text-white/82">
-                Turn the match result into practical assets you can use before applying, interviewing, or contacting someone at the company.
+                Turn the match result into practical notes for your resume, interview prep, outreach, and next action.
               </p>
             </div>
             <div className="rounded-md border border-[#DDE8F6] bg-white p-4 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
@@ -812,9 +1048,9 @@ export default function Home() {
         <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
           <div className="mb-7 flex flex-col justify-between gap-3 md:flex-row md:items-end">
             <div>
-              <h2 className="text-3xl font-extrabold text-[#043873]">Job search tools</h2>
+              <h2 className="text-3xl font-extrabold text-[#043873]">Everything needed to apply with focus</h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-[#4F5F6F]">
-                Start with the matcher, then use the generated kit to tailor, prepare, save, and export.
+                Start with the matcher, then use the generated kit to tailor, prepare, save, and export without rebuilding the same work every time.
               </p>
             </div>
             <a href="#analyze" className="inline-flex h-11 items-center justify-center rounded-md bg-[#043873] px-5 text-sm font-bold text-white transition hover:bg-[#0b4c97]">
@@ -831,6 +1067,24 @@ export default function Home() {
                 <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">{copy}</p>
               </a>
             ))}
+          </div>
+          <div className="mt-6 grid gap-4 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
+            <div className="flex items-center gap-3">
+              <span className="grid size-11 place-items-center rounded-md bg-[#043873] text-white">
+                <ShieldCheck size={21} aria-hidden="true" />
+              </span>
+              <div>
+                <h3 className="text-lg font-extrabold text-[#212529]">Privacy-first MVP</h3>
+                <p className="mt-1 text-sm leading-6 text-[#4F5F6F]">Saved resumes and tracked applications stay in this browser for now.</p>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {trustItems.map((item) => (
+                <div key={item} className="rounded-md border border-[#DDE8F6] bg-white px-3 py-2 text-sm font-semibold text-[#043873]">
+                  {item}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -935,7 +1189,7 @@ export default function Home() {
               Choose your <span className="yellow-mark">plan</span>
             </h2>
             <p className="mt-5 leading-8 text-[#4F5F6F]">
-              Start with quick fit checks, then save stronger reports and application notes when your job search gets busier.
+              Start with fit checks, then upgrade when you want saved reports, profile reuse, and a cleaner application workflow.
             </p>
           </div>
           <div className="mt-12 grid gap-6 lg:grid-cols-3">
@@ -967,11 +1221,30 @@ export default function Home() {
         </div>
       </section>
 
+      <section id="faq" className="bg-white py-12 md:py-16">
+        <div className="mx-auto max-w-5xl px-5 md:px-8 lg:px-10">
+          <div className="mb-7 text-center">
+            <h2 className="text-3xl font-extrabold text-[#043873] md:text-4xl">Questions jobseekers ask first</h2>
+            <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-[#4F5F6F]">
+              RoleGuage is built to help you apply better, not to invent experience or automate low-quality applications.
+            </p>
+          </div>
+          <div className="grid gap-3">
+            {faqs.map(([question, answer]) => (
+              <article key={question} className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5">
+                <h3 className="text-base font-extrabold text-[#212529]">{question}</h3>
+                <p className="mt-2 text-sm leading-7 text-[#4F5F6F]">{answer}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <footer className="bg-[#043873] text-white">
         <div className="mx-auto max-w-7xl px-5 py-10 text-center md:px-8 lg:px-10">
-          <h2 className="text-4xl font-extrabold">Try ApplyPilot today</h2>
+          <h2 className="text-4xl font-extrabold">Try RoleGuage today</h2>
           <p className="mx-auto mt-5 max-w-xl leading-8 text-white/82">
-            Compare your resume against real job ads, spot the gaps, and leave with a clearer plan for your next application.
+            Compare your resume against a real job ad, see the evidence gaps, and leave with a clearer plan for your next application.
           </p>
           <a href="#analyze" className="mt-7 inline-flex items-center gap-2 rounded-md bg-[#4F9CF9] px-6 py-4 text-sm font-semibold text-white transition hover:bg-[#3b8dea]">
             Start analyzing
@@ -982,9 +1255,9 @@ export default function Home() {
               <span className="grid size-8 place-items-center rounded-md bg-white text-[#043873]">
                 <Radar size={20} aria-hidden="true" />
               </span>
-              ApplyPilot
+              RoleGuage
             </a>
-            <p>Resume fit scoring, skill-gap analysis, and targeted application support.</p>
+            <p>Resume fit scoring, evidence-gap analysis, and targeted application support.</p>
           </div>
         </div>
       </footer>
@@ -1017,7 +1290,10 @@ function subscribeToTracker(onStoreChange: () => void) {
 }
 
 function getTrackerSnapshot() {
-  const raw = window.localStorage.getItem(trackerStorageKey) ?? "[]";
+  const raw =
+    window.localStorage.getItem(trackerStorageKey) ??
+    window.localStorage.getItem(legacyTrackerStorageKey) ??
+    "[]";
 
   if (raw === cachedTrackerRaw) {
     return cachedTrackerApplications;
@@ -1061,7 +1337,7 @@ function cleanImportedTitle(title: string) {
 
 function buildReportText(result: AnalysisResult, meta: JobMeta) {
   return [
-    "ApplyPilot Fit Report",
+    "RoleGuage Fit Report",
     "",
     `Role: ${meta.title || "Untitled role"}`,
     `Company: ${meta.company || "Not provided"}`,
@@ -1133,7 +1409,7 @@ function SmallInput({
 }) {
   return (
     <label className="grid min-w-0 gap-2">
-      <span className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F5F6F]">{label}</span>
+      <span className="text-xs font-bold uppercase text-[#4F5F6F]">{label}</span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -1141,6 +1417,116 @@ function SmallInput({
         placeholder={placeholder}
       />
     </label>
+  );
+}
+
+function JobMatchCard({
+  job,
+  onLoad,
+}: {
+  job: DiscoveredJob;
+  onLoad: () => void;
+}) {
+  return (
+    <article className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_10px_30px_rgba(4,56,115,0.06)] transition hover:border-[#A7CEFC] hover:shadow-[0_16px_42px_rgba(4,56,115,0.1)]">
+      <div className="grid gap-4 md:grid-cols-[1fr_auto]">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md bg-[#A7CEFC] px-2.5 py-1 text-xs font-bold text-[#043873]">
+              {job.source}
+            </span>
+            {job.postedAt ? (
+              <span className="rounded-md border border-[#DDE8F6] px-2.5 py-1 text-xs font-semibold text-[#4F5F6F]">
+                Posted {job.postedAt}
+              </span>
+            ) : null}
+            <span className="rounded-md border border-[#FFE492] bg-[#FFE492] px-2.5 py-1 text-xs font-bold text-[#043873]">
+              {job.level}
+            </span>
+          </div>
+          <h3 className="mt-3 text-xl font-extrabold leading-tight text-[#212529]">{job.title}</h3>
+          <p className="mt-1 text-sm font-semibold text-[#4F5F6F]">
+            {[job.company, job.location].filter(Boolean).join(" | ")}
+          </p>
+          <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#4F5F6F]">{job.summary}</p>
+        </div>
+
+        <div className="flex items-start gap-3 md:flex-col md:items-end">
+          <div className="grid size-20 shrink-0 place-items-center rounded-md bg-[#043873] text-white">
+            <div className="text-center">
+              <p className="text-2xl font-extrabold leading-none">{job.score}</p>
+              <p className="mt-1 text-xs font-bold">fit</p>
+            </div>
+          </div>
+          <div className="flex grow gap-2 md:grow-0">
+            <button
+              type="button"
+              onClick={onLoad}
+              className="inline-flex h-10 items-center justify-center rounded-md border border-[#A7CEFC] px-3 text-xs font-bold text-[#043873] transition hover:bg-[#A7CEFC]/25"
+            >
+              Review
+            </button>
+            <a
+              href={job.applyUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-10 items-center justify-center rounded-md bg-[#4F9CF9] px-3 text-xs font-bold text-white transition hover:bg-[#3b8dea]"
+            >
+              Apply
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 border-t border-[#DDE8F6] pt-4 lg:grid-cols-2">
+        <JobChipGroup label="Matched" items={job.matchedSkills} tone="match" />
+        <JobChipGroup label="Gaps" items={job.missingSkills} tone="gap" />
+      </div>
+
+      {job.tags.length ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {job.tags.slice(0, 5).map((tag) => (
+            <span key={tag} className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-2.5 py-1 text-xs font-semibold text-[#4F5F6F]">
+              {tag}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function JobChipGroup({
+  label,
+  items,
+  tone,
+}: {
+  label: string;
+  items: string[];
+  tone: "match" | "gap";
+}) {
+  const chipClass =
+    tone === "match"
+      ? "border-[#A7CEFC] bg-white text-[#043873]"
+      : "border-[#FFE492] bg-[#FFE492] text-[#043873]";
+
+  return (
+    <div>
+      <p className="mb-2 text-xs font-bold uppercase text-[#4F5F6F]">{label}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {items.length ? (
+          items.map((item) => (
+            <span key={item} className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${chipClass}`}>
+              {item}
+            </span>
+          ))
+        ) : (
+          <span className="rounded-md border border-[#DDE8F6] px-2.5 py-1 text-xs font-semibold text-[#4F5F6F]">
+            None detected
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 

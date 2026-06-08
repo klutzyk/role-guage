@@ -86,6 +86,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  return NextResponse.json(analyzeResumeAgainstJob(resume, job));
+}
+
+export function analyzeResumeAgainstJob(resume: string, job: string) {
   const resumeSkills = extractSkills(resume);
   const jobSkills = extractSkills(job);
   const mustHaveSkills = detectMustHaveSkills(job, jobSkills);
@@ -101,7 +105,7 @@ export async function POST(request: NextRequest) {
   const roleSignals = extractSignals(job).slice(0, 6);
   const recommendation = getRecommendation(score, mustHaveMisses.length);
 
-  return NextResponse.json({
+  return {
     score,
     level: recommendation.level,
     decision: recommendation.decision,
@@ -151,7 +155,7 @@ export async function POST(request: NextRequest) {
     outreachMessage: buildOutreachMessage(matchedSkills, missingSkills),
     atsNotes: buildAtsNotes(job, jobSkills, missingSkills, mustHaveMisses),
     summary: buildSummary(score, matchedSkills, missingSkills, mustHaveMisses, recommendation.action),
-  });
+  };
 }
 
 function extractSkills(text: string) {
