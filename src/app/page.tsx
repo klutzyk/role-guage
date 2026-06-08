@@ -86,6 +86,8 @@ type DiscoveredJob = {
 
 type InputMode = "import" | "paste";
 type ApplicationStatus = "Saved" | "Applied" | "Interview" | "Rejected" | "Offer";
+type JobSort = "fit" | "recent";
+type JobDecisionFilter = "all" | AnalysisResult["decision"];
 
 type JobMeta = {
   title: string;
@@ -224,15 +226,42 @@ export default function Home() {
   const [discoveredJobs, setDiscoveredJobs] = useState<DiscoveredJob[]>([]);
   const [isDiscoveringJobs, setIsDiscoveringJobs] = useState(false);
   const [jobDiscoveryError, setJobDiscoveryError] = useState("");
+  const [jobSourceFilter, setJobSourceFilter] = useState("all");
+  const [jobDecisionFilter, setJobDecisionFilter] = useState<JobDecisionFilter>("all");
+  const [jobRemoteOnly, setJobRemoteOnly] = useState(false);
+  const [jobMinScore, setJobMinScore] = useState(60);
+  const [jobSort, setJobSort] = useState<JobSort>("fit");
 
   const canAnalyze = useMemo(
     () => resume.trim().length > 80 && job.trim().length > 80,
     [resume, job],
   );
   const hasGeneratedReport = Boolean(result);
+  const jobSources = useMemo(
+    () => Array.from(new Set(discoveredJobs.map((jobMatch) => jobMatch.source))).sort(),
+    [discoveredJobs],
+  );
+  const filteredDiscoveredJobs = useMemo(() => {
+    return discoveredJobs
+      .filter((jobMatch) => jobMatch.score >= jobMinScore)
+      .filter((jobMatch) => jobSourceFilter === "all" || jobMatch.source === jobSourceFilter)
+      .filter((jobMatch) => jobDecisionFilter === "all" || jobMatch.decision === jobDecisionFilter)
+      .filter((jobMatch) => !jobRemoteOnly || /remote/i.test(`${jobMatch.location} ${jobMatch.tags.join(" ")}`))
+      .sort((a, b) => {
+        if (jobSort === "recent") {
+          return parsePostedDate(b.postedAt) - parsePostedDate(a.postedAt) || b.score - a.score;
+        }
+
+        return b.score - a.score;
+      });
+  }, [discoveredJobs, jobDecisionFilter, jobMinScore, jobRemoteOnly, jobSort, jobSourceFilter]);
 
   async function analyzeRole(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    await runAnalysis(resume, job);
+  }
+
+  async function runAnalysis(resumeText: string, jobText: string) {
     setError("");
     setIsLoading(true);
 
@@ -240,7 +269,7 @@ export default function Home() {
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resume, job }),
+        body: JSON.stringify({ resume: resumeText, job: jobText }),
       });
 
       if (!response.ok) {
@@ -362,8 +391,10 @@ export default function Home() {
     }
   }
 
-  function loadDiscoveredJob(jobToLoad: DiscoveredJob) {
-    setJob(jobToLoad.description);
+  async function loadDiscoveredJob(jobToLoad: DiscoveredJob) {
+    const fullJobText = buildDiscoveredJobText(jobToLoad);
+
+    setJob(fullJobText);
     setJobMeta({
       title: jobToLoad.title,
       company: jobToLoad.company,
@@ -371,10 +402,10 @@ export default function Home() {
       sourceUrl: jobToLoad.applyUrl,
     });
     setInputMode("paste");
-    setResult(null);
-    setImportMessage("Loaded this job into the matcher. Generate a full fit report when ready.");
+    setImportMessage("Loaded this job into the matcher and generated the fit report.");
     setError("");
     document.getElementById("analyze")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    await runAnalysis(resume, fullJobText);
   }
 
   function saveCurrentApplication() {
@@ -852,7 +883,7 @@ export default function Home() {
                     {activeResult.score}% fit
                   </div>
                 </div>
-                <div className="mb-4 grid gap-2 sm:grid-cols-3">
+                <div className="mb-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                   {activeResult.scoreBreakdown.map((item) => (
                     <div key={item.label} className="rounded-md border border-[#DDE8F6] bg-white p-2">
                       <p className="text-sm font-bold text-[#043873]">{item.value}</p>
@@ -890,7 +921,7 @@ export default function Home() {
                 Find roles that fit your resume.
               </h2>
               <p className="mt-3 text-sm leading-7 text-[#4F5F6F]">
-                Search public job feeds, score each listing against your current resume, and open the original job link when it is worth applying.
+                Search public job feeds by target role, then RoleGuage scores each real listing against the resume currently loaded above.
               </p>
 
               <form onSubmit={discoverMatchingJobs} className="mt-5 grid gap-3">
@@ -926,7 +957,7 @@ export default function Home() {
                 <p className="mt-4 text-sm font-semibold text-red-600">{jobDiscoveryError}</p>
               ) : null}
               <p className="mt-4 text-xs leading-5 text-[#4F5F6F]">
-                Current sources: Himalayas and Arbeitnow public feeds. Some local boards require paid or approved APIs, so direct SEEK/Indeed/LinkedIn coverage should be a later integration.
+                Apply opens the original listing. Current sources: Himalayas and Arbeitnow public feeds. SEEK, Indeed, and LinkedIn need approved APIs or partnerships for reliable coverage.
               </p>
             </div>
 
@@ -939,18 +970,43 @@ export default function Home() {
                   </p>
                 </div>
                 <span className="rounded-md bg-[#FFE492] px-3 py-2 text-sm font-bold text-[#043873]">
-                  {discoveredJobs.length ? `${discoveredJobs.length} matches` : "Ready to search"}
+                  {discoveredJobs.length ? `${filteredDiscoveredJobs.length} of ${discoveredJobs.length} matches` : "Ready to search"}
                 </span>
               </div>
 
               {discoveredJobs.length ? (
-                discoveredJobs.map((jobMatch) => (
-                  <JobMatchCard
-                    key={jobMatch.id}
-                    job={jobMatch}
-                    onLoad={() => loadDiscoveredJob(jobMatch)}
-                  />
-                ))
+                <JobDiscoveryFilters
+                  sourceFilter={jobSourceFilter}
+                  onSourceFilterChange={setJobSourceFilter}
+                  sources={jobSources}
+                  decisionFilter={jobDecisionFilter}
+                  onDecisionFilterChange={setJobDecisionFilter}
+                  remoteOnly={jobRemoteOnly}
+                  onRemoteOnlyChange={setJobRemoteOnly}
+                  minScore={jobMinScore}
+                  onMinScoreChange={setJobMinScore}
+                  sort={jobSort}
+                  onSortChange={setJobSort}
+                />
+              ) : null}
+
+              {discoveredJobs.length ? (
+                filteredDiscoveredJobs.length ? (
+                  filteredDiscoveredJobs.map((jobMatch) => (
+                    <JobMatchCard
+                      key={jobMatch.id}
+                      job={jobMatch}
+                      onLoad={() => loadDiscoveredJob(jobMatch)}
+                    />
+                  ))
+                ) : (
+                  <div className="rounded-md border border-dashed border-[#A7CEFC] bg-white p-8 text-center">
+                    <p className="text-lg font-extrabold text-[#043873]">No jobs match these filters</p>
+                    <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#4F5F6F]">
+                      Lower the minimum fit score, include more decisions, or clear the remote-only filter.
+                    </p>
+                  </div>
+                )
               ) : (
                 <div className="rounded-md border border-dashed border-[#A7CEFC] bg-white p-8 text-center">
                   <p className="text-lg font-extrabold text-[#043873]">No job matches loaded yet</p>
@@ -1396,6 +1452,28 @@ function slugify(value: string) {
     .slice(0, 80);
 }
 
+function parsePostedDate(value: string) {
+  if (!value) return 0;
+
+  const currentYear = new Date().getFullYear();
+  const parsed = Date.parse(`${value} ${currentYear}`);
+
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function buildDiscoveredJobText(jobToLoad: DiscoveredJob) {
+  return [
+    jobToLoad.title,
+    jobToLoad.company,
+    jobToLoad.location,
+    jobToLoad.tags.join(" "),
+    "",
+    jobToLoad.description,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 function SmallInput({
   label,
   value,
@@ -1420,6 +1498,103 @@ function SmallInput({
   );
 }
 
+function JobDiscoveryFilters({
+  sourceFilter,
+  onSourceFilterChange,
+  sources,
+  decisionFilter,
+  onDecisionFilterChange,
+  remoteOnly,
+  onRemoteOnlyChange,
+  minScore,
+  onMinScoreChange,
+  sort,
+  onSortChange,
+}: {
+  sourceFilter: string;
+  onSourceFilterChange: (value: string) => void;
+  sources: string[];
+  decisionFilter: JobDecisionFilter;
+  onDecisionFilterChange: (value: JobDecisionFilter) => void;
+  remoteOnly: boolean;
+  onRemoteOnlyChange: (value: boolean) => void;
+  minScore: number;
+  onMinScoreChange: (value: number) => void;
+  sort: JobSort;
+  onSortChange: (value: JobSort) => void;
+}) {
+  return (
+    <section className="rounded-md border border-[#DDE8F6] bg-white p-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <label className="grid gap-1.5">
+          <span className="text-xs font-bold uppercase text-[#4F5F6F]">Sort</span>
+          <select
+            value={sort}
+            onChange={(event) => onSortChange(event.target.value as JobSort)}
+            className="h-10 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-semibold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
+          >
+            <option value="fit">Best fit</option>
+            <option value="recent">Most recent</option>
+          </select>
+        </label>
+
+        <label className="grid gap-1.5">
+          <span className="text-xs font-bold uppercase text-[#4F5F6F]">Source</span>
+          <select
+            value={sourceFilter}
+            onChange={(event) => onSourceFilterChange(event.target.value)}
+            className="h-10 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-semibold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
+          >
+            <option value="all">All sources</option>
+            {sources.map((source) => (
+              <option key={source} value={source}>{source}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="grid gap-1.5">
+          <span className="text-xs font-bold uppercase text-[#4F5F6F]">Decision</span>
+          <select
+            value={decisionFilter}
+            onChange={(event) => onDecisionFilterChange(event.target.value as JobDecisionFilter)}
+            className="h-10 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-semibold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
+          >
+            <option value="all">All decisions</option>
+            <option value="Apply">Apply</option>
+            <option value="Tailor">Tailor</option>
+            <option value="Build">Build</option>
+            <option value="Skip">Skip</option>
+          </select>
+        </label>
+
+        <label className="grid gap-1.5">
+          <span className="text-xs font-bold uppercase text-[#4F5F6F]">Minimum fit</span>
+          <select
+            value={minScore}
+            onChange={(event) => onMinScoreChange(Number(event.target.value))}
+            className="h-10 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-semibold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
+          >
+            <option value={0}>Any score</option>
+            <option value={55}>55%+</option>
+            <option value={70}>70%+</option>
+            <option value={82}>82%+</option>
+          </select>
+        </label>
+
+        <label className="flex h-10 items-center justify-between gap-3 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 xl:self-end">
+          <span className="text-sm font-semibold text-[#043873]">Remote only</span>
+          <input
+            checked={remoteOnly}
+            onChange={(event) => onRemoteOnlyChange(event.target.checked)}
+            type="checkbox"
+            className="size-4 accent-[#043873]"
+          />
+        </label>
+      </div>
+    </section>
+  );
+}
+
 function JobMatchCard({
   job,
   onLoad,
@@ -1433,7 +1608,7 @@ function JobMatchCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-md bg-[#A7CEFC] px-2.5 py-1 text-xs font-bold text-[#043873]">
-              {job.source}
+              via {job.source}
             </span>
             {job.postedAt ? (
               <span className="rounded-md border border-[#DDE8F6] px-2.5 py-1 text-xs font-semibold text-[#4F5F6F]">
@@ -1597,7 +1772,7 @@ function InputPanel({
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={`${compact ? "min-h-44 md:min-h-52" : "min-h-40"} resize-y rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15`}
+        className={`${compact ? "min-h-52 md:min-h-72" : "min-h-64 md:min-h-80"} resize-y rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15`}
         placeholder={placeholder}
       />
     </label>
