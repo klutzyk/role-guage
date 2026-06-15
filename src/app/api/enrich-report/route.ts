@@ -42,11 +42,22 @@ export async function POST(request: NextRequest) {
       ...(aiEnrichment.gapRoadmap ? { gapRoadmap: aiEnrichment.gapRoadmap } : {}),
     });
   } catch (error) {
-    console.error("Fit report enrichment failed", error);
+    console.error("Fit report enrichment failed", getErrorSummary(error));
 
     return NextResponse.json({
       aiStatus: "fallback",
       aiModel: getAiModel(),
     });
   }
+}
+
+function getErrorSummary(error: unknown) {
+  if (!(error instanceof Error)) return String(error);
+
+  const status =
+    "status" in error
+      ? ` status=${String((error as Error & { status?: unknown }).status)}`
+      : "";
+
+  return `${error.message}${status}`;
 }

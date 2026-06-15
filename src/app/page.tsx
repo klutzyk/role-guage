@@ -1057,7 +1057,7 @@ export default function Home() {
                 <p className="mt-4 text-sm font-semibold text-red-600">{jobDiscoveryError}</p>
               ) : null}
               <p className="mt-4 text-xs leading-5 text-[#4F5F6F]">
-                Apply opens the original listing. Current sources: Himalayas and Arbeitnow public feeds. SEEK, Indeed, and LinkedIn need approved APIs or partnerships for reliable coverage.
+                Apply opens the original listing. With RapidAPI configured, search uses JSearch for major publishers such as LinkedIn, Indeed, Glassdoor, ZipRecruiter, and other Google Jobs sources. Without a key, it falls back to free public feeds.
               </p>
             </div>
 

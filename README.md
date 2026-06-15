@@ -26,7 +26,7 @@ This version includes:
 - ATS sanity checks
 - Job metadata capture for title, company, location, and source URL
 - Browser-saved resume profile
-- Best-fit job recommendations from public job feeds
+- Best-fit job recommendations from RapidAPI LinkedIn search or JSearch when configured, with public-feed fallback
 - Optional Gemini AI/RAG enrichment for job briefs and fit reports
 - Local retrieval context selection before generation to reduce token usage
 - Structured JSON AI outputs with deterministic fallbacks
@@ -39,7 +39,9 @@ Saved applications and the saved resume profile are stored in browser `localStor
 
 Job URL import works best with company career pages and public ATS pages. Some large job boards block automated extraction, so the app keeps manual paste as the fallback.
 
-Job discovery currently uses public feeds from Himalayas and Arbeitnow, then ranks listings with the same RoleGuage fit scorer used by the role matcher. Direct coverage for SEEK, Indeed, LinkedIn, and other major boards should be added through approved APIs, paid data providers, or official partnerships rather than brittle scraping.
+Job discovery uses the RapidAPI LinkedIn Job Search provider when `RAPIDAPI_KEY` and `RAPIDAPI_LINKEDIN_JOBS_HOST` are configured. This is the preferred source for Australia because JSearch currently returns weak/no Australia results. If the LinkedIn provider is not configured, RoleGuage can use JSearch `/search-v2` through RapidAPI. Without RapidAPI settings, it falls back to public feeds from Himalayas and Arbeitnow. Results are cached server-side for 30 minutes by query and location to reduce API usage.
+
+SEEK, Indeed, and LinkedIn direct coverage should still be handled through approved APIs, licensed providers, or explicit crawling permission rather than brittle scraping.
 
 ## AI/RAG Architecture
 
@@ -61,7 +63,14 @@ Then add:
 
 ```bash
 GEMINI_API_KEY=your_key_here
-GEMINI_MODEL=gemini-3-flash-preview
+GEMINI_MODEL=gemini-2.5-flash-lite
+GEMINI_TIMEOUT_MS=12000
+RAPIDAPI_KEY=your_rapidapi_key
+RAPIDAPI_LINKEDIN_JOBS_HOST=linkedin-job-search-api.p.rapidapi.com
+RAPIDAPI_LINKEDIN_JOBS_ENDPOINT=active-jb-24h
+RAPIDAPI_LINKEDIN_JOBS_TIMEOUT_MS=18000
+RAPIDAPI_JSEARCH_HOST=jsearch.p.rapidapi.com
+RAPIDAPI_JSEARCH_TIMEOUT_MS=22000
 ```
 
 ## Tech Stack
