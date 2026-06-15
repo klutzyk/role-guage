@@ -26,7 +26,7 @@ This version includes:
 - ATS sanity checks
 - Job metadata capture for title, company, location, and source URL
 - Browser-saved resume profile
-- Best-fit job recommendations from RapidAPI LinkedIn search or JSearch when configured, with public-feed fallback
+- Best-fit job recommendations from RapidAPI LinkedIn search when configured, with public-feed fallback
 - Optional Gemini AI/RAG enrichment for job briefs and fit reports
 - Local retrieval context selection before generation to reduce token usage
 - Structured JSON AI outputs with deterministic fallbacks
@@ -39,7 +39,7 @@ Saved applications and the saved resume profile are stored in browser `localStor
 
 Job URL import works best with company career pages and public ATS pages. Some large job boards block automated extraction, so the app keeps manual paste as the fallback.
 
-Job discovery uses the RapidAPI LinkedIn Job Search provider when `RAPIDAPI_KEY` and `RAPIDAPI_LINKEDIN_JOBS_HOST` are configured. This is the preferred source for Australia because JSearch currently returns weak/no Australia results. If the LinkedIn provider is not configured, RoleGuage can use JSearch `/search-v2` through RapidAPI. Without RapidAPI settings, it falls back to public feeds from Himalayas and Arbeitnow. Results are cached server-side for 30 minutes by query and location to reduce API usage.
+Job discovery uses the RapidAPI LinkedIn Job Search provider when `RAPIDAPI_KEY` is configured. This is the preferred source for Australia because JSearch currently returns weak/no Australia results. The search uses a 7-day LinkedIn dataset by default and caches results server-side for 30 minutes by query and location to reduce API usage. Automatic broadening across multiple title variants/endpoints is disabled by default because the free RapidAPI tier has a very small monthly request quota. Without RapidAPI settings, it falls back to public feeds from Himalayas and Arbeitnow.
 
 SEEK, Indeed, and LinkedIn direct coverage should still be handled through approved APIs, licensed providers, or explicit crawling permission rather than brittle scraping.
 
@@ -66,8 +66,11 @@ GEMINI_API_KEY=your_key_here
 GEMINI_MODEL=gemini-2.5-flash-lite
 GEMINI_TIMEOUT_MS=12000
 RAPIDAPI_KEY=your_rapidapi_key
+RAPIDAPI_JOBS_PROVIDER=linkedin
 RAPIDAPI_LINKEDIN_JOBS_HOST=linkedin-job-search-api.p.rapidapi.com
-RAPIDAPI_LINKEDIN_JOBS_ENDPOINT=active-jb-24h
+RAPIDAPI_LINKEDIN_JOBS_ENDPOINT=active-jb-7d
+RAPIDAPI_LINKEDIN_JOBS_FALLBACK_ENDPOINT=active-jb-6m
+RAPIDAPI_LINKEDIN_AUTO_BROADEN=false
 RAPIDAPI_LINKEDIN_JOBS_TIMEOUT_MS=18000
 RAPIDAPI_JSEARCH_HOST=jsearch.p.rapidapi.com
 RAPIDAPI_JSEARCH_TIMEOUT_MS=22000

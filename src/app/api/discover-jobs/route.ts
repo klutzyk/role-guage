@@ -233,8 +233,8 @@ function getLinkedInRapidTimeoutMs() {
 }
 
 async function fetchLinkedInRapidJobs(query: string, location: string): Promise<NormalizedJob[]> {
-  const endpoint = process.env.RAPIDAPI_LINKEDIN_JOBS_ENDPOINT || "active-jb-24h";
-  const cacheKey = `linkedin-rapid:${endpoint}:${query.toLowerCase()}:${location.toLowerCase()}`;
+  const endpoints = getLinkedInRapidEndpoints();
+  const cacheKey = `linkedin-rapid:${endpoints.join(",")}:${query.toLowerCase()}:${location.toLowerCase()}`;
   const cached = jobSearchCache.get(cacheKey);
 
   if (cached && cached.expiresAt > Date.now()) {
@@ -242,58 +242,62 @@ async function fetchLinkedInRapidJobs(query: string, location: string): Promise<
   }
 
   const host = process.env.RAPIDAPI_LINKEDIN_JOBS_HOST || "linkedin-job-search-api.p.rapidapi.com";
-  const titleFilters = buildLinkedInRapidTitleFilters(query);
+  const titleFilters = getLinkedInRapidTitleFilters(query);
   let jobs: NormalizedJob[] = [];
 
-  for (const titleFilter of titleFilters) {
-    const url = new URL(`https://${host}/${endpoint}`);
-    url.searchParams.set("offset", "0");
-    url.searchParams.set("title_filter", titleFilter);
-    url.searchParams.set("location_filter", location);
+  for (const endpoint of endpoints) {
+    for (const titleFilter of titleFilters) {
+      const url = new URL(`https://${host}/${endpoint}`);
+      url.searchParams.set("offset", "0");
+      url.searchParams.set("title_filter", titleFilter);
+      url.searchParams.set("location_filter", location);
 
-    let response: Response;
+      let response: Response;
 
-    try {
-      response = await fetch(url, {
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "x-rapidapi-host": host,
-          "x-rapidapi-key": process.env.RAPIDAPI_KEY ?? "",
-        },
-        signal: AbortSignal.timeout(getLinkedInRapidTimeoutMs()),
-      });
-    } catch (caughtError) {
-      if (caughtError instanceof Error && caughtError.name === "TimeoutError") {
-        throw new Error("LinkedIn job search took too long to respond. Try a narrower title or location.");
+      try {
+        response = await fetch(url, {
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            "x-rapidapi-host": host,
+            "x-rapidapi-key": process.env.RAPIDAPI_KEY ?? "",
+          },
+          signal: AbortSignal.timeout(getLinkedInRapidTimeoutMs()),
+        });
+      } catch (caughtError) {
+        if (caughtError instanceof Error && caughtError.name === "TimeoutError") {
+          throw new Error("LinkedIn job search took too long to respond. Try a narrower title or location.");
+        }
+
+        throw caughtError;
       }
 
-      throw caughtError;
-    }
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        console.error("LinkedIn RapidAPI job fetch failed", response.status, errorText);
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "");
-      console.error("LinkedIn RapidAPI job fetch failed", response.status, errorText);
+        if (response.status === 401 || response.status === 403) {
+          throw new Error("LinkedIn job search is configured, but this RapidAPI key is not subscribed to the LinkedIn Job Search API.");
+        }
 
-      if (response.status === 401 || response.status === 403) {
-        throw new Error("LinkedIn job search is configured, but this RapidAPI key is not subscribed to the LinkedIn Job Search API.");
+        if (response.status === 429) {
+          throw new Error("LinkedIn job search rate limit reached. Wait for the RapidAPI quota window to reset, or upgrade the plan.");
+        }
+
+        throw new Error("LinkedIn job search could not fetch jobs right now. Try again shortly.");
       }
 
-      if (response.status === 429) {
-        throw new Error("LinkedIn job search rate limit reached. Wait for the RapidAPI quota window to reset, or upgrade the plan.");
+      const data = (await response.json()) as unknown;
+      const rawJobs = extractLinkedInRapidJobs(data);
+
+      jobs = (rawJobs ?? []).map(normalizeLinkedInRapidJob);
+
+      if (jobs.length > 0) {
+        break;
       }
-
-      throw new Error("LinkedIn job search could not fetch jobs right now. Try again shortly.");
     }
 
-    const data = (await response.json()) as unknown;
-    const rawJobs = extractLinkedInRapidJobs(data);
-
-    jobs = (rawJobs ?? []).map(normalizeLinkedInRapidJob);
-
-    if (jobs.length > 0) {
-      break;
-    }
+    if (jobs.length > 0) break;
   }
 
   jobSearchCache.set(cacheKey, {
@@ -304,14 +308,53 @@ async function fetchLinkedInRapidJobs(query: string, location: string): Promise<
   return jobs;
 }
 
+function getLinkedInRapidEndpoints() {
+  const configuredEndpoint = process.env.RAPIDAPI_LINKEDIN_JOBS_ENDPOINT || "active-jb-7d";
+  const fallbackEndpoint = process.env.RAPIDAPI_LINKEDIN_JOBS_FALLBACK_ENDPOINT || "active-jb-6m";
+
+  if (process.env.RAPIDAPI_LINKEDIN_AUTO_BROADEN === "true") {
+    return uniqueStrings([configuredEndpoint, fallbackEndpoint]);
+  }
+
+  return uniqueStrings([configuredEndpoint]);
+}
+
+function getLinkedInRapidTitleFilters(query: string) {
+  const titleFilters = buildLinkedInRapidTitleFilters(query);
+
+  if (process.env.RAPIDAPI_LINKEDIN_AUTO_BROADEN === "true") {
+    return titleFilters;
+  }
+
+  return titleFilters.slice(0, 1);
+}
+
 function buildLinkedInRapidTitleFilters(query: string) {
   const cleaned = cleanText(query).toLowerCase();
   const withoutSkills = stripSearchSkillTerms(cleaned);
   const inferredRole = inferRoleTitle(cleaned);
 
-  return uniqueStrings([inferredRole, withoutSkills, cleaned])
+  return uniqueStrings([...expandBroadRoleFilters(cleaned), inferredRole, withoutSkills, cleaned])
     .filter((title) => title.length >= 2)
-    .slice(0, 3);
+    .slice(0, 5);
+}
+
+function expandBroadRoleFilters(query: string) {
+  const normalized = cleanText(query.toLowerCase());
+
+  if (/^data$|^data jobs?$|^data roles?$/.test(normalized)) {
+    return ["data analyst", "data engineer", "data scientist", "business analyst"];
+  }
+
+  if (/^analyst$|^analyst jobs?$|^analyst roles?$/.test(normalized)) {
+    return ["data analyst", "business analyst", "product analyst", "reporting analyst"];
+  }
+
+  if (/^software$|^developer$|^engineering$/.test(normalized)) {
+    return ["software engineer", "software developer", "full stack developer", "backend developer"];
+  }
+
+  return [];
 }
 
 function stripSearchSkillTerms(query: string) {
