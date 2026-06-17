@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeResumeAgainstJob } from "../analyze/route";
 import { generateJobBriefs, getAiModel } from "@/lib/ai";
+import { fetchOwnedJobFeed } from "@/lib/job-ingestion";
 
 type NormalizedJob = {
   id: string;
@@ -127,12 +128,15 @@ export async function POST(request: NextRequest) {
     const jobs = await fetchJobs(query, location);
     const dedupedJobs = dedupeJobs(jobs).slice(0, 35);
 
-    if (isRapidApiConfigured() && dedupedJobs.length === 0) {
+    if (dedupedJobs.length === 0) {
       const providerName = getRapidApiJobsProvider() === "jsearch" ? "JSearch" : "LinkedIn job search";
+      const error = isRapidApiEnabled()
+        ? `${providerName} and the career-page feed returned no usable jobs for this search. Try a broader role title or a simpler location.`
+        : "The career-page feed returned no usable jobs for this search. Try a broader role title, a simpler location, or enable a paid job data provider.";
 
       return NextResponse.json(
         {
-          error: `${providerName} returned no usable jobs for this search. Try a broader role title, a simpler location, or a query with fewer keywords.`,
+          error,
         },
         { status: 404 },
       );
@@ -197,10 +201,18 @@ export async function POST(request: NextRequest) {
 }
 
 async function fetchJobs(query: string, location: string) {
+  const ownedJobs = await fetchOwnedJobFeed(query, location);
+
+  if (!isRapidApiEnabled()) {
+    return ownedJobs;
+  }
+
   if (isRapidApiConfigured()) {
-    return getRapidApiJobsProvider() === "jsearch"
+    const providerJobs = await (getRapidApiJobsProvider() === "jsearch"
       ? fetchJSearchJobs(query, location)
-      : fetchLinkedInRapidJobs(query, location);
+      : fetchLinkedInRapidJobs(query, location));
+
+    return [...ownedJobs, ...providerJobs];
   }
 
   const [himalayasJobs, arbeitnowJobs] = await Promise.allSettled([
@@ -212,6 +224,10 @@ async function fetchJobs(query: string, location: string) {
     ...(himalayasJobs.status === "fulfilled" ? himalayasJobs.value : []),
     ...(arbeitnowJobs.status === "fulfilled" ? arbeitnowJobs.value : []),
   ];
+}
+
+function isRapidApiEnabled() {
+  return process.env.RAPIDAPI_JOBS_ENABLED === "true";
 }
 
 function isRapidApiConfigured() {
@@ -730,7 +746,7 @@ function dedupeJobs(jobs: NormalizedJob[]) {
     const key =
       job.source === "LinkedIn"
         ? `${job.source.toLowerCase()}-${job.title.toLowerCase()}-${job.company.toLowerCase()}-${job.location.toLowerCase()}`
-        : `${job.title.toLowerCase()}-${job.company.toLowerCase()}-${job.applyUrl.toLowerCase()}`;
+        : `${job.source.toLowerCase()}-${job.title.toLowerCase()}-${job.company.toLowerCase()}-${job.location.toLowerCase()}`;
     if (seen.has(key)) return false;
 
     seen.add(key);

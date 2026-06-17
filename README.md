@@ -26,7 +26,7 @@ This version includes:
 - ATS sanity checks
 - Job metadata capture for title, company, location, and source URL
 - Browser-saved resume profile
-- Best-fit job recommendations from RapidAPI LinkedIn search when configured, with public-feed fallback
+- Best-fit job recommendations from company career pages and public ATS feeds
 - Optional Gemini AI/RAG enrichment for job briefs and fit reports
 - Local retrieval context selection before generation to reduce token usage
 - Structured JSON AI outputs with deterministic fallbacks
@@ -39,7 +39,7 @@ Saved applications and the saved resume profile are stored in browser `localStor
 
 Job URL import works best with company career pages and public ATS pages. Some large job boards block automated extraction, so the app keeps manual paste as the fallback.
 
-Job discovery uses the RapidAPI LinkedIn Job Search provider when `RAPIDAPI_KEY` is configured. This is the preferred source for Australia because JSearch currently returns weak/no Australia results. The search uses a 7-day LinkedIn dataset by default and caches results server-side for 30 minutes by query and location to reduce API usage. Automatic broadening across multiple title variants/endpoints is disabled by default because the free RapidAPI tier has a very small monthly request quota. Without RapidAPI settings, it falls back to public feeds from Himalayas and Arbeitnow.
+Job discovery uses a local ingestion layer for public company career pages and ATS feeds. The first implementation supports Greenhouse and SmartRecruiters sources with a curated seed list and optional `ROLEGUAGE_JOB_SOURCES_JSON` configuration. Results are normalized, deduplicated, cached in memory, and scored against the active resume. RapidAPI providers are disabled by default and must be explicitly enabled with `RAPIDAPI_JOBS_ENABLED=true` to avoid burning small free-tier quotas.
 
 SEEK, Indeed, and LinkedIn direct coverage should still be handled through approved APIs, licensed providers, or explicit crawling permission rather than brittle scraping.
 
@@ -65,7 +65,14 @@ Then add:
 GEMINI_API_KEY=your_key_here
 GEMINI_MODEL=gemini-2.5-flash-lite
 GEMINI_TIMEOUT_MS=12000
+ROLEGUAGE_JOB_SOURCE_LIMIT=6
+ROLEGUAGE_MAX_INGESTED_JOBS=80
+ROLEGUAGE_JOB_SOURCE_TIMEOUT_MS=14000
+ROLEGUAGE_SMARTRECRUITERS_LIST_LIMIT=100
+ROLEGUAGE_SMARTRECRUITERS_DETAIL_LIMIT=30
+ROLEGUAGE_JOB_SOURCES_JSON=
 RAPIDAPI_KEY=your_rapidapi_key
+RAPIDAPI_JOBS_ENABLED=false
 RAPIDAPI_JOBS_PROVIDER=linkedin
 RAPIDAPI_LINKEDIN_JOBS_HOST=linkedin-job-search-api.p.rapidapi.com
 RAPIDAPI_LINKEDIN_JOBS_ENDPOINT=active-jb-7d
@@ -74,6 +81,12 @@ RAPIDAPI_LINKEDIN_AUTO_BROADEN=false
 RAPIDAPI_LINKEDIN_JOBS_TIMEOUT_MS=18000
 RAPIDAPI_JSEARCH_HOST=jsearch.p.rapidapi.com
 RAPIDAPI_JSEARCH_TIMEOUT_MS=22000
+```
+
+Custom ATS sources can be added without code changes:
+
+```bash
+ROLEGUAGE_JOB_SOURCES_JSON=[{"kind":"smartrecruiters","name":"Canva","slug":"canva"},{"kind":"greenhouse","name":"Culture Amp","slug":"cultureamp"}]
 ```
 
 ## Tech Stack

@@ -1021,7 +1021,7 @@ export default function Home() {
                 Find roles that fit your resume.
               </h2>
               <p className="mt-3 text-sm leading-7 text-[#4F5F6F]">
-                Search LinkedIn listings by target role, then RoleGuage scores each real listing against the resume currently loaded above.
+                Search company career pages and ATS listings by target role, then RoleGuage scores each real listing against the resume currently loaded above.
               </p>
 
               <form onSubmit={discoverMatchingJobs} className="mt-5 grid gap-3">
@@ -1057,7 +1057,7 @@ export default function Home() {
                 <p className="mt-4 text-sm font-semibold text-red-600">{jobDiscoveryError}</p>
               ) : null}
               <p className="mt-4 text-xs leading-5 text-[#4F5F6F]">
-                Apply opens the original listing. With RapidAPI configured, search uses LinkedIn job results first. Without a key, it falls back to free public feeds.
+                Apply opens the original listing. RoleGuage searches public company career pages first, with paid job-data providers available as an optional add-on.
               </p>
             </div>
 
