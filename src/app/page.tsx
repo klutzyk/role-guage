@@ -20,6 +20,7 @@ import {
   Target,
   Upload,
   Users,
+  Wand2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { ChangeEvent, FormEvent, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -102,6 +103,7 @@ type InputMode = "import" | "paste";
 type ApplicationStatus = "Saved" | "Applied" | "Interview" | "Rejected" | "Offer";
 type JobSort = "fit" | "recent";
 type JobDecisionFilter = "all" | AnalysisResult["decision"];
+type AgentSafetyMode = "assisted" | "reviewed" | "autonomous";
 
 type JobMeta = {
   title: string;
@@ -155,6 +157,7 @@ const plans = [
 ];
 
 const jobTools: Array<[string, string, LucideIcon]> = [
+  ["Apply agent", "Prepare batches, reusable answers, and assisted submissions.", Wand2],
   ["Resume job match", "Upload a resume and compare it with a real job ad.", Gauge],
   ["Job URL import", "Pull job text from public company and ATS pages.", Link],
   ["Evidence gap finder", "See missing proof before applying.", Target],
@@ -175,6 +178,32 @@ const trustItems = [
   "Manual review before anything is used",
   "Local-first saved profile and tracker",
   "Copy, save, or export every report",
+];
+
+const agentChannels = [
+  {
+    title: "Company career pages",
+    speed: "Fastest safe path",
+    detail: "Use detected ATS forms, reusable profile answers, and a review step before final submission.",
+  },
+  {
+    title: "LinkedIn / Indeed / SEEK",
+    speed: "Assisted mode",
+    detail: "Prepare materials and open the listing. Keep submission user-controlled where automation is restricted.",
+  },
+  {
+    title: "Email referrals",
+    speed: "High signal",
+    detail: "Generate short outreach notes from the fit report and track who you contacted.",
+  },
+];
+
+const agentRunSteps = [
+  "Build a job queue from discovered roles or pasted links.",
+  "Filter out low-fit, duplicate, expired, and location-mismatched roles.",
+  "Create tailored resume notes, cover snippets, and screener answers.",
+  "Open each application with prefilled materials and an audit log.",
+  "Save submission status, company, role, and follow-up date.",
 ];
 
 const faqs: Array<[string, string]> = [
@@ -247,6 +276,9 @@ export default function Home() {
   const [jobRemoteOnly, setJobRemoteOnly] = useState(false);
   const [jobMinScore, setJobMinScore] = useState(60);
   const [jobSort, setJobSort] = useState<JobSort>("fit");
+  const [agentSafetyMode, setAgentSafetyMode] = useState<AgentSafetyMode>("assisted");
+  const [agentTargetApplications, setAgentTargetApplications] = useState(100);
+  const [agentMinimumFit, setAgentMinimumFit] = useState(70);
 
   const canAnalyze = useMemo(
     () => resume.trim().length > 80 && job.trim().length > 80,
@@ -271,6 +303,19 @@ export default function Home() {
         return b.score - a.score;
       });
   }, [discoveredJobs, jobDecisionFilter, jobMinScore, jobRemoteOnly, jobSort, jobSourceFilter]);
+  const agentEligibleJobs = useMemo(
+    () =>
+      discoveredJobs
+        .filter((jobMatch) => jobMatch.score >= agentMinimumFit)
+        .filter((jobMatch) => jobMatch.decision !== "Skip")
+        .sort((a, b) => b.score - a.score)
+        .slice(0, agentTargetApplications),
+    [agentMinimumFit, agentTargetApplications, discoveredJobs],
+  );
+  const agentEstimatedMinutes = estimateAgentMinutes(
+    agentEligibleJobs.length || agentTargetApplications,
+    agentSafetyMode,
+  );
 
   async function analyzeRole(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -660,19 +705,161 @@ export default function Home() {
           </a>
 
           <nav className="hidden items-center gap-6 text-sm font-semibold text-[#4F5F6F] md:flex">
+            <a href="#apply-agent" className="hover:text-[#043873]">Agent</a>
             <a href="#job-matches" className="hover:text-[#043873]">Jobs</a>
-            <a href="#workflow" className="hover:text-[#043873]">Workflow</a>
+            <a href="#analyze" className="hover:text-[#043873]">Matcher</a>
             <a href="#tools" className="hover:text-[#043873]">Tools</a>
             <a href="#application-kit" className="hover:text-[#043873]">Kit</a>
             <a href="#tracker" className="hover:text-[#043873]">Tracker</a>
-            <a href="#pricing" className="hover:text-[#043873]">Pricing</a>
           </nav>
 
-          <a href="#analyze" className="inline-flex h-10 items-center rounded-md bg-[#4F9CF9] px-4 text-sm font-bold text-white transition hover:bg-[#3b8dea]">
-            Check fit
+          <a href="#apply-agent" className="inline-flex h-10 items-center rounded-md bg-[#4F9CF9] px-4 text-sm font-bold text-white transition hover:bg-[#3b8dea]">
+            Build queue
           </a>
         </div>
       </header>
+
+      <section id="apply-agent" className="bg-[#F8FBFF] py-8 md:py-12">
+        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
+          <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr] lg:items-stretch">
+            <div className="rounded-md bg-[#043873] p-6 text-white shadow-[0_18px_60px_rgba(4,56,115,0.18)] md:p-8">
+              <p className="text-sm font-bold uppercase text-[#A7CEFC]">Apply agent</p>
+              <h1 className="mt-4 text-4xl font-extrabold leading-tight md:text-5xl">
+                Apply faster without turning your search into spam.
+              </h1>
+              <p className="mt-5 max-w-xl text-base leading-8 text-white/82">
+                Build a screened job queue, reuse your profile, generate tailored answers, and move applications through an assisted workflow that keeps you in control.
+              </p>
+              <div className="mt-7 grid gap-3 sm:grid-cols-3">
+                <AgentMetric label="Prepared jobs" value={String(agentEligibleJobs.length || discoveredJobs.length)} />
+                <AgentMetric label="Target batch" value={String(agentTargetApplications)} />
+                <AgentMetric label="Run time" value={`${agentEstimatedMinutes} min`} />
+              </div>
+              <div className="mt-7 flex flex-wrap gap-3">
+                <a href="#job-matches" className="inline-flex h-11 items-center justify-center rounded-md bg-[#4F9CF9] px-5 text-sm font-bold text-white transition hover:bg-[#3b8dea]">
+                  Find jobs
+                </a>
+                <a href="#analyze" className="inline-flex h-11 items-center justify-center rounded-md border border-white/20 px-5 text-sm font-bold text-white transition hover:bg-white/10">
+                  Use matcher
+                </a>
+              </div>
+            </div>
+
+            <div className="grid gap-4">
+              <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_14px_40px_rgba(4,56,115,0.08)] md:p-6">
+                <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
+                  <div>
+                    <h2 className="text-2xl font-extrabold text-[#212529]">Batch settings</h2>
+                    <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
+                      Start with reviewed automation. Full autonomous submission should only be enabled for sites that allow it and after you approve the answers.
+                    </p>
+                  </div>
+                  <span className="rounded-md bg-[#FFE492] px-3 py-2 text-sm font-bold text-[#043873]">
+                    {agentSafetyMode === "assisted" ? "Safest" : agentSafetyMode === "reviewed" ? "Faster" : "Restricted"}
+                  </span>
+                </div>
+
+                <div className="mt-5 grid gap-3 md:grid-cols-3">
+                  <label className="grid gap-2">
+                    <span className="text-xs font-bold uppercase text-[#4F5F6F]">Applications</span>
+                    <input
+                      value={agentTargetApplications}
+                      onChange={(event) => setAgentTargetApplications(clampNumber(Number(event.target.value), 10, 1000))}
+                      type="number"
+                      min={10}
+                      max={1000}
+                      step={10}
+                      className="h-11 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-bold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
+                    />
+                  </label>
+                  <label className="grid gap-2">
+                    <span className="text-xs font-bold uppercase text-[#4F5F6F]">Minimum fit</span>
+                    <select
+                      value={agentMinimumFit}
+                      onChange={(event) => setAgentMinimumFit(Number(event.target.value))}
+                      className="h-11 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-bold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
+                    >
+                      <option value={55}>55%+</option>
+                      <option value={70}>70%+</option>
+                      <option value={82}>82%+</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-2">
+                    <span className="text-xs font-bold uppercase text-[#4F5F6F]">Mode</span>
+                    <select
+                      value={agentSafetyMode}
+                      onChange={(event) => setAgentSafetyMode(event.target.value as AgentSafetyMode)}
+                      className="h-11 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-bold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
+                    >
+                      <option value="assisted">Assisted fill</option>
+                      <option value="reviewed">Review then submit</option>
+                      <option value="autonomous">Allowed sites only</option>
+                    </select>
+                  </label>
+                </div>
+              </section>
+
+              <section className="grid gap-4 md:grid-cols-3">
+                {agentChannels.map((channel) => (
+                  <article key={channel.title} className="rounded-md border border-[#DDE8F6] bg-white p-4">
+                    <p className="text-sm font-extrabold text-[#043873]">{channel.title}</p>
+                    <p className="mt-2 text-xs font-bold uppercase text-[#4F9CF9]">{channel.speed}</p>
+                    <p className="mt-3 text-sm leading-6 text-[#4F5F6F]">{channel.detail}</p>
+                  </article>
+                ))}
+              </section>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_0.95fr]">
+            <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_14px_40px_rgba(4,56,115,0.08)] md:p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-extrabold text-[#212529]">Run plan</h2>
+                  <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
+                    Designed for 100 applications in a focused sprint, with quality gates before anything is sent.
+                  </p>
+                </div>
+                <Wand2 className="text-[#4F9CF9]" size={24} aria-hidden="true" />
+              </div>
+              <ol className="mt-5 grid gap-3">
+                {agentRunSteps.map((step, index) => (
+                  <li key={step} className="grid gap-3 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-3 sm:grid-cols-[34px_1fr]">
+                    <span className="grid size-8 place-items-center rounded-md bg-[#043873] text-xs font-bold text-white">
+                      {index + 1}
+                    </span>
+                    <span className="text-sm font-semibold leading-6 text-[#4F5F6F]">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+
+            <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_14px_40px_rgba(4,56,115,0.08)] md:p-6">
+              <h2 className="text-xl font-extrabold text-[#212529]">Current queue</h2>
+              <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
+                Search jobs below to populate this queue. The agent only targets roles that pass your minimum fit threshold.
+              </p>
+              <div className="mt-5 grid gap-3">
+                {(agentEligibleJobs.length ? agentEligibleJobs.slice(0, 4) : discoveredJobs.slice(0, 4)).map((jobMatch) => (
+                  <div key={jobMatch.id} className="grid gap-3 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-3 sm:grid-cols-[1fr_auto] sm:items-center">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-extrabold text-[#212529]">{jobMatch.title}</p>
+                      <p className="mt-1 truncate text-xs font-semibold text-[#4F5F6F]">{jobMatch.company} | {jobMatch.location}</p>
+                    </div>
+                    <span className="rounded-md bg-[#FFE492] px-2.5 py-1 text-xs font-bold text-[#043873]">{jobMatch.score}%</span>
+                  </div>
+                ))}
+                {!discoveredJobs.length ? (
+                  <div className="rounded-md border border-dashed border-[#A7CEFC] bg-[#F8FBFF] p-5 text-center">
+                    <p className="text-sm font-bold text-[#043873]">No queue yet</p>
+                    <p className="mt-2 text-xs leading-5 text-[#4F5F6F]">Run job discovery to load roles into the agent queue.</p>
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
 
       <section id="analyze" className="pb-8 md:pb-12">
         <div className="bg-[#043873] text-white">
@@ -1235,7 +1422,7 @@ export default function Home() {
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {jobTools.map(([title, copy, Icon]) => (
-              <a key={title} href={title === "Application tracker" ? "#tracker" : "#analyze"} className="group rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5 transition hover:-translate-y-0.5 hover:border-[#A7CEFC] hover:bg-white hover:shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
+              <a key={title} href={getToolHref(title)} className="group rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5 transition hover:-translate-y-0.5 hover:border-[#A7CEFC] hover:bg-white hover:shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
                 <span className="grid size-10 place-items-center rounded-md bg-[#A7CEFC]/45 text-[#043873]">
                   <Icon size={20} aria-hidden="true" />
                 </span>
@@ -1439,6 +1626,38 @@ export default function Home() {
       </footer>
     </main>
   );
+}
+
+function AgentMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-white/15 bg-white/8 p-3">
+      <p className="text-2xl font-extrabold leading-none text-white">{value}</p>
+      <p className="mt-2 text-xs font-bold uppercase text-white/68">{label}</p>
+    </div>
+  );
+}
+
+function estimateAgentMinutes(jobCount: number, mode: AgentSafetyMode) {
+  const secondsPerApplication = {
+    assisted: 75,
+    reviewed: 38,
+    autonomous: 18,
+  }[mode];
+
+  return Math.max(5, Math.ceil((jobCount * secondsPerApplication) / 60));
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return min;
+
+  return Math.min(Math.max(value, min), max);
+}
+
+function getToolHref(title: string) {
+  if (title === "Apply agent") return "#apply-agent";
+  if (title === "Application tracker") return "#tracker";
+
+  return "#analyze";
 }
 
 function inferJobMeta(jobText: string, current: JobMeta): JobMeta {

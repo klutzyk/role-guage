@@ -6,6 +6,7 @@ RoleGuage is a job-search workspace for jobseekers who want to apply with better
 
 This version includes:
 
+- Apply Agent command center for application batching and assisted submission planning
 - Resume and job description matching workflow
 - Deterministic fit scoring API at `src/app/api/analyze/route.ts`
 - Job URL import API at `src/app/api/import-job/route.ts`
@@ -42,6 +43,25 @@ Job URL import works best with company career pages and public ATS pages. Some l
 Job discovery uses a local ingestion layer for public company career pages and ATS feeds. The first implementation supports Greenhouse and SmartRecruiters sources with a curated seed list and optional `ROLEGUAGE_JOB_SOURCES_JSON` configuration. Results are normalized, deduplicated, cached in memory, and scored against the active resume. RapidAPI providers are disabled by default and must be explicitly enabled with `RAPIDAPI_JOBS_ENABLED=true` to avoid burning small free-tier quotas.
 
 SEEK, Indeed, and LinkedIn direct coverage should still be handled through approved APIs, licensed providers, or explicit crawling permission rather than brittle scraping.
+
+## Apply Agent Direction
+
+RoleGuage is moving toward a job application agent, not just a fit checker. The current implementation adds the product surface for batching applications, setting fit thresholds, estimating run time, and separating safe automation modes:
+
+- Assisted fill: prepare answers/materials and keep final submission user-controlled.
+- Review then submit: allow faster batches after the user has approved generated content.
+- Allowed sites only: reserve full automation for company career pages or ATS flows that permit it.
+
+The architecture should avoid credential collection, CAPTCHA bypassing, account evasion, or hidden mass submission. LinkedIn and Indeed both restrict unauthorized bots/automation, so the practical path is a browser extension or local companion that helps the user fill forms, preserves an audit log, and only submits where the user has approved the action and the target site permits it.
+
+Future implementation layers:
+
+- Browser extension for detecting form fields and filling reusable profile answers.
+- Local Playwright/native companion for user-owned browser sessions on allowed sites.
+- Application queue with dedupe, rate limits, quality gates, and per-site rules.
+- Answer bank for common screener questions.
+- Tailored resume/cover snippets generated from truthful resume evidence.
+- Submission audit log with URL, timestamp, materials used, and final status.
 
 ## AI/RAG Architecture
 
