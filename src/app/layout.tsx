@@ -1,16 +1,30 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
-  variable: "--font-inter",
+const bodyFont = IBM_Plex_Sans({
+  variable: "--font-body",
+  weight: ["400", "500", "600", "700"],
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "ApplyPilot | Resume Job Match Checker and Application Tracker",
+  title: "RoleGuage | Resume Job Match Checker and Application Tracker",
   description:
-    "Upload a resume, import a job ad, get a fit score, skill-gap plan, resume bullet drafts, interview prep, and an application tracker.",
+    "Upload a resume, import a job ad, get a fit score, evidence gaps, resume bullet guidance, interview prep, and an application tracker.",
+  keywords: [
+    "resume job match checker",
+    "job application helper",
+    "resume tailoring",
+    "application tracker",
+    "ATS resume checker",
+  ],
+  openGraph: {
+    title: "RoleGuage",
+    description:
+      "Check resume fit, find evidence gaps, and build a clearer application plan before you apply.",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
@@ -21,7 +35,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} h-full antialiased`}
+      className={`${bodyFont.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="flex min-h-full flex-col" suppressHydrationWarning>

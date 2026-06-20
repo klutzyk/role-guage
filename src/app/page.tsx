@@ -2,28 +2,27 @@
 
 import {
   ArrowRight,
-  BarChart3,
   BriefcaseBusiness,
   Check,
   CheckCircle2,
-  ChevronDown,
   Clipboard,
   Download,
   FileText,
   Gauge,
+  ListChecks,
   Link,
   Loader2,
-  Menu,
   Network,
   Plus,
   Radar,
+  SearchCheck,
   ShieldCheck,
   Target,
   Upload,
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { ChangeEvent, FormEvent, useMemo, useState, useSyncExternalStore } from "react";
+import { ChangeEvent, FormEvent, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 type AnalysisResult = {
   score: number;
@@ -56,6 +55,15 @@ type AnalysisResult = {
   outreachMessage: string;
   atsNotes: string[];
   summary: string;
+  aiStatus?: "generated" | "fallback" | "disabled";
+  aiModel?: string;
+  fitReasoning?: string[];
+  gapRoadmap?: Array<{
+    skill: string;
+    action: string;
+    proofProject: string;
+    timeframe: string;
+  }>;
 };
 
 type ImportedJob = {
@@ -66,8 +74,34 @@ type ImportedJob = {
   sourceUrl: string;
 };
 
+type DiscoveredJob = {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  description: string;
+  descriptionSummary: {
+    work: string;
+    requirements: string;
+    experience: string;
+  };
+  applyUrl: string;
+  source: string;
+  postedAt: string;
+  tags: string[];
+  score: number;
+  level: string;
+  decision: AnalysisResult["decision"];
+  summary: string;
+  nextStep: string;
+  matchedSkills: string[];
+  missingSkills: string[];
+};
+
 type InputMode = "import" | "paste";
 type ApplicationStatus = "Saved" | "Applied" | "Interview" | "Rejected" | "Offer";
+type JobSort = "fit" | "recent";
+type JobDecisionFilter = "all" | AnalysisResult["decision"];
 
 type JobMeta = {
   title: string;
@@ -96,59 +130,70 @@ const sampleResume = `Software Engineer with 4 years of experience building web 
 
 const sampleJob = `We are hiring a Data Analyst / AI Product Engineer in Sydney. The role requires Python, SQL, dashboards, machine learning, stakeholder communication, experimentation, API integration, and experience turning messy business data into actionable insights. Knowledge of React, cloud platforms, and LLM tools is a strong advantage.`;
 
-const featureCards: Array<[string, string, LucideIcon]> = [
-  ["Apply-or-skip decision", "Get a practical recommendation before you spend another hour applying.", Gauge],
-  ["Priority skill plan", "Separate must-have gaps from nice-to-have noise with a clear action list.", Target],
-  ["Application kit", "Draft resume bullets, interview talking points, and outreach notes for each role.", FileText],
-];
-
-const processCards = [
-  ["1", "Paste evidence", "Start with your resume summary, projects, or LinkedIn profile notes."],
-  ["2", "Add job ad", "ApplyPilot extracts the skills, signals, and employer priorities."],
-  ["3", "Apply sharper", "Use the report to decide, rewrite, and track your next move."],
-];
-
 const plans = [
   {
     name: "Starter",
     price: "$0",
-    copy: "For deciding whether a few roles are worth your time.",
-    items: ["3 role checks", "Fit score", "Skill gaps", "Manual paste workflow"],
+    copy: "For checking a few roles before you spend time applying.",
+    items: ["3 role checks", "Fit score", "Evidence gaps", "Manual paste workflow"],
     featured: false,
   },
   {
     name: "Active Search",
     price: "$19",
-    copy: "For applicants who want every application to be targeted.",
-    items: ["Unlimited role checks", "Resume PDF import", "Job URL import", "Application tracker", "Exportable fit report"],
+    copy: "For jobseekers who want every application to be targeted.",
+    items: ["Unlimited role checks", "Resume PDF import", "Job URL import", "Application tracker", "Exportable fit reports"],
     featured: true,
   },
   {
     name: "Career Sprint",
     price: "$99",
-    copy: "For a deeper job-search reset with human review.",
-    items: ["Profile audit", "Target role strategy", "Portfolio project plan", "Resume review"],
+    copy: "For a deeper job-search reset with structured review.",
+    items: ["Profile audit", "Target role strategy", "Portfolio project plan", "Resume review notes"],
     featured: false,
   },
 ];
 
-const testimonials = [
-  ["This made it obvious which jobs I should stop wasting time on.", "Graduate data analyst"],
-  ["The skill gap section gave me a better portfolio project direction.", "Software engineer"],
-  ["The tailored bullets were stronger than my generic resume version.", "International graduate"],
+const jobTools: Array<[string, string, LucideIcon]> = [
+  ["Resume job match", "Upload a resume and compare it with a real job ad.", Gauge],
+  ["Job URL import", "Pull job text from public company and ATS pages.", Link],
+  ["Evidence gap finder", "See missing proof before applying.", Target],
+  ["Resume bullet guidance", "Turn matched evidence into targeted bullet ideas.", FileText],
+  ["Interview prep", "Prepare stories for matched skills and visible gaps.", Users],
+  ["Application tracker", "Save the decision, status, notes, and next step.", BriefcaseBusiness],
 ];
 
-const dataPrinciples: Array<[string, LucideIcon]> = [
-  ["Resume", FileText],
-  ["Role score", BarChart3],
-  ["Application", BriefcaseBusiness],
+const workflowSteps: Array<[string, string, LucideIcon]> = [
+  ["Upload once", "Keep a reusable resume profile in your browser and reuse it across role checks.", Upload],
+  ["Import a role", "Paste a job URL or drop in the job description when the site blocks import.", SearchCheck],
+  ["Check the fit", "Get a clear Apply, Tailor, Build, or Skip recommendation with the evidence behind it.", Gauge],
+  ["Apply with a plan", "Use the generated kit to tighten bullets, prep interviews, and track next actions.", ListChecks],
 ];
 
-const dataMetrics: Array<[string, string, LucideIcon]> = [
-  ["Applications", "24", BriefcaseBusiness],
-  ["Strong fits", "8", ShieldCheck],
-  ["Skill gaps", "11", Target],
-  ["Contacts", "16", Users],
+const trustItems = [
+  "No fake experience suggestions",
+  "Manual review before anything is used",
+  "Local-first saved profile and tracker",
+  "Copy, save, or export every report",
+];
+
+const faqs: Array<[string, string]> = [
+  [
+    "Is this just ChatGPT with a nicer screen?",
+    "No. RoleGuage is built around a repeatable job-search workflow: import a role, score fit, expose evidence gaps, generate an application kit, and save the decision to a tracker.",
+  ],
+  [
+    "Does it rewrite my resume with fake skills?",
+    "No. It highlights what your resume already supports and separates missing evidence from matched evidence.",
+  ],
+  [
+    "Can it import jobs from LinkedIn or SEEK?",
+    "Some large job boards block automated extraction. RoleGuage keeps URL import for public pages and a copy-text fallback for blocked job boards.",
+  ],
+  [
+    "Where is my resume stored?",
+    "In this MVP, saved profiles and applications stay in your browser localStorage. A production version should add accounts, encrypted storage, and delete controls.",
+  ],
 ];
 
 const emptyJobMeta: JobMeta = {
@@ -158,9 +203,11 @@ const emptyJobMeta: JobMeta = {
   sourceUrl: "",
 };
 
-const trackerStorageKey = "applypilot.applications.v1";
-const trackerChangeEvent = "applypilot-applications-changed";
-const resumeProfileStorageKey = "applypilot.resume-profile.v1";
+const trackerStorageKey = "roleguage.applications.v1";
+const legacyTrackerStorageKey = "applypilot.applications.v1";
+const trackerChangeEvent = "roleguage-applications-changed";
+const resumeProfileStorageKey = "roleguage.resume-profile.v1";
+const legacyResumeProfileStorageKey = "applypilot.resume-profile.v1";
 const applicationStatuses: ApplicationStatus[] = ["Saved", "Applied", "Interview", "Rejected", "Offer"];
 let cachedTrackerRaw = "";
 let cachedTrackerApplications: TrackedApplication[] = [];
@@ -178,32 +225,70 @@ export default function Home() {
   });
   const [inputMode, setInputMode] = useState<InputMode>("import");
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const activeAnalysisRequest = useRef(0);
   const applications = useSyncExternalStore(
     subscribeToTracker,
     getTrackerSnapshot,
     getTrackerServerSnapshot,
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [isEnrichingReport, setIsEnrichingReport] = useState(false);
   const [isImportingJob, setIsImportingJob] = useState(false);
   const [isExtractingResume, setIsExtractingResume] = useState(false);
   const [error, setError] = useState("");
   const [importMessage, setImportMessage] = useState("");
+  const [jobSearchQuery, setJobSearchQuery] = useState("data analyst python sql");
+  const [jobSearchLocation, setJobSearchLocation] = useState("Australia");
+  const [discoveredJobs, setDiscoveredJobs] = useState<DiscoveredJob[]>([]);
+  const [isDiscoveringJobs, setIsDiscoveringJobs] = useState(false);
+  const [jobDiscoveryError, setJobDiscoveryError] = useState("");
+  const [jobSourceFilter, setJobSourceFilter] = useState("all");
+  const [jobDecisionFilter, setJobDecisionFilter] = useState<JobDecisionFilter>("all");
+  const [jobRemoteOnly, setJobRemoteOnly] = useState(false);
+  const [jobMinScore, setJobMinScore] = useState(60);
+  const [jobSort, setJobSort] = useState<JobSort>("fit");
 
   const canAnalyze = useMemo(
     () => resume.trim().length > 80 && job.trim().length > 80,
     [resume, job],
   );
+  const hasGeneratedReport = Boolean(result);
+  const jobSources = useMemo(
+    () => Array.from(new Set(discoveredJobs.map((jobMatch) => jobMatch.source))).sort(),
+    [discoveredJobs],
+  );
+  const filteredDiscoveredJobs = useMemo(() => {
+    return discoveredJobs
+      .filter((jobMatch) => jobMatch.score >= jobMinScore)
+      .filter((jobMatch) => jobSourceFilter === "all" || jobMatch.source === jobSourceFilter)
+      .filter((jobMatch) => jobDecisionFilter === "all" || jobMatch.decision === jobDecisionFilter)
+      .filter((jobMatch) => !jobRemoteOnly || /remote/i.test(`${jobMatch.location} ${jobMatch.tags.join(" ")}`))
+      .sort((a, b) => {
+        if (jobSort === "recent") {
+          return parsePostedDate(b.postedAt) - parsePostedDate(a.postedAt) || b.score - a.score;
+        }
+
+        return b.score - a.score;
+      });
+  }, [discoveredJobs, jobDecisionFilter, jobMinScore, jobRemoteOnly, jobSort, jobSourceFilter]);
 
   async function analyzeRole(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    await runAnalysis(resume, job);
+  }
+
+  async function runAnalysis(resumeText: string, jobText: string) {
+    const requestId = activeAnalysisRequest.current + 1;
+    activeAnalysisRequest.current = requestId;
     setError("");
     setIsLoading(true);
+    setIsEnrichingReport(false);
 
     try {
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resume, job }),
+        body: JSON.stringify({ resume: resumeText, job: jobText }),
       });
 
       if (!response.ok) {
@@ -211,11 +296,43 @@ export default function Home() {
       }
 
       const data = (await response.json()) as AnalysisResult;
+      setIsEnrichingReport(true);
       setResult(data);
+      void enrichReport(resumeText, jobText, requestId);
     } catch {
-      setError("ApplyPilot could not analyze this role yet. Try again.");
+      setError("RoleGuage could not analyze this role yet. Try again.");
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function enrichReport(resumeText: string, jobText: string, requestId: number) {
+    setIsEnrichingReport(true);
+
+    try {
+      const response = await fetch("/api/enrich-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resume: resumeText, job: jobText }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Enrichment failed");
+      }
+
+      const enrichment = (await response.json()) as Partial<AnalysisResult>;
+
+      if (activeAnalysisRequest.current !== requestId) return;
+
+      setResult((current) => (current ? { ...current, ...enrichment } : current));
+    } catch {
+      if (activeAnalysisRequest.current === requestId) {
+        setResult((current) => (current ? { ...current, aiStatus: "fallback" } : current));
+      }
+    } finally {
+      if (activeAnalysisRequest.current === requestId) {
+        setIsEnrichingReport(false);
+      }
     }
   }
 
@@ -292,6 +409,56 @@ export default function Home() {
     }
   }
 
+  async function discoverMatchingJobs(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setJobDiscoveryError("");
+    setIsDiscoveringJobs(true);
+
+    try {
+      const response = await fetch("/api/discover-jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resume,
+          query: jobSearchQuery,
+          location: jobSearchLocation,
+        }),
+      });
+      const data = (await response.json()) as { jobs?: DiscoveredJob[]; error?: string };
+
+      if (!response.ok || !data.jobs) {
+        throw new Error(data.error ?? "Could not find matching jobs right now.");
+      }
+
+      setDiscoveredJobs(data.jobs);
+    } catch (caughtError) {
+      setJobDiscoveryError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Could not find matching jobs right now.",
+      );
+    } finally {
+      setIsDiscoveringJobs(false);
+    }
+  }
+
+  async function loadDiscoveredJob(jobToLoad: DiscoveredJob) {
+    const fullJobText = buildDiscoveredJobText(jobToLoad);
+
+    setJob(fullJobText);
+    setJobMeta({
+      title: jobToLoad.title,
+      company: jobToLoad.company,
+      location: jobToLoad.location,
+      sourceUrl: jobToLoad.applyUrl,
+    });
+    setInputMode("paste");
+    setImportMessage("Loaded this job into the matcher and generated the fit report.");
+    setError("");
+    document.getElementById("analyze")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    await runAnalysis(resume, fullJobText);
+  }
+
   function saveCurrentApplication() {
     if (!result) {
       setError("Generate a fit report before saving this application.");
@@ -352,7 +519,9 @@ export default function Home() {
   }
 
   function useSavedResumeProfile() {
-    const savedResume = window.localStorage.getItem(resumeProfileStorageKey);
+    const savedResume =
+      window.localStorage.getItem(resumeProfileStorageKey) ??
+      window.localStorage.getItem(legacyResumeProfileStorageKey);
 
     if (!savedResume) {
       setError("No saved resume profile found in this browser yet.");
@@ -386,7 +555,7 @@ export default function Home() {
     const anchor = document.createElement("a");
 
     anchor.href = url;
-    anchor.download = `${slugify(meta.title || "apply-pilot-report")}.txt`;
+    anchor.download = `${slugify(meta.title || "roleguage-report")}.txt`;
     anchor.click();
     URL.revokeObjectURL(url);
     setImportMessage("Fit report downloaded.");
@@ -398,7 +567,7 @@ export default function Home() {
       score: 78,
       level: "Strong match",
       decision: "Apply",
-      nextStep: "Tighten the top 2 resume bullets, then apply.",
+      nextStep: "Tighten the top 2 truthful resume bullets, then apply.",
       timeToApply: "30-45 min",
       confidence: "Good",
       matchedSkills: ["Python", "SQL", "React", "PostgreSQL", "Machine learning"],
@@ -406,17 +575,17 @@ export default function Home() {
       roleSignals: ["Sydney", "AI product", "Stakeholder-facing", "Dashboards"],
       scoreBreakdown: [
         {
-          label: "Weighted skill coverage",
+          label: "Matched job skills",
           value: "78%",
           detail: "5 of 8 detected job skills matched",
         },
         {
-          label: "Resume evidence bonus",
+          label: "Resume matches",
           value: "+12",
           detail: "8 relevant resume skills detected",
         },
         {
-          label: "Must-have penalty",
+          label: "Required gaps",
           value: "0",
           detail: "No detected must-have gaps",
         },
@@ -437,13 +606,13 @@ export default function Home() {
         headline: "Python + SQL + React",
       },
       resumeBullets: [
-        "Built data-backed web applications that connected Python, SQL, and React workflows to measurable user outcomes.",
-        "Created dashboards and analytics workflows that helped stakeholders make faster product decisions.",
-        "Add one honest proof point for experimentation, even if it comes from coursework or a self-directed project.",
+        "Adapt this only if true: built data-backed web applications connecting Python, SQL, and React workflows to measurable outcomes.",
+        "Created dashboards and analytics workflows that made product decisions clearer.",
+        "If you have done work with experimentation, add one clear proof point; otherwise keep it as a gap to build.",
       ],
       interviewPrep: [
         "Prepare a 60-second story about a dashboard or data product you shipped.",
-        "Have a direct answer for how you are closing the experimentation gap.",
+        "Have a direct answer for whether you have experimentation evidence, and how you are building it if not.",
         "Explain why Sydney data-product roles fit your current job search direction.",
       ],
       outreachMessage:
@@ -454,158 +623,100 @@ export default function Home() {
         "Add a truthful mention of experimentation if you have evidence for it.",
       ],
       summary:
-        "Your profile is credible for this role. Emphasize data products, stakeholder outcomes, and the strongest matched skills before applying.",
+        "Your profile is credible for this role. Lead with the strongest matched skills and tighten the visible gaps before applying.",
+      aiStatus: "disabled",
+      fitReasoning: [
+        "The role overlaps with Python, SQL, React, and machine learning evidence.",
+        "Experimentation and LLM tooling remain visible gaps.",
+        "Use software engineering delivery examples to support data-product claims.",
+      ],
+      gapRoadmap: [
+        {
+          skill: "Experimentation",
+          action: "Learn basic A/B test design and metrics interpretation.",
+          proofProject: "Add a small dashboard comparing two product variants with a written decision note.",
+          timeframe: "1-2 weeks",
+        },
+      ],
     } satisfies AnalysisResult);
+  const isPreparingReport = hasGeneratedReport && isEnrichingReport;
+  const reportSummary = isPreparingReport
+    ? "Preparing your personalized report..."
+    : activeResult.summary;
+  const reportNextStep = isPreparingReport
+    ? "Reviewing your resume and this job description."
+    : activeResult.nextStep;
+  const reportReasoning = isPreparingReport ? [] : activeResult.fitReasoning ?? [];
 
   return (
-    <main className="min-h-screen bg-white text-[#212529]">
-      <section className="blue-wave bg-[#043873] text-white">
-        <div className="mx-auto max-w-7xl px-5 py-4 md:px-8 lg:px-10">
-          <nav className="flex items-center justify-between gap-4">
-            <a href="#" className="flex items-center gap-2 font-bold">
-              <span className="grid size-8 place-items-center rounded-md bg-white text-[#043873]">
-                <Radar size={20} aria-hidden="true" />
-              </span>
-              <span className="text-xl">ApplyPilot</span>
-            </a>
+    <main className="min-h-screen bg-[#F8FBFF] text-[#212529]">
+      <header className="border-b border-[#DDE8F6] bg-white">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4 md:px-8 lg:px-10">
+          <a href="#" className="flex items-center gap-2 font-bold text-[#043873]">
+            <span className="grid size-8 place-items-center rounded-md bg-[#043873] text-white">
+              <Radar size={20} aria-hidden="true" />
+            </span>
+            <span className="text-xl">RoleGuage</span>
+          </a>
 
-            <div className="hidden items-center gap-8 text-sm lg:flex">
-              {["Product", "Solutions", "Resources", "Pricing"].map((item) => (
-                <a key={item} href={`#${item.toLowerCase()}`} className="inline-flex items-center gap-1 text-white/90 hover:text-white">
-                  {item}
-                  <ChevronDown size={14} aria-hidden="true" />
-                </a>
-              ))}
-            </div>
-
-            <div className="hidden items-center gap-3 md:flex">
-              <a href="#analyze" className="rounded-md bg-[#FFE492] px-5 py-3 text-sm font-semibold text-[#043873] transition hover:bg-[#ffdc6d]">
-                Login
-              </a>
-              <a href="#analyze" className="inline-flex items-center gap-2 rounded-md bg-[#4F9CF9] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#3b8dea]">
-                Try ApplyPilot free
-                <ArrowRight size={16} aria-hidden="true" />
-              </a>
-            </div>
-
-            <button className="grid size-10 place-items-center rounded-md bg-white/10 md:hidden" aria-label="Open navigation">
-              <Menu size={22} aria-hidden="true" />
-            </button>
+          <nav className="hidden items-center gap-6 text-sm font-semibold text-[#4F5F6F] md:flex">
+            <a href="#job-matches" className="hover:text-[#043873]">Jobs</a>
+            <a href="#workflow" className="hover:text-[#043873]">Workflow</a>
+            <a href="#tools" className="hover:text-[#043873]">Tools</a>
+            <a href="#application-kit" className="hover:text-[#043873]">Kit</a>
+            <a href="#tracker" className="hover:text-[#043873]">Tracker</a>
+            <a href="#pricing" className="hover:text-[#043873]">Pricing</a>
           </nav>
 
-          <div className="grid gap-10 py-14 md:py-20 lg:grid-cols-[0.95fr_1.05fr] lg:items-center lg:py-28">
-            <div>
-              <h1 className="max-w-2xl text-4xl font-extrabold leading-tight md:text-6xl">
-                Know which jobs are worth applying for
-              </h1>
-              <p className="mt-6 max-w-xl text-base leading-8 text-white/85">
-                Upload your resume, import a job ad, and get a clear fit score, skill-gap plan, resume bullets, interview prep, and application tracker.
-              </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <a href="#analyze" className="inline-flex items-center justify-center gap-2 rounded-md bg-[#4F9CF9] px-6 py-4 text-sm font-semibold text-white transition hover:bg-[#3b8dea]">
-                  Try ApplyPilot free
-                  <ArrowRight size={17} aria-hidden="true" />
-                </a>
-                <a href="#product" className="inline-flex items-center justify-center rounded-md border border-white/30 px-6 py-4 text-sm font-semibold text-white transition hover:bg-white/10">
-                  See how it works
-                </a>
-              </div>
-            </div>
-            <HeroMockup score={activeResult.score} />
-          </div>
+          <a href="#analyze" className="inline-flex h-10 items-center rounded-md bg-[#4F9CF9] px-4 text-sm font-bold text-white transition hover:bg-[#3b8dea]">
+            Check fit
+          </a>
         </div>
-      </section>
+      </header>
 
-      <section id="product" className="overflow-hidden py-16 md:py-24">
-        <div className="mx-auto grid max-w-7xl gap-12 px-5 md:px-8 lg:grid-cols-2 lg:items-center lg:px-10">
-          <div>
-              <h2 className="max-w-lg text-4xl font-extrabold leading-tight md:text-5xl">
-              A smarter way to <span className="yellow-mark">apply</span>
-            </h2>
-            <p className="mt-5 max-w-xl leading-8 text-[#4F5F6F]">
-              Stop sending the same resume everywhere. ApplyPilot turns each job ad into a decision, a tailoring plan, and a saved next step.
+      <section id="analyze" className="pb-8 md:pb-12">
+        <div className="bg-[#043873] text-white">
+          <div className="mx-auto max-w-7xl px-5 py-10 text-center md:px-8 md:py-14 lg:px-10">
+            <p className="text-sm font-bold uppercase text-[#A7CEFC]">Resume job match checker</p>
+            <h1 className="mx-auto mt-3 max-w-7xl text-4xl font-bold leading-tight md:text-6xl lg:whitespace-nowrap lg:text-5xl xl:text-6xl">
+              Tailor your resume to any job ad
+            </h1>
+            <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-white/82">
+              Upload your resume, import a job ad, and get a clear fit decision, evidence gaps, and application notes before you apply.
             </p>
-            <a href="#analyze" className="mt-7 inline-flex items-center gap-2 rounded-md bg-[#4F9CF9] px-6 py-4 text-sm font-semibold text-white transition hover:bg-[#3b8dea]">
-              Get started
-              <ArrowRight size={17} aria-hidden="true" />
-            </a>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-            {featureCards.map(([title, copy, Icon]) => (
-              <article key={title} className="rounded-md border border-[#E4EDF8] bg-white p-6 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
-                <span className="grid size-11 place-items-center rounded-md bg-[#A7CEFC]/45 text-[#043873]">
-                  <Icon size={21} aria-hidden="true" />
+            {/* <div className="mx-auto mt-5 flex max-w-3xl flex-wrap justify-center gap-2">
+              {trustItems.map((item) => (
+                <span key={item} className="rounded-md border border-white/15 bg-white/8 px-3 py-2 text-xs font-semibold text-white/86">
+                  {item}
                 </span>
-                <h3 className="mt-7 text-xl font-bold">{title}</h3>
-                <p className="mt-3 text-sm leading-7 text-[#4F5F6F]">{copy}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="py-10 md:py-16">
-        <div className="mx-auto grid max-w-7xl gap-12 px-5 md:px-8 lg:grid-cols-2 lg:items-center lg:px-10">
-          <OrbitVisual />
-          <div>
-            <h2 className="max-w-lg text-4xl font-extrabold leading-tight md:text-5xl">
-              Work <span className="yellow-mark">together</span> with real evidence
-            </h2>
-            <p className="mt-5 max-w-xl leading-8 text-[#4F5F6F]">
-              Use one workspace for resume proof, job requirements, skill gaps, and the next action for each application.
-            </p>
-            <div className="mt-7 grid gap-3">
-              {processCards.map(([step, title, copy]) => (
-                <div key={step} className="flex gap-4 rounded-md border border-[#E4EDF8] bg-white p-4">
-                  <span className="grid size-9 shrink-0 place-items-center rounded-md bg-[#4F9CF9] text-sm font-bold text-white">{step}</span>
-                  <div>
-                    <h3 className="font-bold">{title}</h3>
-                    <p className="mt-1 text-sm leading-6 text-[#4F5F6F]">{copy}</p>
-                  </div>
-                </div>
               ))}
-            </div>
+            </div> */}
           </div>
         </div>
-      </section>
 
-      <section id="analyze" className="blue-wave bg-[#043873] pb-16 pt-10 text-white md:pb-24 md:pt-14">
-        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
-          <div className="mb-10 grid gap-5 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
-            <div>
-              <h2 className="text-4xl font-extrabold leading-tight md:text-5xl">
-                Use as your application command center
-              </h2>
-              <p className="mt-5 max-w-2xl leading-8 text-white/82">
-                Add your resume and a job ad to see how well the role fits you, what skills stand out, and what gaps to fix before applying.
-              </p>
-            </div>
-            <div className="rounded-md bg-white/10 p-4 text-sm leading-7 text-white/80">
-              Use the fit report to focus your resume, prepare stronger talking points, and track the roles that are actually worth your time.
-            </div>
-          </div>
+        <div className="mx-auto -mt-6 max-w-7xl px-5 md:px-8 lg:px-10">
 
-          <div className="grid items-start gap-6 lg:grid-cols-[1.04fr_0.96fr] lg:items-stretch">
-            <form onSubmit={analyzeRole} className="rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(0,0,0,0.22)] md:p-7">
+          <div className={`grid items-start gap-5 transition-all duration-300 ${hasGeneratedReport ? "lg:grid-cols-[1.05fr_0.95fr] lg:items-stretch" : "mx-auto max-w-3xl"}`}>
+            <form onSubmit={analyzeRole} className="flex h-full flex-col rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(4,56,115,0.14)] md:p-7">
               <div className="mb-5 flex items-start justify-between gap-4">
                 <div>
                   <h3 className="text-2xl font-extrabold">Role matcher</h3>
                   <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
-                    Use the sample content or paste your own resume and job ad.
+                    Start with the sample, upload your resume, or paste your own job ad.
                   </p>
                 </div>
                 <div className="flex shrink-0 gap-2">
                   <button
                     type="button"
                     onClick={useSavedResumeProfile}
-                    className="hidden h-10 items-center rounded-md border border-[#A7CEFC] px-3 text-xs font-bold text-[#043873] transition hover:bg-[#F4F9FF] sm:inline-flex"
+                    className="hidden h-10 items-center rounded-md border border-[#A7CEFC] px-3 text-xs font-semibold text-[#043873] transition hover:bg-[#A7CEFC]/20 sm:inline-flex"
                   >
                     Use profile
                   </button>
                   <button
                     type="button"
                     onClick={saveResumeProfile}
-                    className="hidden h-10 items-center rounded-md border border-[#FFE492] px-3 text-xs font-bold text-[#5F4700] transition hover:bg-[#FFF4C2] sm:inline-flex"
+                    className="hidden h-10 items-center rounded-md border border-[#FFE492] px-3 text-xs font-semibold text-[#043873] transition hover:bg-[#FFE492] sm:inline-flex"
                   >
                     Save profile
                   </button>
@@ -617,6 +728,8 @@ export default function Home() {
                       setJobUrl("");
                       setJobMeta(emptyJobMeta);
                       setResult(null);
+                      activeAnalysisRequest.current = 0;
+                      setIsEnrichingReport(false);
                       setError("");
                       setImportMessage("");
                     }}
@@ -656,18 +769,14 @@ export default function Home() {
                 </button>
               </div>
 
-              <div className="grid gap-4">
+              <div className="flex flex-1 flex-col gap-4">
                 {inputMode === "import" ? (
                   <>
                     <div className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
-                      <div className="mb-3 flex items-center gap-2 text-sm font-bold">
-                        <Upload size={16} className="text-[#4F9CF9]" aria-hidden="true" />
-                        Resume PDF import
-                      </div>
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <div className="flex justify-center">
                         <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97]">
                           {isExtractingResume ? <Loader2 className="animate-spin" size={17} aria-hidden="true" /> : <Upload size={17} aria-hidden="true" />}
-                          {isExtractingResume ? "Extracting PDF" : "Upload resume PDF"}
+                          {isExtractingResume ? "Extracting PDF" : "Upload Resume PDF"}
                           <input
                             type="file"
                             accept="application/pdf"
@@ -676,16 +785,13 @@ export default function Home() {
                             disabled={isExtractingResume}
                           />
                         </label>
-                        <p className="text-sm leading-6 text-[#4F5F6F]">
-                          Upload a text-based PDF resume, then review the extracted text below.
-                        </p>
                       </div>
                     </div>
 
                     <div className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
                       <label className="mb-3 flex items-center gap-2 text-sm font-bold" htmlFor="job-url">
                         <Link size={16} className="text-[#4F9CF9]" aria-hidden="true" />
-                        Job URL import
+                        Paste the URL of the job ad
                       </label>
                       <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                         <input
@@ -732,9 +838,10 @@ export default function Home() {
                       />
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-2">
+                    <div className="grid flex-1 gap-4 md:grid-cols-2">
                       <InputPanel
                         compact
+                        fillAvailable={hasGeneratedReport}
                         icon={FileText}
                         label="Extracted resume text"
                         value={resume}
@@ -743,6 +850,7 @@ export default function Home() {
                       />
                       <InputPanel
                         compact
+                        fillAvailable={hasGeneratedReport}
                         icon={BriefcaseBusiness}
                         label="Imported job description"
                         value={job}
@@ -784,22 +892,23 @@ export default function Home() {
               </button>
             </form>
 
-            <aside className="grid h-full content-start gap-5 lg:grid-rows-[auto_1fr]">
-              <section className="rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(0,0,0,0.16)] md:p-6">
+            {hasGeneratedReport ? (
+            <aside className="grid content-start gap-5">
+              <section className="rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(4,56,115,0.14)] md:p-6">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-sm font-bold text-[#4F9CF9]">Recommended move</p>
-                    <h3 className="mt-2 text-3xl font-extrabold">{activeResult.decision}</h3>
+                    <h3 className="mt-2 text-4xl font-bold text-[#043873]">{activeResult.decision}</h3>
                     <p className="mt-1 text-sm font-bold text-[#4F5F6F]">{activeResult.level}</p>
                   </div>
                   <div className="grid size-24 place-items-center rounded-md bg-[#FFE492] text-[#043873]">
-                    <span className="text-4xl font-extrabold">{activeResult.score}</span>
+                    <span className="text-4xl font-bold">{activeResult.score}</span>
                   </div>
                 </div>
-                <p className="mt-5 leading-7 text-[#4F5F6F]">{activeResult.summary}</p>
-                <div className="mt-4 rounded-md border border-[#A7CEFC] bg-[#F4F9FF] p-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#043873]">Next best action</p>
-                  <p className="mt-2 text-sm font-semibold leading-6 text-[#212529]">{activeResult.nextStep}</p>
+                <p className="mt-5 leading-7 text-[#4F5F6F]">{reportSummary}</p>
+                <div className="mt-4 rounded-md border border-[#A7CEFC] bg-white p-3">
+                  <p className="text-xs font-bold uppercase text-[#043873]">Next best action</p>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-[#212529]">{reportNextStep}</p>
                 </div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-3">
                   {[
@@ -808,17 +917,8 @@ export default function Home() {
                     ["Headline", activeResult.keywordPlan.headline],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-md border border-[#DDE8F6] bg-white p-2.5">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#4F5F6F]">{label}</p>
-                      <p className="mt-1 truncate text-sm font-extrabold text-[#043873]">{value}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                  {activeResult.scoreBreakdown.map((item) => (
-                    <div key={item.label} className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-2.5">
-                      <p className="text-lg font-extrabold text-[#043873]">{item.value}</p>
-                      <p className="mt-1 text-[11px] font-bold leading-4 text-[#212529]">{item.label}</p>
-                      <p className="mt-1 text-[11px] leading-4 text-[#4F5F6F]">{item.detail}</p>
+                      <p className="text-[11px] font-bold uppercase text-[#4F5F6F]">{label}</p>
+                      <p className="mt-1 truncate text-sm font-bold text-[#043873]">{value}</p>
                     </div>
                   ))}
                 </div>
@@ -826,7 +926,8 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={saveCurrentApplication}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97]"
+                    disabled={isPreparingReport}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97] disabled:cursor-not-allowed disabled:bg-[#A7CEFC]"
                   >
                     <BriefcaseBusiness size={16} aria-hidden="true" />
                     Save
@@ -834,7 +935,8 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={copyReport}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#A7CEFC] bg-[#F4F9FF] px-4 text-sm font-bold text-[#043873] transition hover:bg-[#EAF4FF]"
+                    disabled={isPreparingReport}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#A7CEFC] bg-white px-4 text-sm font-semibold text-[#043873] transition hover:bg-[#A7CEFC]/20 disabled:cursor-not-allowed disabled:bg-[#F8FBFF] disabled:text-[#4F5F6F]"
                   >
                     <Clipboard size={16} aria-hidden="true" />
                     Copy
@@ -842,7 +944,8 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={downloadReport}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#FFE492] bg-[#FFF4C2] px-4 text-sm font-bold text-[#5F4700] transition hover:bg-[#FFE492]"
+                    disabled={isPreparingReport}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#FFE492] bg-white px-4 text-sm font-semibold text-[#043873] transition hover:bg-[#FFE492] disabled:cursor-not-allowed disabled:bg-[#F8FBFF] disabled:text-[#4F5F6F]"
                   >
                     <Download size={16} aria-hidden="true" />
                     Export
@@ -850,35 +953,217 @@ export default function Home() {
                 </div>
               </section>
 
-              <div className="grid h-full items-stretch gap-4 xl:grid-cols-2">
-                <section className="grid h-full content-start gap-3 rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(0,0,0,0.16)]">
-                  <CompactResultBlock title="Matched skills" icon={CheckCircle2} items={activeResult.matchedSkills} tone="match" limit={4} />
-                  <CompactResultBlock title="Gaps to cover" icon={Target} items={activeResult.missingSkills} tone="gap" limit={3} />
-                  <CompactResultBlock title="Role signals" icon={Network} items={activeResult.roleSignals} tone="signal" limit={3} />
-                </section>
+              <section className="rounded-md bg-white p-5 shadow-[0_18px_60px_rgba(4,56,115,0.1)]">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-bold text-[#212529]">Fit details</h2>
+                    <p className="mt-1 text-xs leading-5 text-[#4F5F6F]">Evidence behind the recommendation.</p>
+                  </div>
+                  <div className="rounded-md bg-[#FFE492] px-3 py-2 text-sm font-bold text-[#043873]">
+                    {activeResult.score}% fit
+                  </div>
+                </div>
+                <div className="mb-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                  {activeResult.scoreBreakdown.map((item) => (
+                    <div key={item.label} className="rounded-md border border-[#DDE8F6] bg-white p-2">
+                      <p className="text-sm font-bold text-[#043873]">{item.value}</p>
+                      <p className="mt-1 text-[10px] font-semibold leading-4 text-[#4F5F6F]">{item.label}</p>
+                    </div>
+                  ))}
+                </div>
+                {isPreparingReport ? (
+                  <div className="mb-4 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
+                    <h3 className="text-sm font-bold text-[#212529]">Our reasoning</h3>
+                    <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
+                      Preparing the reasons for this recommendation.
+                    </p>
+                  </div>
+                ) : reportReasoning.length ? (
+                  <div className="mb-4 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
+                    <h3 className="text-sm font-bold text-[#212529]">Our reasoning</h3>
+                    <ul className="mt-3 grid gap-2 text-sm leading-6 text-[#4F5F6F]">
+                      {reportReasoning.slice(0, 4).map((item) => (
+                        <li key={item} className="flex gap-2">
+                          <CheckCircle2 size={15} className="mt-1 shrink-0 text-[#4F9CF9]" aria-hidden="true" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <section className="grid content-start gap-3 rounded-md border border-[#DDE8F6] p-4">
+                    <CompactResultBlock title="Matched skills" icon={CheckCircle2} items={activeResult.matchedSkills} tone="match" limit={4} />
+                    <CompactResultBlock title="Gaps to cover" icon={Target} items={activeResult.missingSkills} tone="gap" limit={3} />
+                    <CompactResultBlock title="Role signals" icon={Network} items={activeResult.roleSignals} tone="signal" limit={3} />
+                  </section>
 
-                <section className="grid h-full content-start gap-3 rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(0,0,0,0.16)]">
-                  <h3 className="text-base font-extrabold">Score explanation</h3>
-                  <CompactResultBlock title="Core matched" icon={CheckCircle2} items={activeResult.skillGroups.coreMatched} tone="match" limit={3} />
-                  <CompactResultBlock title="Core missing" icon={Target} items={activeResult.skillGroups.coreMissing} tone="gap" limit={2} />
-                  <CompactResultBlock title="Nice-to-have matched" icon={Network} items={activeResult.skillGroups.niceToHaveMatched} tone="signal" limit={2} />
-                </section>
-              </div>
-
+                  <section className="grid content-start gap-3 rounded-md border border-[#DDE8F6] p-4">
+                    <h3 className="text-base font-bold">Score explanation</h3>
+                    <CompactResultBlock title="Core matched" icon={CheckCircle2} items={activeResult.skillGroups.coreMatched} tone="match" limit={3} />
+                    <CompactResultBlock title="Core missing" icon={Target} items={activeResult.skillGroups.coreMissing} tone="gap" limit={2} />
+                    <CompactResultBlock title="Nice-to-have matched" icon={Network} items={activeResult.skillGroups.niceToHaveMatched} tone="signal" limit={2} />
+                  </section>
+                </div>
+              </section>
             </aside>
+            ) : null}
           </div>
         </div>
       </section>
 
-      <section id="application-kit" className="bg-[#F8FBFF] py-16 md:py-24">
+      <section id="job-matches" className="bg-[#F8FBFF] py-10 md:py-14">
+        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
+          <div className="grid gap-6 lg:grid-cols-[0.78fr_1.22fr] lg:items-start">
+            <div className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_14px_40px_rgba(4,56,115,0.08)] md:p-6">
+              <p className="text-sm font-bold uppercase text-[#4F9CF9]">Job discovery</p>
+              <h2 className="mt-3 text-3xl font-extrabold leading-tight text-[#043873]">
+                Find roles that fit your resume.
+              </h2>
+              <p className="mt-3 text-sm leading-7 text-[#4F5F6F]">
+                Search company career pages and ATS listings by target role, then RoleGuage scores each real listing against the resume currently loaded above.
+              </p>
+
+              <form onSubmit={discoverMatchingJobs} className="mt-5 grid gap-3">
+                <label className="grid gap-2">
+                  <span className="text-xs font-bold uppercase text-[#4F5F6F]">Target role or keywords</span>
+                  <input
+                    value={jobSearchQuery}
+                    onChange={(event) => setJobSearchQuery(event.target.value)}
+                    className="h-12 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-4 text-sm outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15"
+                    placeholder="data analyst python sql"
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className="text-xs font-bold uppercase text-[#4F5F6F]">Location</span>
+                  <input
+                    value={jobSearchLocation}
+                    onChange={(event) => setJobSearchLocation(event.target.value)}
+                    className="h-12 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-4 text-sm outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15"
+                    placeholder="Australia, Remote, United States..."
+                  />
+                </label>
+                <button
+                  type="submit"
+                  disabled={resume.trim().length < 80 || isDiscoveringJobs}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#043873] px-5 text-sm font-bold text-white transition hover:bg-[#0b4c97] disabled:cursor-not-allowed disabled:bg-[#A7CEFC]"
+                >
+                  {isDiscoveringJobs ? <Loader2 className="animate-spin" size={17} aria-hidden="true" /> : <SearchCheck size={17} aria-hidden="true" />}
+                  {isDiscoveringJobs ? "Finding jobs" : "Find matching jobs"}
+                </button>
+              </form>
+
+              {jobDiscoveryError ? (
+                <p className="mt-4 text-sm font-semibold text-red-600">{jobDiscoveryError}</p>
+              ) : null}
+              <p className="mt-4 text-xs leading-5 text-[#4F5F6F]">
+                Apply opens the original listing. RoleGuage searches public company career pages first, with paid job-data providers available as an optional add-on.
+              </p>
+            </div>
+
+            <div className="grid gap-3">
+              <div className="flex flex-col justify-between gap-2 rounded-md border border-[#DDE8F6] bg-white p-4 sm:flex-row sm:items-center">
+                <div>
+                  <h3 className="text-xl font-extrabold text-[#212529]">Best fitting jobs</h3>
+                  {/* <p className="mt-1 text-sm leading-6 text-[#4F5F6F]">
+                    Ranked by resume fit, not by paid placement.
+                  </p> */}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-md bg-[#FFE492] px-3 py-2 text-sm font-bold text-[#043873]">
+                    {discoveredJobs.length ? `${filteredDiscoveredJobs.length} of ${discoveredJobs.length} matches` : "Ready to search"}
+                  </span>
+                </div>
+              </div>
+
+              {discoveredJobs.length ? (
+                <JobDiscoveryFilters
+                  sourceFilter={jobSourceFilter}
+                  onSourceFilterChange={setJobSourceFilter}
+                  sources={jobSources}
+                  decisionFilter={jobDecisionFilter}
+                  onDecisionFilterChange={setJobDecisionFilter}
+                  remoteOnly={jobRemoteOnly}
+                  onRemoteOnlyChange={setJobRemoteOnly}
+                  minScore={jobMinScore}
+                  onMinScoreChange={setJobMinScore}
+                  sort={jobSort}
+                  onSortChange={setJobSort}
+                />
+              ) : null}
+
+              {discoveredJobs.length ? (
+                filteredDiscoveredJobs.length ? (
+                  filteredDiscoveredJobs.map((jobMatch) => (
+                    <JobMatchCard
+                      key={jobMatch.id}
+                      job={jobMatch}
+                      onLoad={() => loadDiscoveredJob(jobMatch)}
+                    />
+                  ))
+                ) : (
+                  <div className="rounded-md border border-dashed border-[#A7CEFC] bg-white p-8 text-center">
+                    <p className="text-lg font-extrabold text-[#043873]">No jobs match these filters</p>
+                    <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#4F5F6F]">
+                      Lower the minimum fit score, include more decisions, or clear the remote-only filter.
+                    </p>
+                  </div>
+                )
+              ) : (
+                <div className="rounded-md border border-dashed border-[#A7CEFC] bg-white p-8 text-center">
+                  <p className="text-lg font-extrabold text-[#043873]">No job matches loaded yet</p>
+                  <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#4F5F6F]">
+                    Upload or paste your resume, choose a target role, then search to see ranked job listings with direct apply links.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="workflow" className="bg-white py-10 md:py-14">
+        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
+          <div className="grid gap-7 lg:grid-cols-[0.82fr_1.18fr] lg:items-start">
+            <div>
+              <p className="text-sm font-bold uppercase text-[#4F9CF9]">How it works</p>
+              <h2 className="mt-3 text-3xl font-extrabold leading-tight text-[#043873] md:text-5xl">
+                One workflow from job ad to application plan.
+              </h2>
+              <p className="mt-4 max-w-xl text-sm leading-7 text-[#4F5F6F]">
+                RoleGuage is designed for jobseekers who want to apply with focus, not guesswork. It keeps the useful parts of AI job tools and removes the noisy parts: no fake skills, no black-box score, no forced account before the first check.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {workflowSteps.map(([title, copy, Icon], index) => (
+                <article key={title} className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="grid size-10 place-items-center rounded-md bg-[#043873] text-white">
+                      <Icon size={19} aria-hidden="true" />
+                    </span>
+                    <span className="rounded-md bg-[#FFE492] px-2.5 py-1 text-xs font-bold text-[#043873]">
+                      0{index + 1}
+                    </span>
+                  </div>
+                  <h3 className="mt-5 text-lg font-extrabold text-[#212529]">{title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">{copy}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {hasGeneratedReport && !isPreparingReport ? (
+      <section id="application-kit" className="bg-[#043873] pb-14 pt-8 text-white md:pb-20 md:pt-12">
         <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
           <div className="mb-10 grid gap-5 lg:grid-cols-[0.85fr_1.15fr] lg:items-end">
             <div>
               <h2 className="text-4xl font-extrabold leading-tight md:text-5xl">
-                Your application <span className="yellow-mark">kit</span>
+                Your application <span className="text-[#FFE492]">kit</span>
               </h2>
-              <p className="mt-5 max-w-2xl leading-8 text-[#4F5F6F]">
-                Turn the match result into practical assets you can use before applying, interviewing, or contacting someone at the company.
+              <p className="mt-5 max-w-2xl leading-8 text-white/82">
+                Turn the match result into practical notes for your resume, interview prep, outreach, and next action.
               </p>
             </div>
             <div className="rounded-md border border-[#DDE8F6] bg-white p-4 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
@@ -886,7 +1171,7 @@ export default function Home() {
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <span className="rounded-md bg-[#043873] px-3 py-2 text-sm font-extrabold text-white">{activeResult.decision}</span>
                 <span className="rounded-md bg-[#FFE492] px-3 py-2 text-sm font-extrabold text-[#043873]">{activeResult.score}% fit</span>
-                <span className="rounded-md border border-[#A7CEFC] bg-[#F4F9FF] px-3 py-2 text-sm font-bold text-[#043873]">{activeResult.timeToApply}</span>
+                <span className="rounded-md border border-[#A7CEFC] bg-white px-3 py-2 text-sm font-semibold text-[#043873]">{activeResult.timeToApply}</span>
               </div>
             </div>
           </div>
@@ -894,42 +1179,100 @@ export default function Home() {
           <div className="grid gap-5 lg:grid-cols-3">
             <ApplicationKitCard
               title="Keyword plan"
-              icon={Target}
               items={[
                 `Lead with: ${activeResult.keywordPlan.headline}`,
                 ...activeResult.keywordPlan.keep.slice(0, 4).map((item) => `Keep visible: ${item}`),
-                ...activeResult.keywordPlan.add.slice(0, 4).map((item) => `Add proof for: ${item}`),
+                ...activeResult.keywordPlan.add.slice(0, 4).map((item) => `Missing evidence: ${item}`),
               ]}
             />
-            <ApplicationKitCard title="Resume bullet drafts" icon={FileText} items={activeResult.resumeBullets} />
-            <ApplicationKitCard title="Interview prep" icon={Users} items={activeResult.interviewPrep} />
+            <ApplicationKitCard title="Resume bullet drafts" items={activeResult.resumeBullets} />
+            <ApplicationKitCard title="Interview prep" items={activeResult.interviewPrep} />
           </div>
 
           <div className="mt-5 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
             <section className="rounded-md border border-[#DDE8F6] bg-white p-6 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
-              <div className="flex items-center gap-3">
-                <span className="grid size-9 place-items-center rounded-md bg-[#A7CEFC]/45 text-[#043873]">
-                  <Network size={18} aria-hidden="true" />
-                </span>
-                <h3 className="text-xl font-extrabold">Outreach note</h3>
-              </div>
+              <h3 className="text-xl font-bold text-[#212529]">Outreach note</h3>
               <p className="mt-4 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 text-[#4F5F6F]">
                 {activeResult.outreachMessage}
               </p>
             </section>
-            <ApplicationKitCard title="ATS sanity checks" icon={ShieldCheck} items={activeResult.atsNotes} />
+            <ApplicationKitCard title="ATS sanity checks" items={activeResult.atsNotes} />
+          </div>
+
+          {activeResult.gapRoadmap?.length ? (
+            <section className="mt-5 rounded-md border border-[#DDE8F6] bg-white p-6 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
+              <h3 className="text-xl font-bold text-[#212529]">Skill gap roadmap</h3>
+              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                {activeResult.gapRoadmap.slice(0, 3).map((item) => (
+                  <article key={item.skill} className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
+                    <p className="text-sm font-extrabold text-[#043873]">{item.skill}</p>
+                    <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">{item.action}</p>
+                    <p className="mt-3 rounded-md border border-[#A7CEFC] bg-white p-3 text-xs font-semibold leading-5 text-[#043873]">
+                      {item.proofProject}
+                    </p>
+                    <p className="mt-3 text-xs font-bold text-[#4F5F6F]">{item.timeframe}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </div>
+      </section>
+      ) : null}
+
+      <section id="tools" className="bg-white pb-12 pt-8 md:pb-16 md:pt-10">
+        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
+          <div className="mb-7 flex flex-col justify-between gap-3 md:flex-row md:items-end">
+            <div>
+              <h2 className="text-3xl font-extrabold text-[#043873]">Everything needed to apply with focus</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#4F5F6F]">
+                Start with the matcher, then use the generated kit to tailor, prepare, save, and export without rebuilding the same work every time.
+              </p>
+            </div>
+            <a href="#analyze" className="inline-flex h-11 items-center justify-center rounded-md bg-[#043873] px-5 text-sm font-bold text-white transition hover:bg-[#0b4c97]">
+              Open matcher
+            </a>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {jobTools.map(([title, copy, Icon]) => (
+              <a key={title} href={title === "Application tracker" ? "#tracker" : "#analyze"} className="group rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5 transition hover:-translate-y-0.5 hover:border-[#A7CEFC] hover:bg-white hover:shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
+                <span className="grid size-10 place-items-center rounded-md bg-[#A7CEFC]/45 text-[#043873]">
+                  <Icon size={20} aria-hidden="true" />
+                </span>
+                <h3 className="mt-5 text-lg font-extrabold text-[#212529]">{title}</h3>
+                <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">{copy}</p>
+              </a>
+            ))}
+          </div>
+          <div className="mt-6 grid gap-4 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
+            <div className="flex items-center gap-3">
+              <span className="grid size-11 place-items-center rounded-md bg-[#043873] text-white">
+                <ShieldCheck size={21} aria-hidden="true" />
+              </span>
+              <div>
+                <h3 className="text-lg font-extrabold text-[#212529]">Privacy-first MVP</h3>
+                <p className="mt-1 text-sm leading-6 text-[#4F5F6F]">Saved resumes and tracked applications stay in this browser for now.</p>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {trustItems.map((item) => (
+                <div key={item} className="rounded-md border border-[#DDE8F6] bg-white px-3 py-2 text-sm font-semibold text-[#043873]">
+                  {item}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
 
-      <section id="tracker" className="bg-[#F8FBFF] py-16 md:py-24">
+      <section id="tracker" className="bg-[#043873] pb-14 pt-8 text-white md:pb-20 md:pt-12">
         <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
           <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
             <div>
               <h2 className="text-4xl font-extrabold leading-tight md:text-5xl">
-                Application <span className="yellow-mark">tracker</span>
+                Application <span className="text-[#FFE492]">tracker</span>
               </h2>
-              <p className="mt-4 max-w-2xl leading-8 text-[#4F5F6F]">
+              <p className="mt-4 max-w-2xl leading-8 text-white/82">
                 Save fit reports, update statuses, and keep notes so every application has a clear next action.
               </p>
             </div>
@@ -949,13 +1292,13 @@ export default function Home() {
                         <span className="rounded-md bg-[#FFE492] px-3 py-1 text-sm font-extrabold text-[#043873]">
                           {application.score}%
                         </span>
-                        <span className="rounded-md border border-[#A7CEFC] bg-[#F4F9FF] px-3 py-1 text-sm font-bold text-[#043873]">
+                        <span className="rounded-md border border-[#A7CEFC] bg-white px-3 py-1 text-sm font-semibold text-[#043873]">
                           {application.level}
                         </span>
-                        <span className="rounded-md bg-[#043873] px-3 py-1 text-sm font-extrabold text-white">
+                        <span className="rounded-md bg-[#043873] px-3 py-1 text-sm font-bold text-white">
                           {application.decision ?? "Review"}
                         </span>
-                        <span className="rounded-md border border-[#FFE492] bg-[#FFF4C2] px-3 py-1 text-sm font-bold text-[#5F4700]">
+                        <span className="rounded-md border border-[#FFE492] bg-[#FFE492] px-3 py-1 text-sm font-semibold text-[#043873]">
                           {application.timeToApply ?? "Plan"}
                         </span>
                       </div>
@@ -982,7 +1325,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={() => removeApplication(application.id)}
-                        className="h-11 rounded-md border border-[#FFE492] px-3 text-sm font-bold text-[#5F4700] transition hover:bg-[#FFF4C2]"
+                        className="h-11 rounded-md border border-[#FFE492] px-3 text-sm font-semibold text-[#043873] transition hover:bg-[#FFE492]"
                       >
                         Remove
                       </button>
@@ -1015,14 +1358,14 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="pricing" className="py-16 md:py-24">
+      <section id="pricing" className="pb-16 pt-10 md:pb-24 md:pt-14">
         <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-4xl font-extrabold leading-tight md:text-5xl">
               Choose your <span className="yellow-mark">plan</span>
             </h2>
             <p className="mt-5 leading-8 text-[#4F5F6F]">
-              Start with quick fit checks, then save stronger reports and application notes when your job search gets busier.
+              Start with fit checks, then upgrade when you want saved reports, profile reuse, and a cleaner application workflow.
             </p>
           </div>
           <div className="mt-12 grid gap-6 lg:grid-cols-3">
@@ -1054,88 +1397,30 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="blue-wave bg-[#043873] py-16 text-white">
-        <div className="mx-auto grid max-w-7xl gap-10 px-5 md:px-8 lg:grid-cols-2 lg:items-center lg:px-10">
-          <div>
-            <h2 className="text-4xl font-extrabold leading-tight md:text-5xl">
-              Your work, everywhere you are
-            </h2>
-            <p className="mt-5 max-w-2xl leading-8 text-white/82">
-              Keep every target role, fit report, and next step together so your job search feels organized instead of scattered.
+      <section id="faq" className="bg-white py-12 md:py-16">
+        <div className="mx-auto max-w-5xl px-5 md:px-8 lg:px-10">
+          <div className="mb-7 text-center">
+            <h2 className="text-3xl font-extrabold text-[#043873] md:text-4xl">Questions jobseekers ask first</h2>
+            <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-[#4F5F6F]">
+              RoleGuage is built to help you apply better, not to invent experience or automate low-quality applications.
             </p>
-            <a href="#analyze" className="mt-7 inline-flex items-center gap-2 rounded-md bg-[#4F9CF9] px-6 py-4 text-sm font-semibold text-white transition hover:bg-[#3b8dea]">
-              Try it now
-              <ArrowRight size={17} aria-hidden="true" />
-            </a>
           </div>
-          <DataVisual />
-        </div>
-      </section>
-
-      <section className="py-16 md:py-24">
-        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
-          <div className="grid gap-12 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
-            <div>
-              <h2 className="text-4xl font-extrabold leading-tight md:text-5xl">
-                100% your <span className="yellow-mark">data</span>
-              </h2>
-              <p className="mt-5 leading-8 text-[#4F5F6F]">
-                ApplyPilot is built as a job-search workspace first. You decide what to paste, analyze, save, and export.
-              </p>
-              <a href="#analyze" className="mt-7 inline-flex items-center gap-2 rounded-md bg-[#4F9CF9] px-6 py-4 text-sm font-semibold text-white transition hover:bg-[#3b8dea]">
-                Learn more
-              </a>
-            </div>
-            <div className="grid gap-4 rounded-md border border-[#E4EDF8] bg-[#F8FBFF] p-6 sm:grid-cols-3">
-              {dataPrinciples.map(([label, Icon]) => (
-                <div key={String(label)} className="rounded-md bg-white p-5 text-center shadow-[0_10px_30px_rgba(4,56,115,0.08)]">
-                  <Icon className="mx-auto text-[#4F9CF9]" size={28} aria-hidden="true" />
-                  <p className="mt-3 text-sm font-bold">{label}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-16 text-center">
-            <h2 className="text-3xl font-extrabold">
-              Our <span className="yellow-mark">signals</span>
-            </h2>
-            <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {["Python", "SQL", "React", "Machine Learning"].map((signal) => (
-                <div key={signal} className="rounded-md border border-[#E4EDF8] px-5 py-4 font-semibold text-[#043873]">
-                  {signal}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-[#F8FBFF] py-16 md:py-24">
-        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
-          <h2 className="text-center text-4xl font-extrabold">
-            What early users <span className="yellow-mark">say</span>
-          </h2>
-          <div className="mt-12 grid gap-6 lg:grid-cols-3">
-            {testimonials.map(([quote, person], index) => (
-              <article key={quote} className={`rounded-md p-7 shadow-[0_14px_40px_rgba(4,56,115,0.08)] ${index === 1 ? "bg-[#4F9CF9] text-white" : "bg-white text-[#212529]"}`}>
-                <p className="text-6xl font-extrabold leading-none text-[#043873]/25">&quot;</p>
-                <p className={`mt-2 leading-8 ${index === 1 ? "text-white" : "text-[#4F5F6F]"}`}>{quote}</p>
-                <div className="mt-7 flex items-center gap-3 border-t border-current/15 pt-5">
-                  <span className="grid size-11 place-items-center rounded-md bg-[#FFE492] text-sm font-bold text-[#043873]">{person.charAt(0)}</span>
-                  <p className="text-sm font-bold">{person}</p>
-                </div>
+          <div className="grid gap-3">
+            {faqs.map(([question, answer]) => (
+              <article key={question} className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5">
+                <h3 className="text-base font-extrabold text-[#212529]">{question}</h3>
+                <p className="mt-2 text-sm leading-7 text-[#4F5F6F]">{answer}</p>
               </article>
             ))}
           </div>
         </div>
       </section>
 
-      <footer className="blue-wave bg-[#043873] text-white">
-        <div className="mx-auto max-w-7xl px-5 py-14 text-center md:px-8 lg:px-10">
-          <h2 className="text-4xl font-extrabold">Try ApplyPilot today</h2>
+      <footer className="bg-[#043873] text-white">
+        <div className="mx-auto max-w-7xl px-5 py-10 text-center md:px-8 lg:px-10">
+          <h2 className="text-4xl font-extrabold">Try RoleGuage today</h2>
           <p className="mx-auto mt-5 max-w-xl leading-8 text-white/82">
-            Compare your resume against real job ads, spot the gaps, and leave with a clearer plan for your next application.
+            Compare your resume against a real job ad, see the evidence gaps, and leave with a clearer plan for your next application.
           </p>
           <a href="#analyze" className="mt-7 inline-flex items-center gap-2 rounded-md bg-[#4F9CF9] px-6 py-4 text-sm font-semibold text-white transition hover:bg-[#3b8dea]">
             Start analyzing
@@ -1146,9 +1431,9 @@ export default function Home() {
               <span className="grid size-8 place-items-center rounded-md bg-white text-[#043873]">
                 <Radar size={20} aria-hidden="true" />
               </span>
-              ApplyPilot
+              RoleGuage
             </a>
-            <p>Resume fit scoring, skill-gap analysis, and targeted application support.</p>
+            <p>Resume fit scoring, evidence-gap analysis, and targeted application support.</p>
           </div>
         </div>
       </footer>
@@ -1181,7 +1466,10 @@ function subscribeToTracker(onStoreChange: () => void) {
 }
 
 function getTrackerSnapshot() {
-  const raw = window.localStorage.getItem(trackerStorageKey) ?? "[]";
+  const raw =
+    window.localStorage.getItem(trackerStorageKey) ??
+    window.localStorage.getItem(legacyTrackerStorageKey) ??
+    "[]";
 
   if (raw === cachedTrackerRaw) {
     return cachedTrackerApplications;
@@ -1225,7 +1513,7 @@ function cleanImportedTitle(title: string) {
 
 function buildReportText(result: AnalysisResult, meta: JobMeta) {
   return [
-    "ApplyPilot Fit Report",
+    "RoleGuage Fit Report",
     "",
     `Role: ${meta.title || "Untitled role"}`,
     `Company: ${meta.company || "Not provided"}`,
@@ -1257,10 +1545,13 @@ function buildReportText(result: AnalysisResult, meta: JobMeta) {
     "Recommended Actions",
     ...result.bullets.map((item) => `- ${item}`),
     "",
+    "Our Reasoning",
+    ...(result.fitReasoning?.length ? result.fitReasoning.map((item) => `- ${item}`) : ["- No extra notes available"]),
+    "",
     "Keyword Plan",
     `- Headline: ${result.keywordPlan.headline}`,
     ...result.keywordPlan.keep.map((item) => `- Keep visible: ${item}`),
-    ...result.keywordPlan.add.map((item) => `- Add proof for: ${item}`),
+    ...result.keywordPlan.add.map((item) => `- Missing evidence: ${item}`),
     "",
     "Resume Bullet Drafts",
     ...result.resumeBullets.map((item) => `- ${item}`),
@@ -1273,6 +1564,13 @@ function buildReportText(result: AnalysisResult, meta: JobMeta) {
     "",
     "ATS Notes",
     ...result.atsNotes.map((item) => `- ${item}`),
+    "",
+    "Skill Gap Roadmap",
+    ...(result.gapRoadmap?.length
+      ? result.gapRoadmap.map(
+          (item) => `- ${item.skill}: ${item.action} | Proof: ${item.proofProject} | Timeframe: ${item.timeframe}`,
+        )
+      : ["- No roadmap available"]),
   ].join("\n");
 }
 
@@ -1282,6 +1580,28 @@ function slugify(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 80);
+}
+
+function parsePostedDate(value: string) {
+  if (!value) return 0;
+
+  const currentYear = new Date().getFullYear();
+  const parsed = Date.parse(`${value} ${currentYear}`);
+
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function buildDiscoveredJobText(jobToLoad: DiscoveredJob) {
+  return [
+    jobToLoad.title,
+    jobToLoad.company,
+    jobToLoad.location,
+    jobToLoad.tags.join(" "),
+    "",
+    jobToLoad.description,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function SmallInput({
@@ -1297,7 +1617,7 @@ function SmallInput({
 }) {
   return (
     <label className="grid min-w-0 gap-2">
-      <span className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F5F6F]">{label}</span>
+      <span className="text-xs font-bold uppercase text-[#4F5F6F]">{label}</span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -1308,6 +1628,231 @@ function SmallInput({
   );
 }
 
+function JobDiscoveryFilters({
+  sourceFilter,
+  onSourceFilterChange,
+  sources,
+  decisionFilter,
+  onDecisionFilterChange,
+  remoteOnly,
+  onRemoteOnlyChange,
+  minScore,
+  onMinScoreChange,
+  sort,
+  onSortChange,
+}: {
+  sourceFilter: string;
+  onSourceFilterChange: (value: string) => void;
+  sources: string[];
+  decisionFilter: JobDecisionFilter;
+  onDecisionFilterChange: (value: JobDecisionFilter) => void;
+  remoteOnly: boolean;
+  onRemoteOnlyChange: (value: boolean) => void;
+  minScore: number;
+  onMinScoreChange: (value: number) => void;
+  sort: JobSort;
+  onSortChange: (value: JobSort) => void;
+}) {
+  return (
+    <section className="rounded-md border border-[#DDE8F6] bg-white p-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <label className="grid gap-1.5">
+          <span className="text-xs font-bold uppercase text-[#4F5F6F]">Sort</span>
+          <select
+            value={sort}
+            onChange={(event) => onSortChange(event.target.value as JobSort)}
+            className="h-10 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-semibold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
+          >
+            <option value="fit">Best fit</option>
+            <option value="recent">Most recent</option>
+          </select>
+        </label>
+
+        <label className="grid gap-1.5">
+          <span className="text-xs font-bold uppercase text-[#4F5F6F]">Source</span>
+          <select
+            value={sourceFilter}
+            onChange={(event) => onSourceFilterChange(event.target.value)}
+            className="h-10 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-semibold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
+          >
+            <option value="all">All sources</option>
+            {sources.map((source) => (
+              <option key={source} value={source}>{source}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="grid gap-1.5">
+          <span className="text-xs font-bold uppercase text-[#4F5F6F]">Decision</span>
+          <select
+            value={decisionFilter}
+            onChange={(event) => onDecisionFilterChange(event.target.value as JobDecisionFilter)}
+            className="h-10 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-semibold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
+          >
+            <option value="all">All decisions</option>
+            <option value="Apply">Apply</option>
+            <option value="Tailor">Tailor</option>
+            <option value="Build">Build</option>
+            <option value="Skip">Skip</option>
+          </select>
+        </label>
+
+        <label className="grid gap-1.5">
+          <span className="text-xs font-bold uppercase text-[#4F5F6F]">Minimum fit</span>
+          <select
+            value={minScore}
+            onChange={(event) => onMinScoreChange(Number(event.target.value))}
+            className="h-10 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-semibold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
+          >
+            <option value={0}>Any score</option>
+            <option value={55}>55%+</option>
+            <option value={70}>70%+</option>
+            <option value={82}>82%+</option>
+          </select>
+        </label>
+
+        <label className="flex h-10 items-center justify-between gap-3 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 xl:self-end">
+          <span className="text-sm font-semibold text-[#043873]">Remote only</span>
+          <input
+            checked={remoteOnly}
+            onChange={(event) => onRemoteOnlyChange(event.target.checked)}
+            type="checkbox"
+            className="size-4 accent-[#043873]"
+          />
+        </label>
+      </div>
+    </section>
+  );
+}
+
+function JobMatchCard({
+  job,
+  onLoad,
+}: {
+  job: DiscoveredJob;
+  onLoad: () => void;
+}) {
+  return (
+    <article className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_10px_30px_rgba(4,56,115,0.06)] transition hover:border-[#A7CEFC] hover:shadow-[0_16px_42px_rgba(4,56,115,0.1)]">
+      <div className="grid gap-4 md:grid-cols-[1fr_auto]">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md bg-[#A7CEFC] px-2.5 py-1 text-xs font-bold text-[#043873]">
+              via {job.source}
+            </span>
+            {job.postedAt ? (
+              <span className="rounded-md border border-[#DDE8F6] px-2.5 py-1 text-xs font-semibold text-[#4F5F6F]">
+                Posted {job.postedAt}
+              </span>
+            ) : null}
+            <span className="rounded-md border border-[#FFE492] bg-[#FFE492] px-2.5 py-1 text-xs font-bold text-[#043873]">
+              {job.level}
+            </span>
+          </div>
+          <h3 className="mt-3 text-xl font-extrabold leading-tight text-[#212529]">{job.title}</h3>
+          <p className="mt-1 text-sm font-semibold text-[#4F5F6F]">
+            {[job.company, job.location].filter(Boolean).join(" | ")}
+          </p>
+          <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#4F5F6F]">{job.summary}</p>
+        </div>
+
+        <div className="flex items-start gap-3 md:flex-col md:items-end">
+          <div className="grid size-20 shrink-0 place-items-center rounded-md bg-[#043873] text-white">
+            <div className="text-center">
+              <p className="text-2xl font-extrabold leading-none">{job.score}</p>
+              <p className="mt-1 text-xs font-bold">fit</p>
+            </div>
+          </div>
+          <div className="flex grow gap-2 md:grow-0">
+            <button
+              type="button"
+              onClick={onLoad}
+              className="inline-flex h-10 items-center justify-center rounded-md border border-[#A7CEFC] px-3 text-xs font-bold text-[#043873] transition hover:bg-[#A7CEFC]/25"
+            >
+              Review
+            </button>
+            <a
+              href={job.applyUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-10 items-center justify-center rounded-md bg-[#4F9CF9] px-3 text-xs font-bold text-white transition hover:bg-[#3b8dea]"
+            >
+              Apply
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
+        <p className="mb-3 text-xs font-bold uppercase text-[#4F5F6F]">Job brief</p>
+        <div className="grid gap-2 text-sm leading-6 text-[#4F5F6F]">
+          <BriefRow label="Work" value={job.descriptionSummary.work} />
+          <BriefRow label="Needs" value={job.descriptionSummary.requirements} />
+          <BriefRow label="Level" value={job.descriptionSummary.experience} />
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 border-t border-[#DDE8F6] pt-4 lg:grid-cols-2">
+        <JobChipGroup label="Matched" items={job.matchedSkills} tone="match" />
+        <JobChipGroup label="Gaps" items={job.missingSkills} tone="gap" />
+      </div>
+
+      {job.tags.length ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {job.tags.slice(0, 5).map((tag) => (
+            <span key={tag} className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-2.5 py-1 text-xs font-semibold text-[#4F5F6F]">
+              {tag}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function BriefRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid gap-1 sm:grid-cols-[70px_1fr]">
+      <span className="font-bold text-[#043873]">{label}</span>
+      <span>{value}</span>
+    </div>
+  );
+}
+
+function JobChipGroup({
+  label,
+  items,
+  tone,
+}: {
+  label: string;
+  items: string[];
+  tone: "match" | "gap";
+}) {
+  const chipClass =
+    tone === "match"
+      ? "border-[#A7CEFC] bg-white text-[#043873]"
+      : "border-[#FFE492] bg-[#FFE492] text-[#043873]";
+
+  return (
+    <div>
+      <p className="mb-2 text-xs font-bold uppercase text-[#4F5F6F]">{label}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {items.length ? (
+          items.map((item) => (
+            <span key={item} className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${chipClass}`}>
+              {item}
+            </span>
+          ))
+        ) : (
+          <span className="rounded-md border border-[#DDE8F6] px-2.5 py-1 text-xs font-semibold text-[#4F5F6F]">
+            None detected
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function TrackerSkillList({ label, items }: { label: string; items: string[] }) {
   return (
     <div>
@@ -1315,7 +1860,7 @@ function TrackerSkillList({ label, items }: { label: string; items: string[] }) 
       <div className="flex flex-wrap gap-2">
         {items.length ? (
           items.slice(0, 8).map((item) => (
-            <span key={item} className="rounded-md border border-[#A7CEFC] bg-[#F4F9FF] px-3 py-1.5 text-xs font-bold text-[#043873]">
+            <span key={item} className="rounded-md border border-[#A7CEFC] bg-white px-3 py-1.5 text-xs font-semibold text-[#043873]">
               {item}
             </span>
           ))
@@ -1331,21 +1876,14 @@ function TrackerSkillList({ label, items }: { label: string; items: string[] }) 
 
 function ApplicationKitCard({
   title,
-  icon: Icon,
   items,
 }: {
   title: string;
-  icon: LucideIcon;
   items: string[];
 }) {
   return (
     <section className="rounded-md border border-[#DDE8F6] bg-white p-6 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
-      <div className="flex items-center gap-3">
-        <span className="grid size-9 place-items-center rounded-md bg-[#A7CEFC]/45 text-[#043873]">
-          <Icon size={18} aria-hidden="true" />
-        </span>
-        <h3 className="text-xl font-extrabold">{title}</h3>
-      </div>
+      <h3 className="text-xl font-bold text-[#212529]">{title}</h3>
       <ul className="mt-5 grid gap-3 text-sm leading-6 text-[#4F5F6F]">
         {items.map((item) => (
           <li key={item} className="flex gap-3">
@@ -1365,6 +1903,7 @@ function InputPanel({
   onChange,
   placeholder,
   compact = false,
+  fillAvailable = false,
 }: {
   icon: LucideIcon;
   label: string;
@@ -1372,9 +1911,10 @@ function InputPanel({
   onChange: (value: string) => void;
   placeholder: string;
   compact?: boolean;
+  fillAvailable?: boolean;
 }) {
   return (
-    <label className="grid gap-2">
+    <label className={`grid gap-2 ${fillAvailable ? "h-full grid-rows-[auto_1fr]" : ""}`}>
       <span className="flex items-center gap-2 text-sm font-bold">
         <Icon size={16} className="text-[#4F9CF9]" aria-hidden="true" />
         {label}
@@ -1382,7 +1922,7 @@ function InputPanel({
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={`${compact ? "min-h-32" : "min-h-40"} resize-y rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15`}
+        className={`${fillAvailable ? "h-full min-h-44 md:min-h-56" : compact ? "min-h-44 md:min-h-52" : "min-h-64 md:min-h-80"} resize-y rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15`}
         placeholder={placeholder}
       />
     </label>
@@ -1402,19 +1942,20 @@ function CompactResultBlock({
   tone: "match" | "gap" | "signal";
   limit?: number;
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const chipClass = {
-    match: "border-[#A7CEFC] bg-[#EAF4FF] text-[#043873]",
-    gap: "border-[#FFE492] bg-[#FFF4C2] text-[#5F4700]",
-    signal: "border-[#A7CEFC] bg-[#F4F9FF] text-[#043873]",
+    match: "border-[#A7CEFC] bg-white text-[#043873]",
+    gap: "border-[#FFE492] bg-[#FFE492] text-[#043873]",
+    signal: "border-[#A7CEFC] bg-[#A7CEFC] text-[#043873]",
   }[tone];
 
-  const visibleItems = items.slice(0, limit);
+  const visibleItems = isExpanded ? items : items.slice(0, limit);
   const hiddenCount = Math.max(items.length - visibleItems.length, 0);
 
   return (
     <div className="border-b border-[#DDE8F6] pb-3 last:border-b-0 last:pb-0">
-      <h3 className="mb-2 flex items-center gap-2 text-sm font-extrabold text-[#212529]">
-        <span className="grid size-5 shrink-0 place-items-center rounded-full border border-[#4F9CF9] text-[#4F9CF9]">
+      <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-[#212529]">
+        <span className="grid size-5 shrink-0 place-items-center rounded-md border border-[#043873] text-[#043873]">
           <Icon size={12} strokeWidth={2.5} aria-hidden="true" />
         </span>
         <span className="leading-tight">{title}</span>
@@ -1423,100 +1964,25 @@ function CompactResultBlock({
         {items.length ? (
           <>
           {visibleItems.map((item) => (
-            <span key={item} className={`rounded-md border px-2.5 py-1.5 text-xs font-bold leading-tight ${chipClass}`}>
+            <span key={item} className={`rounded-md border px-2.5 py-1.5 text-xs font-semibold leading-tight ${chipClass}`}>
               {item}
             </span>
           ))}
           {hiddenCount ? (
-            <span className="rounded-md border border-[#DDE8F6] bg-white px-2.5 py-1.5 text-xs font-bold leading-tight text-[#4F5F6F]">
+            <button
+              type="button"
+              onClick={() => setIsExpanded(true)}
+              className="rounded-md border border-[#DDE8F6] bg-white px-2.5 py-1.5 text-xs font-semibold leading-tight text-[#4F5F6F] transition hover:border-[#A7CEFC] hover:text-[#043873]"
+            >
               +{hiddenCount} more
-            </span>
+            </button>
           ) : null}
           </>
         ) : (
-          <span className="rounded-md border border-[#DDE8F6] bg-white px-2.5 py-1.5 text-xs font-bold text-[#4F5F6F]">
+          <span className="rounded-md border border-[#DDE8F6] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#4F5F6F]">
             None
           </span>
         )}
-      </div>
-    </div>
-  );
-}
-
-function HeroMockup({ score }: { score: number }) {
-  return (
-    <div className="rounded-md bg-[#CFE3FF] p-4 shadow-[0_28px_80px_rgba(0,0,0,0.2)]">
-      <div className="rounded-md bg-white p-5 text-[#212529]">
-        <div className="flex items-center justify-between border-b border-[#E4EDF8] pb-4">
-          <div>
-            <p className="text-sm font-bold text-[#043873]">AI Product Engineer</p>
-            <p className="mt-1 text-xs text-[#4F5F6F]">Sydney | Hybrid | Data product</p>
-          </div>
-          <span className="rounded-md bg-[#FFE492] px-4 py-2 text-lg font-extrabold text-[#043873]">{score}%</span>
-        </div>
-        <div className="mt-5 grid gap-4 sm:grid-cols-[0.8fr_1.2fr]">
-          <div className="grid gap-3">
-            {["Python", "SQL", "React"].map((item) => (
-              <div key={item} className="flex items-center gap-2 rounded-md bg-[#F8FBFF] p-3 text-sm font-semibold">
-                <CheckCircle2 size={16} className="text-[#4F9CF9]" aria-hidden="true" />
-                {item}
-              </div>
-            ))}
-          </div>
-          <div className="rounded-md bg-[#F8FBFF] p-4">
-            <div className="mb-4 h-3 w-32 rounded-md bg-[#A7CEFC]" />
-            <div className="grid gap-2">
-              <div className="h-3 rounded-md bg-[#DDEBFF]" />
-              <div className="h-3 w-10/12 rounded-md bg-[#DDEBFF]" />
-              <div className="h-3 w-8/12 rounded-md bg-[#DDEBFF]" />
-            </div>
-            <div className="mt-6 grid grid-cols-3 gap-3">
-              <div className="h-16 rounded-md bg-[#4F9CF9]" />
-              <div className="h-16 rounded-md bg-[#FFE492]" />
-              <div className="h-16 rounded-md bg-[#043873]" />
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function OrbitVisual() {
-  return (
-    <div className="relative mx-auto aspect-square w-full max-w-md">
-      <div className="absolute inset-10 rounded-full border border-dashed border-[#A7CEFC]" />
-      <div className="absolute inset-24 rounded-full border border-dashed border-[#A7CEFC]" />
-      <div className="absolute left-1/2 top-1/2 grid size-16 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-md bg-white text-[#4F9CF9] shadow-[0_14px_40px_rgba(4,56,115,0.12)]">
-        <Radar size={30} aria-hidden="true" />
-      </div>
-      {[
-        ["left-[8%] top-[48%]", "#ff5757"],
-        ["left-[18%] top-[20%]", "#FFE492"],
-        ["right-[12%] top-[22%]", "#4F9CF9"],
-        ["right-[9%] top-[55%]", "#00C48C"],
-        ["bottom-[11%] left-[28%]", "#4F9CF9"],
-        ["bottom-[18%] right-[28%]", "#FFB84D"],
-        ["left-[30%] top-[43%]", "#4F9CF9"],
-        ["right-[30%] top-[43%]", "#4F9CF9"],
-      ].map(([position, color]) => (
-        <span key={position} className={`absolute size-5 rounded-full ${position}`} style={{ backgroundColor: color }} />
-      ))}
-    </div>
-  );
-}
-
-function DataVisual() {
-  return (
-    <div className="rounded-md bg-white/10 p-6">
-      <div className="grid grid-cols-2 gap-4">
-        {dataMetrics.map(([label, value, Icon]) => (
-          <div key={String(label)} className="rounded-md bg-white p-5 text-[#043873]">
-            <Icon size={22} aria-hidden="true" />
-            <p className="mt-5 text-3xl font-extrabold">{value}</p>
-            <p className="mt-1 text-sm font-semibold text-[#4F5F6F]">{label}</p>
-          </div>
-        ))}
       </div>
     </div>
   );

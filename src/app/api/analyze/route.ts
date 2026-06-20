@@ -16,6 +16,11 @@ type Recommendation = {
   confidence: string;
 };
 
+type RoleFit = {
+  penalty: number;
+  signals: string[];
+};
+
 const skillTaxonomy: SkillDefinition[] = [
   { name: "Python", category: "Language", weight: 9, aliases: ["python", "pandas", "numpy"] },
   { name: "SQL", category: "Data", weight: 9, aliases: ["sql", "mysql", "postgres", "postgresql", "sql queries"] },
@@ -71,6 +76,49 @@ const mustHavePatterns = [
   "strong experience",
 ];
 
+const seniorRolePatterns = [
+  "senior",
+  "lead",
+  "principal",
+  "head of",
+  "manager",
+  "director",
+  "staff",
+];
+
+const roleFamilyChecks = [
+  {
+    name: "Software engineering",
+    jobAliases: ["software engineer", "software developer", "fullstack", "full stack", "frontend", "backend", "developer"],
+    resumeAliases: ["software engineer", "software developer", "web applications", "rest apis", "react", "typescript", "backend"],
+    strict: false,
+  },
+  {
+    name: "Data analyst",
+    jobAliases: ["data analyst", "analytics analyst", "business analyst", "bi analyst", "reporting analyst"],
+    resumeAliases: ["data analysis", "business analytics", "dashboards", "sql", "power bi", "tableau", "analytics"],
+    strict: false,
+  },
+  {
+    name: "Data scientist",
+    jobAliases: ["data scientist", "machine learning scientist", "ml scientist", "research scientist", "applied scientist"],
+    resumeAliases: ["data scientist", "machine learning", "predictive modelling", "predictive modeling", "nlp", "statistical model"],
+    strict: true,
+  },
+  {
+    name: "Data engineering",
+    jobAliases: ["data engineer", "analytics engineer", "data officer", "data platform", "etl developer"],
+    resumeAliases: ["data pipeline", "data pipelines", "etl", "postgresql", "sql", "cloud deployment"],
+    strict: true,
+  },
+  {
+    name: "Product or stakeholder role",
+    jobAliases: ["product manager", "product analyst", "product owner", "stakeholder", "decision makers", "messaging"],
+    resumeAliases: ["stakeholder", "product", "dashboards", "business analytics", "communication"],
+    strict: false,
+  },
+];
+
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as
     | { resume?: string; job?: string }
@@ -86,6 +134,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  return NextResponse.json({
+    ...analyzeResumeAgainstJob(resume, job),
+    aiStatus: "disabled",
+  });
+}
+
+export function analyzeResumeAgainstJob(resume: string, job: string) {
   const resumeSkills = extractSkills(resume);
   const jobSkills = extractSkills(job);
   const mustHaveSkills = detectMustHaveSkills(job, jobSkills);
@@ -97,11 +152,12 @@ export async function POST(request: NextRequest) {
   const coverage = weightedDemand ? weightedMatch / weightedDemand : 0.45;
   const mustHavePenalty = mustHaveMisses.length * 7;
   const evidenceBonus = Math.min(resumeSkills.length * 1.5, 12);
-  const score = Math.max(25, Math.min(96, Math.round(coverage * 82 + evidenceBonus - mustHavePenalty)));
-  const roleSignals = extractSignals(job).slice(0, 6);
-  const recommendation = getRecommendation(score, mustHaveMisses.length);
+  const roleFit = assessRoleFit(resume, job, jobSkills);
+  const score = Math.max(25, Math.min(96, Math.round(coverage * 82 + evidenceBonus - mustHavePenalty - roleFit.penalty)));
+  const roleSignals = [...roleFit.signals, ...extractSignals(job)].slice(0, 6);
+  const recommendation = getRecommendation(score, mustHaveMisses.length, roleFit.penalty);
 
-  return NextResponse.json({
+  return {
     score,
     level: recommendation.level,
     decision: recommendation.decision,
@@ -113,21 +169,28 @@ export async function POST(request: NextRequest) {
     roleSignals: roleSignals.length ? roleSignals : ["Role intent unclear"],
     scoreBreakdown: [
       {
-        label: "Weighted skill coverage",
+        label: "Matched job skills",
         value: `${Math.round(coverage * 100)}%`,
         detail: `${matchedSkills.length} of ${jobSkills.length || 0} detected job skills matched`,
       },
       {
-        label: "Resume evidence bonus",
+        label: "Resume matches",
         value: `+${Math.round(evidenceBonus)}`,
         detail: `${resumeSkills.length} relevant resume skills detected`,
       },
       {
-        label: "Must-have penalty",
+        label: "Required gaps",
         value: mustHavePenalty ? `-${mustHavePenalty}` : "0",
         detail: mustHaveMisses.length
           ? `${mustHaveMisses.length} must-have skill gap detected`
           : "No detected must-have gaps",
+      },
+      {
+        label: "Role alignment",
+        value: roleFit.penalty ? `-${roleFit.penalty}` : "OK",
+        detail: roleFit.penalty
+          ? "Role family, seniority, or evidence level needs review"
+          : "Role direction appears aligned",
       },
     ],
     skillGroups: {
@@ -150,8 +213,8 @@ export async function POST(request: NextRequest) {
     interviewPrep: buildInterviewPrep(matchedSkills, missingSkills, roleSignals),
     outreachMessage: buildOutreachMessage(matchedSkills, missingSkills),
     atsNotes: buildAtsNotes(job, jobSkills, missingSkills, mustHaveMisses),
-    summary: buildSummary(score, matchedSkills, missingSkills, mustHaveMisses, recommendation.action),
-  });
+    summary: buildSummary(score, matchedSkills, missingSkills, mustHaveMisses, recommendation.action, roleFit),
+  };
 }
 
 function extractSkills(text: string) {
@@ -198,24 +261,78 @@ function hasAlias(normalizedText: string, alias: string) {
   return pattern.test(normalizedText);
 }
 
-function getRecommendation(score: number, mustHaveMisses: number) {
-  if (score >= 82 && mustHaveMisses === 0) {
+function assessRoleFit(resume: string, job: string, jobSkills: SkillDefinition[]): RoleFit {
+  const normalizedResume = normalize(resume);
+  const normalizedJob = normalize(job);
+  const resumeYears = extractExperienceYears(normalizedResume);
+  const signals: string[] = [];
+  let penalty = 0;
+
+  const jobFamily = roleFamilyChecks.find((family) =>
+    family.jobAliases.some((alias) => hasAlias(normalizedJob, alias)),
+  );
+
+  if (jobFamily) {
+    signals.push(jobFamily.name);
+    const hasResumeFamilyEvidence = jobFamily.resumeAliases.some((alias) => hasAlias(normalizedResume, alias));
+    const hasDirectRoleEvidence = jobFamily.jobAliases.some((alias) => hasAlias(normalizedResume, alias));
+
+    if (!hasResumeFamilyEvidence) {
+      penalty += jobFamily.strict ? 24 : 14;
+      signals.push("Role-family gap");
+    } else if (jobFamily.strict && !hasDirectRoleEvidence) {
+      penalty += 18;
+      signals.push("Transferable, not direct");
+    }
+  }
+
+  const seniorRole = seniorRolePatterns.some((pattern) => hasAlias(normalizedJob, pattern));
+
+  if (seniorRole) {
+    signals.push("Senior scope");
+
+    if (resumeYears < 5) {
+      penalty += 14;
+      signals.push("Seniority gap");
+    }
+  }
+
+  if (jobSkills.length < 4) {
+    penalty += 12;
+    signals.push("Low-signal job ad");
+  }
+
+  return {
+    penalty: Math.min(penalty, 38),
+    signals,
+  };
+}
+
+function extractExperienceYears(normalizedText: string) {
+  const matches = Array.from(normalizedText.matchAll(/(\d{1,2})\+?\s+years?/g));
+  const years = matches.map((match) => Number(match[1])).filter(Number.isFinite);
+
+  return years.length ? Math.max(...years) : 0;
+}
+
+function getRecommendation(score: number, mustHaveMisses: number, rolePenalty: number) {
+  if (score >= 82 && mustHaveMisses === 0 && rolePenalty < 10) {
     return {
       level: "Apply now",
       action: "apply with a tailored resume",
       decision: "Apply",
-      nextStep: "Use the matched skills as your resume headline and submit this role today.",
+      nextStep: "Use the matched skills as your resume focus, then apply with truthful examples.",
       timeToApply: "20-30 min",
       confidence: "High",
     } satisfies Recommendation;
   }
 
-  if (score >= 70) {
+  if (score >= 70 && rolePenalty < 18) {
     return {
       level: "Strong match",
       action: "apply after tightening the strongest overlap",
       decision: "Apply",
-      nextStep: "Tighten the top 2 resume bullets, then apply.",
+      nextStep: "Tighten the top 2 truthful resume bullets, then apply.",
       timeToApply: "30-45 min",
       confidence: "Good",
     } satisfies Recommendation;
@@ -226,7 +343,7 @@ function getRecommendation(score: number, mustHaveMisses: number) {
       level: "Tailor first",
       action: "tailor your resume before applying",
       decision: "Tailor",
-      nextStep: "Fix the must-have gaps before spending time on a cover letter.",
+      nextStep: "Check the required gaps before spending time on a cover letter.",
       timeToApply: "45-75 min",
       confidence: "Medium",
     } satisfies Recommendation;
@@ -236,7 +353,7 @@ function getRecommendation(score: number, mustHaveMisses: number) {
     level: "Stretch role",
     action: "save this role and build more evidence first",
     decision: "Build",
-    nextStep: "Do not rush this application. Build one project or proof point for the biggest missing skill first.",
+    nextStep: "Do not rush this application. Build real evidence for the biggest missing skill first.",
     timeToApply: "Not ready",
     confidence: "Low",
   } satisfies Recommendation;
@@ -253,8 +370,8 @@ function buildActionItems(
 
   return [
     `Lead the application with evidence for ${matchedList}.`,
-    `Add or rewrite one resume bullet that directly addresses ${firstGap}.`,
-    `If you have project proof in ${categoryGap}, move it higher in your resume before applying.`,
+    `If you have real evidence for ${firstGap}, make it visible in one resume bullet.`,
+    `If you have project proof in ${categoryGap}, move it higher. If not, treat it as missing evidence.`,
   ];
 }
 
@@ -280,9 +397,9 @@ function buildResumeBullets(matched: SkillDefinition[], missing: SkillDefinition
   const gap = missing[0]?.name ?? "the employer's priority area";
 
   return [
-    `Built and improved ${primary} workflows, connecting technical delivery to measurable user or business outcomes.`,
-    `Used ${secondary} to turn ambiguous requirements into clear dashboards, tools, or decisions for stakeholders.`,
-    `Add one honest proof point for ${gap}, even if it comes from a project, coursework, or self-directed build.`,
+    `Adapt this only if true: built or improved ${primary} workflows tied to a clear user or business result.`,
+    `Used ${secondary} to turn ambiguous requirements into clear dashboards, tools, or decisions.`,
+    `If you have done work with ${gap}, add one clear proof point; otherwise keep it as a gap to build.`,
   ];
 }
 
@@ -297,7 +414,7 @@ function buildInterviewPrep(
 
   return [
     `Prepare a 60-second story about where you used ${matchedFocus} to solve a real problem.`,
-    `Have a direct answer for how you are closing the ${missingFocus} gap.`,
+    `Have a direct answer for whether you have evidence for ${missingFocus}, and how you are building it if not.`,
     `Explain why ${roleFocus} fits your current job search direction.`,
   ];
 }
@@ -347,12 +464,17 @@ function buildSummary(
   missing: SkillDefinition[],
   mustHaveMisses: SkillDefinition[],
   action: string,
+  roleFit: RoleFit,
 ) {
   const matchedList = matched.slice(0, 3).map((skill) => skill.name).join(", ") || "some transferable evidence";
   const gapList = (mustHaveMisses.length ? mustHaveMisses : missing)
     .slice(0, 2)
     .map((skill) => skill.name)
     .join(" and ");
+
+  if (roleFit.penalty >= 18) {
+    return `This role has useful overlap, but the role level or role family needs review. Your strongest overlap is ${matchedList}; do not treat it as a clear fit without checking the missing evidence.`;
+  }
 
   if (score >= 82 && mustHaveMisses.length === 0) {
     return `This is a high-priority target. You match the important signals around ${matchedList}; ${action}.`;
