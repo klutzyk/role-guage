@@ -1,6 +1,6 @@
-# RoleGuage
+# Role Guage
 
-RoleGuage is a job-search workspace for jobseekers who want to apply with better focus. It compares a resume against a real job ad, scores fit, identifies evidence gaps, and turns the result into practical application notes.
+Role Guage is a job-search workspace for jobseekers who want to apply with better focus. It compares a resume against a real job ad, scores fit, identifies evidence gaps, and turns the result into practical application notes.
 
 ## Product
 
