@@ -8,7 +8,9 @@ This version includes:
 
 - Apply Agent command center for application batching and assisted submission planning
 - Resume and job description matching workflow
+- Chrome extension MVP for manually analyzing the current job page or selected job text
 - Deterministic fit scoring API at `src/app/api/analyze/route.ts`
+- Extension analysis API at `src/app/api/extension/analyze/route.ts`
 - Job URL import API at `src/app/api/import-job/route.ts`
 - Job discovery API at `src/app/api/discover-jobs/route.ts`
 - Resume PDF extraction API at `src/app/api/extract-resume/route.ts`
@@ -43,6 +45,28 @@ Job URL import works best with company career pages and public ATS pages. Some l
 Job discovery uses a local ingestion layer for public company career pages and ATS feeds. The first implementation supports Greenhouse and SmartRecruiters sources with a curated seed list and optional `ROLEGUAGE_JOB_SOURCES_JSON` configuration. Results are normalized, deduplicated, cached in memory, and scored against the active resume. RapidAPI providers are disabled by default and must be explicitly enabled with `RAPIDAPI_JOBS_ENABLED=true` to avoid burning small free-tier quotas.
 
 SEEK, Indeed, and LinkedIn direct coverage should still be handled through approved APIs, licensed providers, or explicit crawling permission rather than brittle scraping.
+
+## Chrome Extension
+
+The `extension/` folder contains an unpacked Chrome extension MVP. It is intentionally user-triggered:
+
+- The user opens a job page.
+- The user clicks the RoleGuage extension.
+- The extension reads selected text first, or extracts visible page text after the click.
+- The extension sends the resume and job text to the local RoleGuage API.
+- The popup returns a fit score, matched skills, gaps, next action, and resume bullet guidance.
+
+This avoids server-side job-board crawling and keeps the product focused on application help, not mass scraping. For the safest workflow on restricted sites, highlight the job description yourself and click `Extract page` so RoleGuage analyzes user-selected text.
+
+Install locally:
+
+1. Run the web app with `npm run dev`.
+2. Open `chrome://extensions`.
+3. Enable `Developer mode`.
+4. Click `Load unpacked`.
+5. Select the `extension/` folder.
+
+The local extension expects the app to run on `http://localhost:3000`. For production, update `extension/manifest.json` and `extension/popup.js` to use the deployed RoleGuage domain, then add a privacy policy before publishing.
 
 ## Apply Agent Direction
 
