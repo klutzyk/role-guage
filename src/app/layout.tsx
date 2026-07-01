@@ -9,14 +9,14 @@ const bodyFont = IBM_Plex_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "RoleGuage | Resume Job Match Checker and Application Tracker",
+  title: "RoleGuage | Resume Job Match Checker",
   description:
-    "Upload a resume, import a job ad, get a fit score, evidence gaps, resume bullet guidance, interview prep, and an application tracker.",
+    "Upload a resume, import a job ad, get a fit score, evidence gaps, resume bullet guidance, interview prep, and a cover letter draft.",
   keywords: [
     "resume job match checker",
     "job application helper",
     "resume tailoring",
-    "application tracker",
+    "cover letter generator",
     "ATS resume checker",
   ],
   openGraph: {

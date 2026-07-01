@@ -2,17 +2,15 @@
 
 import {
   ArrowRight,
-  BriefcaseBusiness,
   Check,
   CheckCircle2,
   Clipboard,
   Download,
   FileText,
   Gauge,
-  ListChecks,
   Link,
+  ListChecks,
   Loader2,
-  Network,
   Plus,
   Radar,
   SearchCheck,
@@ -20,10 +18,9 @@ import {
   Target,
   Upload,
   Users,
-  Wand2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { ChangeEvent, FormEvent, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { ChangeEvent, FormEvent, useMemo, useRef, useState } from "react";
 
 type AnalysisResult = {
   score: number;
@@ -35,11 +32,7 @@ type AnalysisResult = {
   matchedSkills: string[];
   missingSkills: string[];
   roleSignals: string[];
-  scoreBreakdown: Array<{
-    label: string;
-    value: string;
-    detail: string;
-  }>;
+  scoreBreakdown: Array<{ label: string; value: string; detail: string }>;
   skillGroups: {
     coreMatched: string[];
     coreMissing: string[];
@@ -57,14 +50,8 @@ type AnalysisResult = {
   atsNotes: string[];
   summary: string;
   aiStatus?: "generated" | "fallback" | "disabled";
-  aiModel?: string;
   fitReasoning?: string[];
-  gapRoadmap?: Array<{
-    skill: string;
-    action: string;
-    proofProject: string;
-    timeframe: string;
-  }>;
+  coverLetter?: string;
 };
 
 type ImportedJob = {
@@ -75,36 +62,6 @@ type ImportedJob = {
   sourceUrl: string;
 };
 
-type DiscoveredJob = {
-  id: string;
-  title: string;
-  company: string;
-  location: string;
-  description: string;
-  descriptionSummary: {
-    work: string;
-    requirements: string;
-    experience: string;
-  };
-  applyUrl: string;
-  source: string;
-  postedAt: string;
-  tags: string[];
-  score: number;
-  level: string;
-  decision: AnalysisResult["decision"];
-  summary: string;
-  nextStep: string;
-  matchedSkills: string[];
-  missingSkills: string[];
-};
-
-type InputMode = "import" | "paste";
-type ApplicationStatus = "Saved" | "Applied" | "Interview" | "Rejected" | "Offer";
-type JobSort = "fit" | "recent";
-type JobDecisionFilter = "all" | AnalysisResult["decision"];
-type AgentSafetyMode = "assisted" | "reviewed" | "autonomous";
-
 type JobMeta = {
   title: string;
   company: string;
@@ -112,25 +69,36 @@ type JobMeta = {
   sourceUrl: string;
 };
 
-type TrackedApplication = JobMeta & {
+type MatchHistoryItem = {
   id: string;
-  score: number;
-  level: string;
-  decision: AnalysisResult["decision"];
-  nextStep: string;
-  timeToApply: string;
-  status: ApplicationStatus;
-  notes: string;
   savedAt: string;
-  matchedSkills: string[];
-  missingSkills: string[];
-  roleSignals: string[];
-  summary: string;
+  jobMeta: JobMeta;
+  result: AnalysisResult;
 };
+
+type InputMode = "import" | "paste";
 
 const sampleResume = `Software Engineer with 4 years of experience building web applications, REST APIs, dashboards, and data pipelines. Skilled in Python, TypeScript, React, PostgreSQL, machine learning, data analysis, cloud deployment, and stakeholder communication. Completed a Master of Data Science in Australia with projects in NLP, predictive modelling, and business analytics.`;
 
 const sampleJob = `We are hiring a Data Analyst / AI Product Engineer in Sydney. The role requires Python, SQL, dashboards, machine learning, stakeholder communication, experimentation, API integration, and experience turning messy business data into actionable insights. Knowledge of React, cloud platforms, and LLM tools is a strong advantage.`;
+
+const emptyJobMeta: JobMeta = {
+  title: "Data Analyst / AI Product Engineer",
+  company: "Sample company",
+  location: "Sydney",
+  sourceUrl: "",
+};
+
+const resumeProfileStorageKey = "roleguage.resume-profile.v1";
+const legacyResumeProfileStorageKey = "applypilot.resume-profile.v1";
+const matchHistoryStorageKey = "roleguage.match-history.v1";
+
+const workflowSteps: Array<[string, string, LucideIcon]> = [
+  ["Upload once", "Use a resume PDF or saved profile as the evidence base for the match.", Upload],
+  ["Import a role", "Paste a job URL or use copy text when a job board blocks import.", SearchCheck],
+  ["Check the fit", "See the matched skills, evidence gaps, and what to fix before applying.", Gauge],
+  ["Create application notes", "Generate resume bullets, interview prep, and a cover letter draft.", ListChecks],
+];
 
 const plans = [
   {
@@ -156,60 +124,10 @@ const plans = [
   },
 ];
 
-const jobTools: Array<[string, string, LucideIcon]> = [
-  ["Apply agent", "Prepare batches, reusable answers, and assisted submissions.", Wand2],
-  ["Resume job match", "Upload a resume and compare it with a real job ad.", Gauge],
-  ["Job URL import", "Pull job text from public company and ATS pages.", Link],
-  ["Evidence gap finder", "See missing proof before applying.", Target],
-  ["Resume bullet guidance", "Turn matched evidence into targeted bullet ideas.", FileText],
-  ["Interview prep", "Prepare stories for matched skills and visible gaps.", Users],
-  ["Application tracker", "Save the decision, status, notes, and next step.", BriefcaseBusiness],
-];
-
-const workflowSteps: Array<[string, string, LucideIcon]> = [
-  ["Upload once", "Keep a reusable resume profile in your browser and reuse it across role checks.", Upload],
-  ["Import a role", "Paste a job URL or drop in the job description when the site blocks import.", SearchCheck],
-  ["Check the fit", "Get a clear Apply, Tailor, Build, or Skip recommendation with the evidence behind it.", Gauge],
-  ["Apply with a plan", "Use the generated kit to tighten bullets, prep interviews, and track next actions.", ListChecks],
-];
-
-const trustItems = [
-  "No fake experience suggestions",
-  "Manual review before anything is used",
-  "Local-first saved profile and tracker",
-  "Copy, save, or export every report",
-];
-
-const agentChannels = [
-  {
-    title: "Company career pages",
-    speed: "Fastest safe path",
-    detail: "Use detected ATS forms, reusable profile answers, and a review step before final submission.",
-  },
-  {
-    title: "LinkedIn / Indeed / SEEK",
-    speed: "Assisted mode",
-    detail: "Prepare materials and open the listing. Keep submission user-controlled where automation is restricted.",
-  },
-  {
-    title: "Email referrals",
-    speed: "High signal",
-    detail: "Generate short outreach notes from the fit report and track who you contacted.",
-  },
-];
-
-const agentRunSteps = [
-  "Build a job queue from discovered roles or pasted links.",
-  "Filter out low-fit, duplicate, expired, and location-mismatched roles.",
-  "Create tailored resume notes, cover snippets, and screener answers.",
-  "Open each application with prefilled materials and an audit log.",
-  "Save submission status, company, role, and follow-up date.",
-];
-
 const faqs: Array<[string, string]> = [
   [
     "Is this just ChatGPT with a nicer screen?",
-    "No. RoleGuage is built around a repeatable job-search workflow: import a role, score fit, expose evidence gaps, generate an application kit, and save the decision to a tracker.",
+    "No. RoleGuage is built around a repeatable workflow: import a role, score fit, expose evidence gaps, generate application notes, and save the result to your profile.",
   ],
   [
     "Does it rewrite my resume with fake skills?",
@@ -217,105 +135,38 @@ const faqs: Array<[string, string]> = [
   ],
   [
     "Can it import jobs from LinkedIn or SEEK?",
-    "Some large job boards block automated extraction. RoleGuage keeps URL import for public pages and a copy-text fallback for blocked job boards.",
+    "Some large job boards block automated extraction. RoleGuage keeps URL import for public pages, copy text for blocked pages, and a Chrome extension for extracting the visible job ad.",
   ],
   [
     "Where is my resume stored?",
-    "In this MVP, saved profiles and applications stay in your browser localStorage. A production version should add accounts, encrypted storage, and delete controls.",
+    "In this MVP, saved profiles and match history stay in your browser localStorage. A production version should add accounts, encrypted storage, and delete controls.",
   ],
 ];
-
-const emptyJobMeta: JobMeta = {
-  title: "",
-  company: "",
-  location: "",
-  sourceUrl: "",
-};
-
-const trackerStorageKey = "roleguage.applications.v1";
-const legacyTrackerStorageKey = "applypilot.applications.v1";
-const trackerChangeEvent = "roleguage-applications-changed";
-const resumeProfileStorageKey = "roleguage.resume-profile.v1";
-const legacyResumeProfileStorageKey = "applypilot.resume-profile.v1";
-const applicationStatuses: ApplicationStatus[] = ["Saved", "Applied", "Interview", "Rejected", "Offer"];
-let cachedTrackerRaw = "";
-let cachedTrackerApplications: TrackedApplication[] = [];
-const emptyTrackerApplications: TrackedApplication[] = [];
 
 export default function Home() {
   const [resume, setResume] = useState(sampleResume);
   const [job, setJob] = useState(sampleJob);
   const [jobUrl, setJobUrl] = useState("");
-  const [jobMeta, setJobMeta] = useState<JobMeta>({
-    title: "Data Analyst / AI Product Engineer",
-    company: "Sample company",
-    location: "Sydney",
-    sourceUrl: "",
-  });
+  const [jobMeta, setJobMeta] = useState<JobMeta>(emptyJobMeta);
   const [inputMode, setInputMode] = useState<InputMode>("import");
   const [result, setResult] = useState<AnalysisResult | null>(null);
-  const activeAnalysisRequest = useRef(0);
-  const applications = useSyncExternalStore(
-    subscribeToTracker,
-    getTrackerSnapshot,
-    getTrackerServerSnapshot,
-  );
+  const [resumeFileName, setResumeFileName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isEnrichingReport, setIsEnrichingReport] = useState(false);
   const [isImportingJob, setIsImportingJob] = useState(false);
   const [isExtractingResume, setIsExtractingResume] = useState(false);
   const [error, setError] = useState("");
-  const [importMessage, setImportMessage] = useState("");
-  const [jobSearchQuery, setJobSearchQuery] = useState("data analyst python sql");
-  const [jobSearchLocation, setJobSearchLocation] = useState("Australia");
-  const [discoveredJobs, setDiscoveredJobs] = useState<DiscoveredJob[]>([]);
-  const [isDiscoveringJobs, setIsDiscoveringJobs] = useState(false);
-  const [jobDiscoveryError, setJobDiscoveryError] = useState("");
-  const [jobSourceFilter, setJobSourceFilter] = useState("all");
-  const [jobDecisionFilter, setJobDecisionFilter] = useState<JobDecisionFilter>("all");
-  const [jobRemoteOnly, setJobRemoteOnly] = useState(false);
-  const [jobMinScore, setJobMinScore] = useState(60);
-  const [jobSort, setJobSort] = useState<JobSort>("fit");
-  const [agentSafetyMode, setAgentSafetyMode] = useState<AgentSafetyMode>("assisted");
-  const [agentTargetApplications, setAgentTargetApplications] = useState(100);
-  const [agentMinimumFit, setAgentMinimumFit] = useState(70);
+  const [message, setMessage] = useState("");
+  const activeRequest = useRef(0);
 
   const canAnalyze = useMemo(
     () => resume.trim().length > 80 && job.trim().length > 80,
     [resume, job],
   );
-  const hasGeneratedReport = Boolean(result);
-  const jobSources = useMemo(
-    () => Array.from(new Set(discoveredJobs.map((jobMatch) => jobMatch.source))).sort(),
-    [discoveredJobs],
-  );
-  const filteredDiscoveredJobs = useMemo(() => {
-    return discoveredJobs
-      .filter((jobMatch) => jobMatch.score >= jobMinScore)
-      .filter((jobMatch) => jobSourceFilter === "all" || jobMatch.source === jobSourceFilter)
-      .filter((jobMatch) => jobDecisionFilter === "all" || jobMatch.decision === jobDecisionFilter)
-      .filter((jobMatch) => !jobRemoteOnly || /remote/i.test(`${jobMatch.location} ${jobMatch.tags.join(" ")}`))
-      .sort((a, b) => {
-        if (jobSort === "recent") {
-          return parsePostedDate(b.postedAt) - parsePostedDate(a.postedAt) || b.score - a.score;
-        }
-
-        return b.score - a.score;
-      });
-  }, [discoveredJobs, jobDecisionFilter, jobMinScore, jobRemoteOnly, jobSort, jobSourceFilter]);
-  const agentEligibleJobs = useMemo(
-    () =>
-      discoveredJobs
-        .filter((jobMatch) => jobMatch.score >= agentMinimumFit)
-        .filter((jobMatch) => jobMatch.decision !== "Skip")
-        .sort((a, b) => b.score - a.score)
-        .slice(0, agentTargetApplications),
-    [agentMinimumFit, agentTargetApplications, discoveredJobs],
-  );
-  const agentEstimatedMinutes = estimateAgentMinutes(
-    agentEligibleJobs.length || agentTargetApplications,
-    agentSafetyMode,
-  );
+  const isPreparingReport = Boolean(result && isEnrichingReport);
+  const coverLetter = result
+    ? result.coverLetter ?? buildCoverLetterDraft(result, inferJobMeta(job, jobMeta))
+    : "";
 
   async function analyzeRole(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -323,9 +174,10 @@ export default function Home() {
   }
 
   async function runAnalysis(resumeText: string, jobText: string) {
-    const requestId = activeAnalysisRequest.current + 1;
-    activeAnalysisRequest.current = requestId;
+    const requestId = activeRequest.current + 1;
+    activeRequest.current = requestId;
     setError("");
+    setMessage("");
     setIsLoading(true);
     setIsEnrichingReport(false);
 
@@ -336,14 +188,13 @@ export default function Home() {
         body: JSON.stringify({ resume: resumeText, job: jobText }),
       });
 
-      if (!response.ok) {
-        throw new Error("Analysis failed");
-      }
+      if (!response.ok) throw new Error("Analysis failed");
 
       const data = (await response.json()) as AnalysisResult;
-      setIsEnrichingReport(true);
       setResult(data);
-      void enrichReport(resumeText, jobText, requestId);
+      saveMatchToHistory(data, inferJobMeta(jobText, jobMeta));
+      setIsEnrichingReport(true);
+      void enrichReport(resumeText, jobText, requestId, data);
     } catch {
       setError("RoleGuage could not analyze this role yet. Try again.");
     } finally {
@@ -351,9 +202,12 @@ export default function Home() {
     }
   }
 
-  async function enrichReport(resumeText: string, jobText: string, requestId: number) {
-    setIsEnrichingReport(true);
-
+  async function enrichReport(
+    resumeText: string,
+    jobText: string,
+    requestId: number,
+    baseResult: AnalysisResult,
+  ) {
     try {
       const response = await fetch("/api/enrich-report", {
         method: "POST",
@@ -361,29 +215,35 @@ export default function Home() {
         body: JSON.stringify({ resume: resumeText, job: jobText }),
       });
 
-      if (!response.ok) {
-        throw new Error("Enrichment failed");
-      }
+      if (!response.ok) throw new Error("Enrichment failed");
 
       const enrichment = (await response.json()) as Partial<AnalysisResult>;
+      if (activeRequest.current !== requestId) return;
 
-      if (activeAnalysisRequest.current !== requestId) return;
-
-      setResult((current) => (current ? { ...current, ...enrichment } : current));
+      const enrichedResult = {
+        ...baseResult,
+        ...enrichment,
+        coverLetter: enrichment.coverLetter ?? buildCoverLetterDraft({ ...baseResult, ...enrichment }, jobMeta),
+      };
+      setResult(enrichedResult);
+      saveMatchToHistory(enrichedResult, inferJobMeta(jobText, jobMeta));
     } catch {
-      if (activeAnalysisRequest.current === requestId) {
-        setResult((current) => (current ? { ...current, aiStatus: "fallback" } : current));
+      if (activeRequest.current === requestId) {
+        const fallbackResult = {
+          ...baseResult,
+          coverLetter: buildCoverLetterDraft(baseResult, jobMeta),
+        };
+        setResult(fallbackResult);
+        saveMatchToHistory(fallbackResult, inferJobMeta(jobText, jobMeta));
       }
     } finally {
-      if (activeAnalysisRequest.current === requestId) {
-        setIsEnrichingReport(false);
-      }
+      if (activeRequest.current === requestId) setIsEnrichingReport(false);
     }
   }
 
   async function importJobFromUrl() {
     setError("");
-    setImportMessage("");
+    setMessage("");
     setIsImportingJob(true);
 
     try {
@@ -405,7 +265,7 @@ export default function Home() {
         location: data.location ?? "",
         sourceUrl: data.sourceUrl ?? jobUrl,
       });
-      setImportMessage("Job description imported. Review it, then generate the fit report.");
+      setMessage("Job description imported. Review it, then generate the fit report.");
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -420,11 +280,10 @@ export default function Home() {
   async function extractResumeFromPdf(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
-
     if (!file) return;
 
     setError("");
-    setImportMessage("");
+    setMessage("");
     setIsExtractingResume(true);
 
     try {
@@ -442,7 +301,8 @@ export default function Home() {
       }
 
       setResume(data.text);
-      setImportMessage(`Extracted resume text from ${data.filename ?? file.name}. Review it before matching.`);
+      setResumeFileName(data.filename ?? file.name);
+      setMessage(`Extracted resume text from ${data.filename ?? file.name}. Review it before matching.`);
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -454,104 +314,6 @@ export default function Home() {
     }
   }
 
-  async function discoverMatchingJobs(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setJobDiscoveryError("");
-    setIsDiscoveringJobs(true);
-
-    try {
-      const response = await fetch("/api/discover-jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          resume,
-          query: jobSearchQuery,
-          location: jobSearchLocation,
-        }),
-      });
-      const data = (await response.json()) as { jobs?: DiscoveredJob[]; error?: string };
-
-      if (!response.ok || !data.jobs) {
-        throw new Error(data.error ?? "Could not find matching jobs right now.");
-      }
-
-      setDiscoveredJobs(data.jobs);
-    } catch (caughtError) {
-      setJobDiscoveryError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "Could not find matching jobs right now.",
-      );
-    } finally {
-      setIsDiscoveringJobs(false);
-    }
-  }
-
-  async function loadDiscoveredJob(jobToLoad: DiscoveredJob) {
-    const fullJobText = buildDiscoveredJobText(jobToLoad);
-
-    setJob(fullJobText);
-    setJobMeta({
-      title: jobToLoad.title,
-      company: jobToLoad.company,
-      location: jobToLoad.location,
-      sourceUrl: jobToLoad.applyUrl,
-    });
-    setInputMode("paste");
-    setImportMessage("Loaded this job into the matcher and generated the fit report.");
-    setError("");
-    document.getElementById("analyze")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    await runAnalysis(resume, fullJobText);
-  }
-
-  function saveCurrentApplication() {
-    if (!result) {
-      setError("Generate a fit report before saving this application.");
-      return;
-    }
-
-    const inferredMeta = inferJobMeta(job, jobMeta);
-    const application: TrackedApplication = {
-      id: crypto.randomUUID(),
-      ...inferredMeta,
-      score: result.score,
-      level: result.level,
-      decision: result.decision,
-      nextStep: result.nextStep,
-      timeToApply: result.timeToApply,
-      status: "Saved",
-      notes: "",
-      savedAt: new Date().toISOString(),
-      matchedSkills: result.matchedSkills,
-      missingSkills: result.missingSkills,
-      roleSignals: result.roleSignals,
-      summary: result.summary,
-    };
-
-    writeTrackerApplications((current) => [application, ...current]);
-    setImportMessage("Saved to application tracker.");
-  }
-
-  function updateApplicationStatus(id: string, status: ApplicationStatus) {
-    writeTrackerApplications((current) =>
-      current.map((application) =>
-        application.id === id ? { ...application, status } : application,
-      ),
-    );
-  }
-
-  function updateApplicationNotes(id: string, notes: string) {
-    writeTrackerApplications((current) =>
-      current.map((application) =>
-        application.id === id ? { ...application, notes } : application,
-      ),
-    );
-  }
-
-  function removeApplication(id: string) {
-    writeTrackerApplications((current) => current.filter((application) => application.id !== id));
-  }
-
   function saveResumeProfile() {
     if (resume.trim().length < 80) {
       setError("Add your resume details before saving a profile.");
@@ -560,7 +322,7 @@ export default function Home() {
 
     window.localStorage.setItem(resumeProfileStorageKey, resume);
     setError("");
-    setImportMessage("Resume profile saved for this browser.");
+    setMessage("Resume profile saved for this browser.");
   }
 
   function useSavedResumeProfile() {
@@ -574,26 +336,25 @@ export default function Home() {
     }
 
     setResume(savedResume);
+    setResumeFileName("Saved resume profile");
     setError("");
-    setImportMessage("Loaded your saved resume profile.");
+    setMessage("Loaded your saved resume profile.");
   }
 
   async function copyReport() {
-    if (!result) {
-      setError("Generate a fit report before copying it.");
-      return;
-    }
-
+    if (!result) return;
     await navigator.clipboard.writeText(buildReportText(result, inferJobMeta(job, jobMeta)));
-    setImportMessage("Fit report copied to clipboard.");
+    setMessage("Fit report copied.");
+  }
+
+  async function copyCoverLetter() {
+    if (!coverLetter) return;
+    await navigator.clipboard.writeText(coverLetter);
+    setMessage("Cover letter copied.");
   }
 
   function downloadReport() {
-    if (!result) {
-      setError("Generate a fit report before exporting it.");
-      return;
-    }
-
+    if (!result) return;
     const meta = inferJobMeta(job, jobMeta);
     const blob = new Blob([buildReportText(result, meta)], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -603,95 +364,8 @@ export default function Home() {
     anchor.download = `${slugify(meta.title || "roleguage-report")}.txt`;
     anchor.click();
     URL.revokeObjectURL(url);
-    setImportMessage("Fit report downloaded.");
+    setMessage("Fit report downloaded.");
   }
-
-  const activeResult =
-    result ??
-    ({
-      score: 78,
-      level: "Strong match",
-      decision: "Apply",
-      nextStep: "Tighten the top 2 truthful resume bullets, then apply.",
-      timeToApply: "30-45 min",
-      confidence: "Good",
-      matchedSkills: ["Python", "SQL", "React", "PostgreSQL", "Machine learning"],
-      missingSkills: ["Experimentation", "LLM tools", "Cloud platforms"],
-      roleSignals: ["Sydney", "AI product", "Stakeholder-facing", "Dashboards"],
-      scoreBreakdown: [
-        {
-          label: "Matched job skills",
-          value: "78%",
-          detail: "5 of 8 detected job skills matched",
-        },
-        {
-          label: "Resume matches",
-          value: "+12",
-          detail: "8 relevant resume skills detected",
-        },
-        {
-          label: "Required gaps",
-          value: "0",
-          detail: "No detected must-have gaps",
-        },
-      ],
-      skillGroups: {
-        coreMatched: ["Python", "SQL", "React", "Machine learning"],
-        coreMissing: ["Experimentation"],
-        niceToHaveMatched: ["PostgreSQL"],
-      },
-      bullets: [
-        "Built data-backed web applications using Python, TypeScript, React, and PostgreSQL.",
-        "Created dashboards and analytics workflows that convert messy business data into clear decisions.",
-        "Move NLP and predictive modelling projects higher when the role asks for applied data science.",
-      ],
-      keywordPlan: {
-        keep: ["Python", "SQL", "React", "Machine learning"],
-        add: ["Experimentation", "LLM tools", "Cloud platforms"],
-        headline: "Python + SQL + React",
-      },
-      resumeBullets: [
-        "Adapt this only if true: built data-backed web applications connecting Python, SQL, and React workflows to measurable outcomes.",
-        "Created dashboards and analytics workflows that made product decisions clearer.",
-        "If you have done work with experimentation, add one clear proof point; otherwise keep it as a gap to build.",
-      ],
-      interviewPrep: [
-        "Prepare a 60-second story about a dashboard or data product you shipped.",
-        "Have a direct answer for whether you have experimentation evidence, and how you are building it if not.",
-        "Explain why Sydney data-product roles fit your current job search direction.",
-      ],
-      outreachMessage:
-        "Hi, I found this role and noticed a strong match around Python and SQL. I am also strengthening my experimentation evidence. I would appreciate any guidance on what the team values most for candidates at this stage.",
-      atsNotes: [
-        "Mirror the exact wording from the job ad where it is truthful.",
-        "Keep your resume format simple: standard headings, no tables, no graphics-heavy layouts.",
-        "Add a truthful mention of experimentation if you have evidence for it.",
-      ],
-      summary:
-        "Your profile is credible for this role. Lead with the strongest matched skills and tighten the visible gaps before applying.",
-      aiStatus: "disabled",
-      fitReasoning: [
-        "The role overlaps with Python, SQL, React, and machine learning evidence.",
-        "Experimentation and LLM tooling remain visible gaps.",
-        "Use software engineering delivery examples to support data-product claims.",
-      ],
-      gapRoadmap: [
-        {
-          skill: "Experimentation",
-          action: "Learn basic A/B test design and metrics interpretation.",
-          proofProject: "Add a small dashboard comparing two product variants with a written decision note.",
-          timeframe: "1-2 weeks",
-        },
-      ],
-    } satisfies AnalysisResult);
-  const isPreparingReport = hasGeneratedReport && isEnrichingReport;
-  const reportSummary = isPreparingReport
-    ? "Preparing your personalized report..."
-    : activeResult.summary;
-  const reportNextStep = isPreparingReport
-    ? "Reviewing your resume and this job description."
-    : activeResult.nextStep;
-  const reportReasoning = isPreparingReport ? [] : activeResult.fitReasoning ?? [];
 
   return (
     <main className="min-h-screen bg-[#F8FBFF] text-[#212529]">
@@ -703,924 +377,381 @@ export default function Home() {
             </span>
             <span className="text-xl">RoleGuage</span>
           </a>
-
           <nav className="hidden items-center gap-6 text-sm font-semibold text-[#4F5F6F] md:flex">
-            <a href="#apply-agent" className="hover:text-[#043873]">Agent</a>
-            <a href="#job-matches" className="hover:text-[#043873]">Jobs</a>
-            <a href="#analyze" className="hover:text-[#043873]">Matcher</a>
-            <a href="#tools" className="hover:text-[#043873]">Tools</a>
-            <a href="#application-kit" className="hover:text-[#043873]">Kit</a>
-            <a href="#tracker" className="hover:text-[#043873]">Tracker</a>
+            <a href="#matcher" className="hover:text-[#043873]">Matcher</a>
+            <a href="#workflow" className="hover:text-[#043873]">How it works</a>
+            <a href="#pricing" className="hover:text-[#043873]">Pricing</a>
+            <a href="#questions" className="hover:text-[#043873]">Questions</a>
+            <a href="/profile" className="hover:text-[#043873]">Profile</a>
           </nav>
-
-          <a href="#apply-agent" className="inline-flex h-10 items-center rounded-md bg-[#4F9CF9] px-4 text-sm font-bold text-white transition hover:bg-[#3b8dea]">
-            Build queue
+          <a href="#matcher" className="inline-flex h-10 items-center rounded-md bg-[#4F9CF9] px-4 text-sm font-bold text-white transition hover:bg-[#3b8dea]">
+            Start analyzing
           </a>
         </div>
       </header>
 
-      <section id="apply-agent" className="bg-[#F8FBFF] py-8 md:py-12">
-        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
-          <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr] lg:items-stretch">
-            <div className="rounded-md bg-[#043873] p-6 text-white shadow-[0_18px_60px_rgba(4,56,115,0.18)] md:p-8">
-              <p className="text-sm font-bold uppercase text-[#A7CEFC]">Apply agent</p>
-              <h1 className="mt-4 text-4xl font-extrabold leading-tight md:text-5xl">
-                Apply faster without turning your search into spam.
-              </h1>
-              <p className="mt-5 max-w-xl text-base leading-8 text-white/82">
-                Build a screened job queue, reuse your profile, generate tailored answers, and move applications through an assisted workflow that keeps you in control.
-              </p>
-              <div className="mt-7 grid gap-3 sm:grid-cols-3">
-                <AgentMetric label="Prepared jobs" value={String(agentEligibleJobs.length || discoveredJobs.length)} />
-                <AgentMetric label="Target batch" value={String(agentTargetApplications)} />
-                <AgentMetric label="Run time" value={`${agentEstimatedMinutes} min`} />
+      <section className="bg-[#043873] px-5 pb-28 pt-10 text-center text-white md:px-8 md:pb-32 md:pt-14 lg:px-10">
+        <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#A7CEFC]">
+          Resume job match checker
+        </p>
+        <h1 className="mx-auto mt-5 max-w-6xl text-5xl font-extrabold leading-tight md:text-7xl">
+          Tailor your resume to any job ad
+        </h1>
+        <p className="mx-auto mt-6 max-w-4xl text-base leading-8 text-white/86 md:text-lg">
+          Upload your resume, import a job ad, and get a clear fit decision, evidence gaps,
+          cover letter draft, and application notes before you apply.
+        </p>
+      </section>
+
+      <section id="matcher" className="-mt-20 px-5 md:px-8 lg:px-10">
+        <div className="mx-auto max-w-4xl rounded-md bg-white p-5 shadow-[0_24px_70px_rgba(4,56,115,0.16)] md:p-7">
+          <form onSubmit={analyzeRole}>
+            <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
+              <div>
+                <h2 className="text-2xl font-extrabold text-[#212529]">Role matcher</h2>
+                <p className="mt-3 text-sm leading-6 text-[#4F5F6F]">
+                  Start with the sample, upload your resume, or paste your own job ad.
+                </p>
               </div>
-              <div className="mt-7 flex flex-wrap gap-3">
-                <a href="#job-matches" className="inline-flex h-11 items-center justify-center rounded-md bg-[#4F9CF9] px-5 text-sm font-bold text-white transition hover:bg-[#3b8dea]">
-                  Find jobs
-                </a>
-                <a href="#analyze" className="inline-flex h-11 items-center justify-center rounded-md border border-white/20 px-5 text-sm font-bold text-white transition hover:bg-white/10">
-                  Use matcher
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={useSavedResumeProfile}
+                  className="h-10 rounded-md border border-[#A7CEFC] bg-white px-3 text-sm font-bold text-[#043873] transition hover:bg-[#A7CEFC]/20"
+                >
+                  Use profile
+                </button>
+                <button
+                  type="button"
+                  onClick={saveResumeProfile}
+                  className="h-10 rounded-md border border-[#FFE492] bg-white px-3 text-sm font-bold text-[#043873] transition hover:bg-[#FFE492]"
+                >
+                  Save profile
+                </button>
+                <a
+                  href="/profile"
+                  className="grid size-10 place-items-center rounded-md border border-[#DDE8F6] bg-white text-[#043873] transition hover:border-[#A7CEFC] hover:bg-[#F8FBFF]"
+                  aria-label="Open profile"
+                >
+                  <Plus size={20} aria-hidden="true" />
                 </a>
               </div>
             </div>
 
-            <div className="grid gap-4">
-              <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_14px_40px_rgba(4,56,115,0.08)] md:p-6">
-                <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
-                  <div>
-                    <h2 className="text-2xl font-extrabold text-[#212529]">Batch settings</h2>
-                    <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
-                      Start with reviewed automation. Full autonomous submission should only be enabled for sites that allow it and after you approve the answers.
-                    </p>
-                  </div>
-                  <span className="rounded-md bg-[#FFE492] px-3 py-2 text-sm font-bold text-[#043873]">
-                    {agentSafetyMode === "assisted" ? "Safest" : agentSafetyMode === "reviewed" ? "Faster" : "Restricted"}
-                  </span>
+            <div className="mt-6 grid grid-cols-2 gap-2 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-1">
+              <button
+                type="button"
+                onClick={() => setInputMode("import")}
+                className={`inline-flex h-12 items-center justify-center gap-2 rounded-md text-sm font-extrabold transition ${
+                  inputMode === "import" ? "bg-[#043873] text-white" : "text-[#043873] hover:bg-white"
+                }`}
+              >
+                <Upload size={17} aria-hidden="true" />
+                PDF + URL
+              </button>
+              <button
+                type="button"
+                onClick={() => setInputMode("paste")}
+                className={`inline-flex h-12 items-center justify-center gap-2 rounded-md text-sm font-extrabold transition ${
+                  inputMode === "paste" ? "bg-[#043873] text-white" : "text-[#043873] hover:bg-white"
+                }`}
+              >
+                <FileText size={17} aria-hidden="true" />
+                Copy text
+              </button>
+            </div>
+
+            {inputMode === "import" ? (
+              <div className="mt-6 grid gap-5">
+                <div className={`rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5 ${resumeFileName ? "grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center" : "text-center"}`}>
+                  {resumeFileName ? (
+                    <div className="min-w-0 text-left">
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F9CF9]">Resume uploaded</p>
+                      <p className="mt-1 truncate text-sm font-extrabold text-[#043873]">{resumeFileName}</p>
+                    </div>
+                  ) : null}
+                  <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-md bg-[#043873] px-5 text-sm font-extrabold text-white transition hover:bg-[#0b4c97]">
+                    {isExtractingResume ? <Loader2 size={17} className="animate-spin" aria-hidden="true" /> : <Upload size={17} aria-hidden="true" />}
+                    {isExtractingResume ? "Reading resume" : resumeFileName ? "Replace Resume PDF" : "Upload Resume PDF"}
+                    <input className="hidden" type="file" accept="application/pdf" onChange={extractResumeFromPdf} />
+                  </label>
                 </div>
 
-                <div className="mt-5 grid gap-3 md:grid-cols-3">
-                  <label className="grid gap-2">
-                    <span className="text-xs font-bold uppercase text-[#4F5F6F]">Applications</span>
+                <div className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5">
+                  <p className="flex items-center gap-2 text-sm font-extrabold text-[#212529]">
+                    <Link size={17} className="text-[#4F9CF9]" aria-hidden="true" />
+                    Paste the URL of the job ad
+                  </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
                     <input
-                      value={agentTargetApplications}
-                      onChange={(event) => setAgentTargetApplications(clampNumber(Number(event.target.value), 10, 1000))}
-                      type="number"
-                      min={10}
-                      max={1000}
-                      step={10}
-                      className="h-11 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-bold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
+                      value={jobUrl}
+                      onChange={(event) => setJobUrl(event.target.value)}
+                      className="h-12 min-w-0 rounded-md border border-[#DDE8F6] bg-white px-4 text-sm outline-none transition focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
+                      placeholder="https://company.com/careers/job-posting"
                     />
-                  </label>
-                  <label className="grid gap-2">
-                    <span className="text-xs font-bold uppercase text-[#4F5F6F]">Minimum fit</span>
-                    <select
-                      value={agentMinimumFit}
-                      onChange={(event) => setAgentMinimumFit(Number(event.target.value))}
-                      className="h-11 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-bold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
+                    <button
+                      type="button"
+                      onClick={importJobFromUrl}
+                      disabled={isImportingJob}
+                      className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#043873] px-5 text-sm font-extrabold text-white transition hover:bg-[#0b4c97] disabled:cursor-not-allowed disabled:bg-[#A7CEFC]"
                     >
-                      <option value={55}>55%+</option>
-                      <option value={70}>70%+</option>
-                      <option value={82}>82%+</option>
-                    </select>
-                  </label>
-                  <label className="grid gap-2">
-                    <span className="text-xs font-bold uppercase text-[#4F5F6F]">Mode</span>
-                    <select
-                      value={agentSafetyMode}
-                      onChange={(event) => setAgentSafetyMode(event.target.value as AgentSafetyMode)}
-                      className="h-11 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-bold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
-                    >
-                      <option value="assisted">Assisted fill</option>
-                      <option value="reviewed">Review then submit</option>
-                      <option value="autonomous">Allowed sites only</option>
-                    </select>
-                  </label>
+                      {isImportingJob ? <Loader2 size={17} className="animate-spin" aria-hidden="true" /> : <Link size={17} aria-hidden="true" />}
+                      Import job
+                    </button>
+                  </div>
+                  <p className="mt-4 text-sm leading-6 text-[#4F5F6F]">
+                    Works best on company career pages and public ATS pages. If a job board blocks extraction, use the copy text tab.
+                  </p>
                 </div>
-              </section>
+              </div>
+            ) : (
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <InputPanel icon={FileText} label="Resume text" value={resume} onChange={setResume} placeholder="Paste your resume text." compact />
+                <InputPanel icon={FileText} label="Job description" value={job} onChange={setJob} placeholder="Paste the job description." compact />
+              </div>
+            )}
 
-              <section className="grid gap-4 md:grid-cols-3">
-                {agentChannels.map((channel) => (
-                  <article key={channel.title} className="rounded-md border border-[#DDE8F6] bg-white p-4">
-                    <p className="text-sm font-extrabold text-[#043873]">{channel.title}</p>
-                    <p className="mt-2 text-xs font-bold uppercase text-[#4F9CF9]">{channel.speed}</p>
-                    <p className="mt-3 text-sm leading-6 text-[#4F5F6F]">{channel.detail}</p>
-                  </article>
-                ))}
-              </section>
-            </div>
-          </div>
+            {inputMode === "import" && (
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <InputPanel icon={FileText} label="Extracted resume text" value={resume} onChange={setResume} placeholder="Resume text appears here." compact />
+                <InputPanel icon={FileText} label="Imported job description" value={job} onChange={setJob} placeholder="Job description appears here." compact />
+              </div>
+            )}
 
-          <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_0.95fr]">
-            <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_14px_40px_rgba(4,56,115,0.08)] md:p-6">
+            {message ? <p className="mt-4 text-sm font-semibold text-[#007a52]">{message}</p> : null}
+            {error ? <p className="mt-4 text-sm font-semibold text-[#b00000]">{error}</p> : null}
+
+            <button
+              type="submit"
+              disabled={!canAnalyze || isLoading}
+              className="mt-6 inline-flex h-14 w-full items-center justify-center gap-2 rounded-md bg-[#4F9CF9] px-5 text-base font-extrabold text-white transition hover:bg-[#3b8dea] disabled:cursor-not-allowed disabled:bg-[#A7CEFC]"
+            >
+              {isLoading ? <Loader2 className="animate-spin" size={18} aria-hidden="true" /> : <Gauge size={18} aria-hidden="true" />}
+              {isLoading ? "Generating fit report" : "Generate fit report"}
+            </button>
+          </form>
+        </div>
+      </section>
+
+      {result ? (
+        <section id="report" className="px-5 py-10 md:px-8 md:py-14 lg:px-10">
+          <div className="mx-auto grid max-w-7xl gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+            <section className="rounded-md bg-white p-5 shadow-[0_18px_60px_rgba(4,56,115,0.1)] md:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-xl font-extrabold text-[#212529]">Run plan</h2>
-                  <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
-                    Designed for 100 applications in a focused sprint, with quality gates before anything is sent.
-                  </p>
+                  <p className="text-sm font-bold text-[#4F9CF9]">Recommended move</p>
+                  <h2 className="mt-2 text-4xl font-extrabold text-[#043873]">{result.decision}</h2>
+                  <p className="mt-1 text-sm font-semibold text-[#4F5F6F]">{result.level}</p>
                 </div>
-                <Wand2 className="text-[#4F9CF9]" size={24} aria-hidden="true" />
+                <div className="grid size-24 place-items-center rounded-md bg-[#FFE492] text-4xl font-extrabold text-[#043873]">
+                  {result.score}
+                </div>
               </div>
-              <ol className="mt-5 grid gap-3">
-                {agentRunSteps.map((step, index) => (
-                  <li key={step} className="grid gap-3 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-3 sm:grid-cols-[34px_1fr]">
-                    <span className="grid size-8 place-items-center rounded-md bg-[#043873] text-xs font-bold text-white">
-                      {index + 1}
-                    </span>
-                    <span className="text-sm font-semibold leading-6 text-[#4F5F6F]">{step}</span>
-                  </li>
-                ))}
-              </ol>
-            </section>
 
-            <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_14px_40px_rgba(4,56,115,0.08)] md:p-6">
-              <h2 className="text-xl font-extrabold text-[#212529]">Current queue</h2>
-              <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
-                Search jobs below to populate this queue. The agent only targets roles that pass your minimum fit threshold.
+              <p className="mt-6 text-sm leading-7 text-[#4F5F6F]">
+                {isPreparingReport ? "Preparing your personalized report..." : result.summary}
               </p>
-              <div className="mt-5 grid gap-3">
-                {(agentEligibleJobs.length ? agentEligibleJobs.slice(0, 4) : discoveredJobs.slice(0, 4)).map((jobMatch) => (
-                  <div key={jobMatch.id} className="grid gap-3 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-3 sm:grid-cols-[1fr_auto] sm:items-center">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-extrabold text-[#212529]">{jobMatch.title}</p>
-                      <p className="mt-1 truncate text-xs font-semibold text-[#4F5F6F]">{jobMatch.company} | {jobMatch.location}</p>
-                    </div>
-                    <span className="rounded-md bg-[#FFE492] px-2.5 py-1 text-xs font-bold text-[#043873]">{jobMatch.score}%</span>
-                  </div>
-                ))}
-                {!discoveredJobs.length ? (
-                  <div className="rounded-md border border-dashed border-[#A7CEFC] bg-[#F8FBFF] p-5 text-center">
-                    <p className="text-sm font-bold text-[#043873]">No queue yet</p>
-                    <p className="mt-2 text-xs leading-5 text-[#4F5F6F]">Run job discovery to load roles into the agent queue.</p>
-                  </div>
-                ) : null}
+
+              <div className="mt-5 rounded-md border border-[#A7CEFC] bg-[#F8FBFF] p-4">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#043873]">Next best action</p>
+                <p className="mt-2 text-sm font-bold leading-6 text-[#212529]">
+                  {isPreparingReport ? "Reviewing your resume and this job description." : result.nextStep}
+                </p>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <MiniMetric label="Confidence" value={result.confidence} />
+                <MiniMetric label="Time" value={result.timeToApply} />
+                <MiniMetric label="Headline" value={result.keywordPlan.headline || "Role fit"} />
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={copyReport}
+                  className="inline-flex h-11 grow items-center justify-center gap-2 rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97]"
+                >
+                  <Clipboard size={16} aria-hidden="true" />
+                  Copy report
+                </button>
+                <button
+                  type="button"
+                  onClick={downloadReport}
+                  className="inline-flex h-11 grow items-center justify-center gap-2 rounded-md border border-[#FFE492] bg-white px-4 text-sm font-bold text-[#043873] transition hover:bg-[#FFE492]"
+                >
+                  <Download size={16} aria-hidden="true" />
+                  Export
+                </button>
               </div>
             </section>
-          </div>
-        </div>
-      </section>
 
-      <section id="analyze" className="pb-8 md:pb-12">
-        <div className="bg-[#043873] text-white">
-          <div className="mx-auto max-w-7xl px-5 py-10 text-center md:px-8 md:py-14 lg:px-10">
-            <p className="text-sm font-bold uppercase text-[#A7CEFC]">Resume job match checker</p>
-            <h1 className="mx-auto mt-3 max-w-7xl text-4xl font-bold leading-tight md:text-6xl lg:whitespace-nowrap lg:text-5xl xl:text-6xl">
-              Tailor your resume to any job ad
-            </h1>
-            <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-white/82">
-              Upload your resume, import a job ad, and get a clear fit decision, evidence gaps, and application notes before you apply.
-            </p>
-            {/* <div className="mx-auto mt-5 flex max-w-3xl flex-wrap justify-center gap-2">
-              {trustItems.map((item) => (
-                <span key={item} className="rounded-md border border-white/15 bg-white/8 px-3 py-2 text-xs font-semibold text-white/86">
-                  {item}
+            <section className="rounded-md bg-white p-5 shadow-[0_18px_60px_rgba(4,56,115,0.1)] md:p-6">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-extrabold text-[#212529]">Fit details</h2>
+                  <p className="mt-1 text-sm text-[#4F5F6F]">Evidence behind the recommendation.</p>
+                </div>
+                <span className="rounded-md bg-[#FFE492] px-3 py-2 text-sm font-bold text-[#043873]">
+                  {result.score}% fit
                 </span>
-              ))}
-            </div> */}
-          </div>
-        </div>
-
-        <div className="mx-auto -mt-6 max-w-7xl px-5 md:px-8 lg:px-10">
-
-          <div className={`grid items-start gap-5 transition-all duration-300 ${hasGeneratedReport ? "lg:grid-cols-[1.05fr_0.95fr] lg:items-stretch" : "mx-auto max-w-3xl"}`}>
-            <form onSubmit={analyzeRole} className="flex h-full flex-col rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(4,56,115,0.14)] md:p-7">
-              <div className="mb-5 flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-2xl font-extrabold">Role matcher</h3>
-                  <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
-                    Start with the sample, upload your resume, or paste your own job ad.
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <button
-                    type="button"
-                    onClick={useSavedResumeProfile}
-                    className="hidden h-10 items-center rounded-md border border-[#A7CEFC] px-3 text-xs font-semibold text-[#043873] transition hover:bg-[#A7CEFC]/20 sm:inline-flex"
-                  >
-                    Use profile
-                  </button>
-                  <button
-                    type="button"
-                    onClick={saveResumeProfile}
-                    className="hidden h-10 items-center rounded-md border border-[#FFE492] px-3 text-xs font-semibold text-[#043873] transition hover:bg-[#FFE492] sm:inline-flex"
-                  >
-                    Save profile
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setResume("");
-                      setJob("");
-                      setJobUrl("");
-                      setJobMeta(emptyJobMeta);
-                      setResult(null);
-                      activeAnalysisRequest.current = 0;
-                      setIsEnrichingReport(false);
-                      setError("");
-                      setImportMessage("");
-                    }}
-                    className="grid size-10 place-items-center rounded-md border border-[#DDE8F6] text-[#043873] transition hover:bg-[#F4F8FF]"
-                    title="Start new analysis"
-                    aria-label="Start new analysis"
-                  >
-                    <Plus size={18} aria-hidden="true" />
-                  </button>
-                </div>
               </div>
 
-              <div className="mb-5 grid grid-cols-2 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-1">
-                <button
-                  type="button"
-                  onClick={() => setInputMode("import")}
-                  className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-3 text-sm font-bold transition ${
-                    inputMode === "import"
-                      ? "bg-[#043873] text-white shadow-[0_8px_20px_rgba(4,56,115,0.18)]"
-                      : "text-[#043873] hover:bg-white"
-                  }`}
-                >
-                  <Upload size={16} aria-hidden="true" />
-                  PDF + URL
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setInputMode("paste")}
-                  className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-3 text-sm font-bold transition ${
-                    inputMode === "paste"
-                      ? "bg-[#043873] text-white shadow-[0_8px_20px_rgba(4,56,115,0.18)]"
-                      : "text-[#043873] hover:bg-white"
-                  }`}
-                >
-                  <FileText size={16} aria-hidden="true" />
-                  Copy text
-                </button>
-              </div>
-
-              <div className="flex flex-1 flex-col gap-4">
-                {inputMode === "import" ? (
-                  <>
-                    <div className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
-                      <div className="flex justify-center">
-                        <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97]">
-                          {isExtractingResume ? <Loader2 className="animate-spin" size={17} aria-hidden="true" /> : <Upload size={17} aria-hidden="true" />}
-                          {isExtractingResume ? "Extracting PDF" : "Upload Resume PDF"}
-                          <input
-                            type="file"
-                            accept="application/pdf"
-                            className="sr-only"
-                            onChange={extractResumeFromPdf}
-                            disabled={isExtractingResume}
-                          />
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
-                      <label className="mb-3 flex items-center gap-2 text-sm font-bold" htmlFor="job-url">
-                        <Link size={16} className="text-[#4F9CF9]" aria-hidden="true" />
-                        Paste the URL of the job ad
-                      </label>
-                      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-                        <input
-                          id="job-url"
-                          value={jobUrl}
-                          onChange={(event) => setJobUrl(event.target.value)}
-                          className="h-12 rounded-md border border-[#DDE8F6] bg-white px-4 text-sm outline-none transition focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
-                          placeholder="https://company.com/careers/job-posting"
-                          type="url"
-                        />
-                        <button
-                          type="button"
-                          onClick={importJobFromUrl}
-                          disabled={!jobUrl.trim() || isImportingJob}
-                          className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#043873] px-5 text-sm font-bold text-white transition hover:bg-[#0b4c97] disabled:cursor-not-allowed disabled:bg-[#A7CEFC]"
-                        >
-                          {isImportingJob ? <Loader2 className="animate-spin" size={17} aria-hidden="true" /> : <Link size={17} aria-hidden="true" />}
-                          {isImportingJob ? "Importing" : "Import job"}
-                        </button>
-                      </div>
-                      <p className="mt-3 text-sm leading-6 text-[#4F5F6F]">
-                        Works best on company career pages and public ATS pages. If a job board blocks extraction, use the copy text tab.
-                      </p>
-                    </div>
-
-                    <div className="grid min-w-0 gap-3 rounded-md border border-[#DDE8F6] bg-white p-4 md:grid-cols-3">
-                      <SmallInput
-                        label="Job title"
-                        value={jobMeta.title}
-                        onChange={(value) => setJobMeta((current) => ({ ...current, title: value }))}
-                        placeholder="Software Engineer"
-                      />
-                      <SmallInput
-                        label="Company"
-                        value={jobMeta.company}
-                        onChange={(value) => setJobMeta((current) => ({ ...current, company: value }))}
-                        placeholder="Company"
-                      />
-                      <SmallInput
-                        label="Location"
-                        value={jobMeta.location}
-                        onChange={(value) => setJobMeta((current) => ({ ...current, location: value }))}
-                        placeholder="Sydney / Remote"
-                      />
-                    </div>
-
-                    <div className="grid flex-1 gap-4 md:grid-cols-2">
-                      <InputPanel
-                        compact
-                        fillAvailable={hasGeneratedReport}
-                        icon={FileText}
-                        label="Extracted resume text"
-                        value={resume}
-                        onChange={setResume}
-                        placeholder="Upload a resume PDF or paste resume evidence here."
-                      />
-                      <InputPanel
-                        compact
-                        fillAvailable={hasGeneratedReport}
-                        icon={BriefcaseBusiness}
-                        label="Imported job description"
-                        value={job}
-                        onChange={setJob}
-                        placeholder="Import a job URL or paste the target job ad here."
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <InputPanel
-                      icon={FileText}
-                      label="Resume evidence"
-                      value={resume}
-                      onChange={setResume}
-                      placeholder="Paste your resume summary, project notes, skills, or experience here."
-                    />
-                    <InputPanel
-                      icon={BriefcaseBusiness}
-                      label="Job description"
-                      value={job}
-                      onChange={setJob}
-                      placeholder="Paste the target job ad here."
-                    />
-                  </>
-                )}
-              </div>
-
-              {importMessage ? <p className="mt-4 text-sm font-semibold text-[#0B6D4F]">{importMessage}</p> : null}
-              {error ? <p className="mt-4 text-sm font-semibold text-red-600">{error}</p> : null}
-
-              <button
-                type="submit"
-                disabled={!canAnalyze || isLoading}
-                className="mt-6 inline-flex h-14 w-full items-center justify-center gap-2 rounded-md bg-[#4F9CF9] px-6 text-sm font-bold text-white transition hover:bg-[#3b8dea] disabled:cursor-not-allowed disabled:bg-[#A7CEFC]"
-              >
-                {isLoading ? <Loader2 className="animate-spin" size={18} aria-hidden="true" /> : null}
-                {isLoading ? "Analyzing role" : "Generate fit report"}
-              </button>
-            </form>
-
-            {hasGeneratedReport ? (
-            <aside className="grid content-start gap-5">
-              <section className="rounded-md bg-white p-5 text-[#212529] shadow-[0_18px_60px_rgba(4,56,115,0.14)] md:p-6">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-bold text-[#4F9CF9]">Recommended move</p>
-                    <h3 className="mt-2 text-4xl font-bold text-[#043873]">{activeResult.decision}</h3>
-                    <p className="mt-1 text-sm font-bold text-[#4F5F6F]">{activeResult.level}</p>
-                  </div>
-                  <div className="grid size-24 place-items-center rounded-md bg-[#FFE492] text-[#043873]">
-                    <span className="text-4xl font-bold">{activeResult.score}</span>
-                  </div>
-                </div>
-                <p className="mt-5 leading-7 text-[#4F5F6F]">{reportSummary}</p>
-                <div className="mt-4 rounded-md border border-[#A7CEFC] bg-white p-3">
-                  <p className="text-xs font-bold uppercase text-[#043873]">Next best action</p>
-                  <p className="mt-2 text-sm font-semibold leading-6 text-[#212529]">{reportNextStep}</p>
-                </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  {[
-                    ["Confidence", activeResult.confidence],
-                    ["Time", activeResult.timeToApply],
-                    ["Headline", activeResult.keywordPlan.headline],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-md border border-[#DDE8F6] bg-white p-2.5">
-                      <p className="text-[11px] font-bold uppercase text-[#4F5F6F]">{label}</p>
-                      <p className="mt-1 truncate text-sm font-bold text-[#043873]">{value}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                  <button
-                    type="button"
-                    onClick={saveCurrentApplication}
-                    disabled={isPreparingReport}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97] disabled:cursor-not-allowed disabled:bg-[#A7CEFC]"
-                  >
-                    <BriefcaseBusiness size={16} aria-hidden="true" />
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={copyReport}
-                    disabled={isPreparingReport}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#A7CEFC] bg-white px-4 text-sm font-semibold text-[#043873] transition hover:bg-[#A7CEFC]/20 disabled:cursor-not-allowed disabled:bg-[#F8FBFF] disabled:text-[#4F5F6F]"
-                  >
-                    <Clipboard size={16} aria-hidden="true" />
-                    Copy
-                  </button>
-                  <button
-                    type="button"
-                    onClick={downloadReport}
-                    disabled={isPreparingReport}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#FFE492] bg-white px-4 text-sm font-semibold text-[#043873] transition hover:bg-[#FFE492] disabled:cursor-not-allowed disabled:bg-[#F8FBFF] disabled:text-[#4F5F6F]"
-                  >
-                    <Download size={16} aria-hidden="true" />
-                    Export
-                  </button>
-                </div>
-              </section>
-
-              <section className="rounded-md bg-white p-5 shadow-[0_18px_60px_rgba(4,56,115,0.1)]">
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-bold text-[#212529]">Fit details</h2>
-                    <p className="mt-1 text-xs leading-5 text-[#4F5F6F]">Evidence behind the recommendation.</p>
-                  </div>
-                  <div className="rounded-md bg-[#FFE492] px-3 py-2 text-sm font-bold text-[#043873]">
-                    {activeResult.score}% fit
-                  </div>
-                </div>
-                <div className="mb-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                  {activeResult.scoreBreakdown.map((item) => (
-                    <div key={item.label} className="rounded-md border border-[#DDE8F6] bg-white p-2">
-                      <p className="text-sm font-bold text-[#043873]">{item.value}</p>
-                      <p className="mt-1 text-[10px] font-semibold leading-4 text-[#4F5F6F]">{item.label}</p>
-                    </div>
-                  ))}
-                </div>
-                {isPreparingReport ? (
-                  <div className="mb-4 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
-                    <h3 className="text-sm font-bold text-[#212529]">Our reasoning</h3>
-                    <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
-                      Preparing the reasons for this recommendation.
-                    </p>
-                  </div>
-                ) : reportReasoning.length ? (
-                  <div className="mb-4 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
-                    <h3 className="text-sm font-bold text-[#212529]">Our reasoning</h3>
-                    <ul className="mt-3 grid gap-2 text-sm leading-6 text-[#4F5F6F]">
-                      {reportReasoning.slice(0, 4).map((item) => (
-                        <li key={item} className="flex gap-2">
-                          <CheckCircle2 size={15} className="mt-1 shrink-0 text-[#4F9CF9]" aria-hidden="true" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-                <div className="grid gap-4 xl:grid-cols-2">
-                  <section className="grid content-start gap-3 rounded-md border border-[#DDE8F6] p-4">
-                    <CompactResultBlock title="Matched skills" icon={CheckCircle2} items={activeResult.matchedSkills} tone="match" limit={4} />
-                    <CompactResultBlock title="Gaps to cover" icon={Target} items={activeResult.missingSkills} tone="gap" limit={3} />
-                    <CompactResultBlock title="Role signals" icon={Network} items={activeResult.roleSignals} tone="signal" limit={3} />
-                  </section>
-
-                  <section className="grid content-start gap-3 rounded-md border border-[#DDE8F6] p-4">
-                    <h3 className="text-base font-bold">Score explanation</h3>
-                    <CompactResultBlock title="Core matched" icon={CheckCircle2} items={activeResult.skillGroups.coreMatched} tone="match" limit={3} />
-                    <CompactResultBlock title="Core missing" icon={Target} items={activeResult.skillGroups.coreMissing} tone="gap" limit={2} />
-                    <CompactResultBlock title="Nice-to-have matched" icon={Network} items={activeResult.skillGroups.niceToHaveMatched} tone="signal" limit={2} />
-                  </section>
-                </div>
-              </section>
-            </aside>
-            ) : null}
-          </div>
-        </div>
-      </section>
-
-      <section id="job-matches" className="bg-[#F8FBFF] py-10 md:py-14">
-        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
-          <div className="grid gap-6 lg:grid-cols-[0.78fr_1.22fr] lg:items-start">
-            <div className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_14px_40px_rgba(4,56,115,0.08)] md:p-6">
-              <p className="text-sm font-bold uppercase text-[#4F9CF9]">Job discovery</p>
-              <h2 className="mt-3 text-3xl font-extrabold leading-tight text-[#043873]">
-                Find roles that fit your resume.
-              </h2>
-              <p className="mt-3 text-sm leading-7 text-[#4F5F6F]">
-                Search company career pages and ATS listings by target role, then RoleGuage scores each real listing against the resume currently loaded above.
-              </p>
-
-              <form onSubmit={discoverMatchingJobs} className="mt-5 grid gap-3">
-                <label className="grid gap-2">
-                  <span className="text-xs font-bold uppercase text-[#4F5F6F]">Target role or keywords</span>
-                  <input
-                    value={jobSearchQuery}
-                    onChange={(event) => setJobSearchQuery(event.target.value)}
-                    className="h-12 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-4 text-sm outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15"
-                    placeholder="data analyst python sql"
-                  />
-                </label>
-                <label className="grid gap-2">
-                  <span className="text-xs font-bold uppercase text-[#4F5F6F]">Location</span>
-                  <input
-                    value={jobSearchLocation}
-                    onChange={(event) => setJobSearchLocation(event.target.value)}
-                    className="h-12 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-4 text-sm outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15"
-                    placeholder="Australia, Remote, United States..."
-                  />
-                </label>
-                <button
-                  type="submit"
-                  disabled={resume.trim().length < 80 || isDiscoveringJobs}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#043873] px-5 text-sm font-bold text-white transition hover:bg-[#0b4c97] disabled:cursor-not-allowed disabled:bg-[#A7CEFC]"
-                >
-                  {isDiscoveringJobs ? <Loader2 className="animate-spin" size={17} aria-hidden="true" /> : <SearchCheck size={17} aria-hidden="true" />}
-                  {isDiscoveringJobs ? "Finding jobs" : "Find matching jobs"}
-                </button>
-              </form>
-
-              {jobDiscoveryError ? (
-                <p className="mt-4 text-sm font-semibold text-red-600">{jobDiscoveryError}</p>
-              ) : null}
-              <p className="mt-4 text-xs leading-5 text-[#4F5F6F]">
-                Apply opens the original listing. RoleGuage searches public company career pages first, with paid job-data providers available as an optional add-on.
-              </p>
-            </div>
-
-            <div className="grid gap-3">
-              <div className="flex flex-col justify-between gap-2 rounded-md border border-[#DDE8F6] bg-white p-4 sm:flex-row sm:items-center">
-                <div>
-                  <h3 className="text-xl font-extrabold text-[#212529]">Best fitting jobs</h3>
-                  {/* <p className="mt-1 text-sm leading-6 text-[#4F5F6F]">
-                    Ranked by resume fit, not by paid placement.
-                  </p> */}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-md bg-[#FFE492] px-3 py-2 text-sm font-bold text-[#043873]">
-                    {discoveredJobs.length ? `${filteredDiscoveredJobs.length} of ${discoveredJobs.length} matches` : "Ready to search"}
-                  </span>
-                </div>
-              </div>
-
-              {discoveredJobs.length ? (
-                <JobDiscoveryFilters
-                  sourceFilter={jobSourceFilter}
-                  onSourceFilterChange={setJobSourceFilter}
-                  sources={jobSources}
-                  decisionFilter={jobDecisionFilter}
-                  onDecisionFilterChange={setJobDecisionFilter}
-                  remoteOnly={jobRemoteOnly}
-                  onRemoteOnlyChange={setJobRemoteOnly}
-                  minScore={jobMinScore}
-                  onMinScoreChange={setJobMinScore}
-                  sort={jobSort}
-                  onSortChange={setJobSort}
-                />
-              ) : null}
-
-              {discoveredJobs.length ? (
-                filteredDiscoveredJobs.length ? (
-                  filteredDiscoveredJobs.map((jobMatch) => (
-                    <JobMatchCard
-                      key={jobMatch.id}
-                      job={jobMatch}
-                      onLoad={() => loadDiscoveredJob(jobMatch)}
-                    />
-                  ))
-                ) : (
-                  <div className="rounded-md border border-dashed border-[#A7CEFC] bg-white p-8 text-center">
-                    <p className="text-lg font-extrabold text-[#043873]">No jobs match these filters</p>
-                    <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#4F5F6F]">
-                      Lower the minimum fit score, include more decisions, or clear the remote-only filter.
-                    </p>
-                  </div>
-                )
-              ) : (
-                <div className="rounded-md border border-dashed border-[#A7CEFC] bg-white p-8 text-center">
-                  <p className="text-lg font-extrabold text-[#043873]">No job matches loaded yet</p>
-                  <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#4F5F6F]">
-                    Upload or paste your resume, choose a target role, then search to see ranked job listings with direct apply links.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="workflow" className="bg-white py-10 md:py-14">
-        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
-          <div className="grid gap-7 lg:grid-cols-[0.82fr_1.18fr] lg:items-start">
-            <div>
-              <p className="text-sm font-bold uppercase text-[#4F9CF9]">How it works</p>
-              <h2 className="mt-3 text-3xl font-extrabold leading-tight text-[#043873] md:text-5xl">
-                One workflow from job ad to application plan.
-              </h2>
-              <p className="mt-4 max-w-xl text-sm leading-7 text-[#4F5F6F]">
-                RoleGuage is designed for jobseekers who want to apply with focus, not guesswork. It keeps the useful parts of AI job tools and removes the noisy parts: no fake skills, no black-box score, no forced account before the first check.
-              </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {workflowSteps.map(([title, copy, Icon], index) => (
-                <article key={title} className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="grid size-10 place-items-center rounded-md bg-[#043873] text-white">
-                      <Icon size={19} aria-hidden="true" />
-                    </span>
-                    <span className="rounded-md bg-[#FFE492] px-2.5 py-1 text-xs font-bold text-[#043873]">
-                      0{index + 1}
-                    </span>
-                  </div>
-                  <h3 className="mt-5 text-lg font-extrabold text-[#212529]">{title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">{copy}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {hasGeneratedReport && !isPreparingReport ? (
-      <section id="application-kit" className="bg-[#043873] pb-14 pt-8 text-white md:pb-20 md:pt-12">
-        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
-          <div className="mb-10 grid gap-5 lg:grid-cols-[0.85fr_1.15fr] lg:items-end">
-            <div>
-              <h2 className="text-4xl font-extrabold leading-tight md:text-5xl">
-                Your application <span className="text-[#FFE492]">kit</span>
-              </h2>
-              <p className="mt-5 max-w-2xl leading-8 text-white/82">
-                Turn the match result into practical notes for your resume, interview prep, outreach, and next action.
-              </p>
-            </div>
-            <div className="rounded-md border border-[#DDE8F6] bg-white p-4 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
-              <p className="text-sm font-bold text-[#043873]">Current role recommendation</p>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="rounded-md bg-[#043873] px-3 py-2 text-sm font-extrabold text-white">{activeResult.decision}</span>
-                <span className="rounded-md bg-[#FFE492] px-3 py-2 text-sm font-extrabold text-[#043873]">{activeResult.score}% fit</span>
-                <span className="rounded-md border border-[#A7CEFC] bg-white px-3 py-2 text-sm font-semibold text-[#043873]">{activeResult.timeToApply}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-5 lg:grid-cols-3">
-            <ApplicationKitCard
-              title="Keyword plan"
-              items={[
-                `Lead with: ${activeResult.keywordPlan.headline}`,
-                ...activeResult.keywordPlan.keep.slice(0, 4).map((item) => `Keep visible: ${item}`),
-                ...activeResult.keywordPlan.add.slice(0, 4).map((item) => `Missing evidence: ${item}`),
-              ]}
-            />
-            <ApplicationKitCard title="Resume bullet drafts" items={activeResult.resumeBullets} />
-            <ApplicationKitCard title="Interview prep" items={activeResult.interviewPrep} />
-          </div>
-
-          <div className="mt-5 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-            <section className="rounded-md border border-[#DDE8F6] bg-white p-6 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
-              <h3 className="text-xl font-bold text-[#212529]">Outreach note</h3>
-              <p className="mt-4 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 text-[#4F5F6F]">
-                {activeResult.outreachMessage}
-              </p>
-            </section>
-            <ApplicationKitCard title="ATS sanity checks" items={activeResult.atsNotes} />
-          </div>
-
-          {activeResult.gapRoadmap?.length ? (
-            <section className="mt-5 rounded-md border border-[#DDE8F6] bg-white p-6 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
-              <h3 className="text-xl font-bold text-[#212529]">Skill gap roadmap</h3>
-              <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                {activeResult.gapRoadmap.slice(0, 3).map((item) => (
-                  <article key={item.skill} className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
-                    <p className="text-sm font-extrabold text-[#043873]">{item.skill}</p>
-                    <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">{item.action}</p>
-                    <p className="mt-3 rounded-md border border-[#A7CEFC] bg-white p-3 text-xs font-semibold leading-5 text-[#043873]">
-                      {item.proofProject}
-                    </p>
-                    <p className="mt-3 text-xs font-bold text-[#4F5F6F]">{item.timeframe}</p>
-                  </article>
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                {result.scoreBreakdown.map((item) => (
+                  <MiniMetric key={item.label} label={item.label} value={item.value} detail={item.detail} />
                 ))}
               </div>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <DetailGroup title="Matched skills" icon={<CheckCircle2 size={16} />} items={result.matchedSkills} tone="match" />
+                <DetailGroup title="Gaps to cover" icon={<Target size={16} />} items={result.missingSkills} tone="gap" />
+              </div>
+
+              {result.fitReasoning?.length ? (
+                <div className="mt-5 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
+                  <h3 className="text-sm font-bold text-[#212529]">Our reasoning</h3>
+                  <ul className="mt-3 grid gap-2 text-sm leading-6 text-[#4F5F6F]">
+                    {result.fitReasoning.slice(0, 4).map((item) => (
+                      <li key={item} className="flex gap-2">
+                        <CheckCircle2 size={15} className="mt-1 shrink-0 text-[#4F9CF9]" aria-hidden="true" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </section>
-          ) : null}
-        </div>
-      </section>
+          </div>
+        </section>
       ) : null}
 
-      <section id="tools" className="bg-white pb-12 pt-8 md:pb-16 md:pt-10">
-        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
-          <div className="mb-7 flex flex-col justify-between gap-3 md:flex-row md:items-end">
+      {result ? (
+        <section id="application-kit" className="bg-[#043873] px-5 py-10 text-white md:px-8 md:py-14 lg:px-10">
+          <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[0.72fr_1.28fr]">
             <div>
-              <h2 className="text-3xl font-extrabold text-[#043873]">Everything needed to apply with focus</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#4F5F6F]">
-                Start with the matcher, then use the generated kit to tailor, prepare, save, and export without rebuilding the same work every time.
+              <p className="text-sm font-bold uppercase text-[#A7CEFC]">Application kit</p>
+              <h2 className="mt-3 text-4xl font-extrabold leading-tight">
+                Turn the match into usable application material.
+              </h2>
+              <p className="mt-4 text-sm leading-7 text-white/82">
+                The output is based on the resume and job description you provide. Review and edit before using it.
               </p>
             </div>
-            <a href="#analyze" className="inline-flex h-11 items-center justify-center rounded-md bg-[#043873] px-5 text-sm font-bold text-white transition hover:bg-[#0b4c97]">
-              Open matcher
-            </a>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {jobTools.map(([title, copy, Icon]) => (
-              <a key={title} href={getToolHref(title)} className="group rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5 transition hover:-translate-y-0.5 hover:border-[#A7CEFC] hover:bg-white hover:shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
-                <span className="grid size-10 place-items-center rounded-md bg-[#A7CEFC]/45 text-[#043873]">
-                  <Icon size={20} aria-hidden="true" />
-                </span>
-                <h3 className="mt-5 text-lg font-extrabold text-[#212529]">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">{copy}</p>
-              </a>
-            ))}
-          </div>
-          <div className="mt-6 grid gap-4 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
-            <div className="flex items-center gap-3">
-              <span className="grid size-11 place-items-center rounded-md bg-[#043873] text-white">
-                <ShieldCheck size={21} aria-hidden="true" />
-              </span>
-              <div>
-                <h3 className="text-lg font-extrabold text-[#212529]">Privacy-first MVP</h3>
-                <p className="mt-1 text-sm leading-6 text-[#4F5F6F]">Saved resumes and tracked applications stay in this browser for now.</p>
+            <div className="grid gap-5">
+              <section className="rounded-md border border-[#DDE8F6] bg-white p-5 text-[#212529] shadow-[0_14px_40px_rgba(4,56,115,0.12)]">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-xl font-extrabold">Cover letter draft</h3>
+                  <button
+                    type="button"
+                    onClick={copyCoverLetter}
+                    className="h-10 rounded-md border border-[#A7CEFC] px-3 text-sm font-bold text-[#043873] transition hover:bg-[#A7CEFC]/20"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <div className="mt-4 whitespace-pre-line rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 text-[#4F5F6F]">
+                  {coverLetter}
+                </div>
+              </section>
+              <div className="grid gap-5 lg:grid-cols-2">
+                <ApplicationKitCard title="Resume bullet ideas" items={result.resumeBullets} />
+                <ApplicationKitCard title="Interview prep" items={result.interviewPrep} />
               </div>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {trustItems.map((item) => (
-                <div key={item} className="rounded-md border border-[#DDE8F6] bg-white px-3 py-2 text-sm font-semibold text-[#043873]">
-                  {item}
-                </div>
-              ))}
-            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
 
-      <section id="tracker" className="bg-[#043873] pb-14 pt-8 text-white md:pb-20 md:pt-12">
-        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
-          <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
-            <div>
-              <h2 className="text-4xl font-extrabold leading-tight md:text-5xl">
-                Application <span className="text-[#FFE492]">tracker</span>
-              </h2>
-              <p className="mt-4 max-w-2xl leading-8 text-white/82">
-                Save fit reports, update statuses, and keep notes so every application has a clear next action.
-              </p>
-            </div>
-            <p className="rounded-md border border-[#DDE8F6] bg-white px-4 py-3 text-sm font-bold text-[#043873]">
-              {applications.length} saved
+      <section id="workflow" className="bg-white px-5 py-14 md:px-8 md:py-20 lg:px-10">
+        <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
+          <div>
+            <p className="text-sm font-bold uppercase text-[#4F9CF9]">How it works</p>
+            <h2 className="mt-5 text-4xl font-extrabold leading-tight text-[#043873] md:text-6xl">
+              One workflow from job ad to application plan.
+            </h2>
+            <p className="mt-6 max-w-xl text-sm leading-7 text-[#4F5F6F] md:text-base">
+              RoleGuage is designed for jobseekers who want to apply with focus, not guesswork.
+              It keeps the useful parts of AI job tools and removes the noisy parts: no fake skills,
+              no black-box score, no forced account before the first check.
             </p>
           </div>
-
-          {applications.length ? (
-            <div className="grid gap-4">
-              {applications.map((application) => (
-                <article key={application.id} className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
-                  <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-xl font-extrabold">{application.title || "Untitled role"}</h3>
-                        <span className="rounded-md bg-[#FFE492] px-3 py-1 text-sm font-extrabold text-[#043873]">
-                          {application.score}%
-                        </span>
-                        <span className="rounded-md border border-[#A7CEFC] bg-white px-3 py-1 text-sm font-semibold text-[#043873]">
-                          {application.level}
-                        </span>
-                        <span className="rounded-md bg-[#043873] px-3 py-1 text-sm font-bold text-white">
-                          {application.decision ?? "Review"}
-                        </span>
-                        <span className="rounded-md border border-[#FFE492] bg-[#FFE492] px-3 py-1 text-sm font-semibold text-[#043873]">
-                          {application.timeToApply ?? "Plan"}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
-                        {[application.company, application.location].filter(Boolean).join(" | ") || "No company/location saved"}
-                      </p>
-                      <p className="mt-3 text-sm leading-6 text-[#4F5F6F]">{application.summary}</p>
-                      {application.nextStep ? (
-                        <p className="mt-3 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-3 text-sm font-semibold leading-6 text-[#043873]">
-                          {application.nextStep}
-                        </p>
-                      ) : null}
-                    </div>
-                    <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
-                      <select
-                        value={application.status}
-                        onChange={(event) => updateApplicationStatus(application.id, event.target.value as ApplicationStatus)}
-                        className="h-11 rounded-md border border-[#DDE8F6] bg-white px-3 text-sm font-bold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
-                      >
-                        {applicationStatuses.map((status) => (
-                          <option key={status} value={status}>{status}</option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => removeApplication(application.id)}
-                        className="h-11 rounded-md border border-[#FFE492] px-3 text-sm font-semibold text-[#043873] transition hover:bg-[#FFE492]"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                  <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                    <TrackerSkillList label="Matched" items={application.matchedSkills} />
-                    <TrackerSkillList label="Missing" items={application.missingSkills} />
-                  </div>
-                  <label className="mt-4 grid gap-2">
-                    <span className="text-sm font-bold text-[#212529]">Notes</span>
-                    <textarea
-                      value={application.notes}
-                      onChange={(event) => updateApplicationNotes(application.id, event.target.value)}
-                      className="min-h-20 resize-y rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-3 text-sm leading-6 outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
-                      placeholder="Next action, recruiter contact, application link, interview notes..."
-                    />
-                  </label>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-md border border-[#DDE8F6] bg-white p-8 text-center shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
-              <p className="text-lg font-extrabold text-[#043873]">No saved applications yet</p>
-              <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
-                Generate a fit report, then use Save to add it here.
-              </p>
-            </div>
-          )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            {workflowSteps.map(([title, copy, Icon], index) => (
+              <article key={title} className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-6">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="grid size-12 place-items-center rounded-md bg-[#043873] text-white">
+                    <Icon size={22} aria-hidden="true" />
+                  </span>
+                  <span className="rounded-md bg-[#FFE492] px-3 py-1.5 text-xs font-extrabold text-[#043873]">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                </div>
+                <h3 className="mt-6 text-xl font-extrabold text-[#212529]">{title}</h3>
+                <p className="mt-3 text-sm leading-7 text-[#4F5F6F]">{copy}</p>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
 
-      <section id="pricing" className="pb-16 pt-10 md:pb-24 md:pt-14">
-        <div className="mx-auto max-w-7xl px-5 md:px-8 lg:px-10">
-          <div className="mx-auto max-w-2xl text-center">
-            <h2 className="text-4xl font-extrabold leading-tight md:text-5xl">
-              Choose your <span className="yellow-mark">plan</span>
-            </h2>
-            <p className="mt-5 leading-8 text-[#4F5F6F]">
+      <section id="pricing" className="bg-[#F8FBFF] px-5 py-14 md:px-8 md:py-20 lg:px-10">
+        <div className="mx-auto max-w-7xl">
+          <div className="text-center">
+            <h2 className="text-4xl font-extrabold text-[#212529] md:text-6xl">Choose your plan</h2>
+            <p className="mx-auto mt-5 max-w-3xl text-sm leading-7 text-[#4F5F6F] md:text-base">
               Start with fit checks, then upgrade when you want saved reports, profile reuse, and a cleaner application workflow.
             </p>
           </div>
-          <div className="mt-12 grid gap-6 lg:grid-cols-3">
+          <div className="mt-12 grid gap-6 md:grid-cols-3">
             {plans.map((plan) => (
-              <article
-                key={plan.name}
-                className={`rounded-md border p-7 ${plan.featured ? "border-[#043873] bg-[#043873] text-white shadow-[0_22px_60px_rgba(4,56,115,0.24)]" : "border-[#FFE492] bg-white text-[#212529]"}`}
-              >
-                <h3 className="text-xl font-bold">{plan.name}</h3>
-                <p className={`mt-3 text-sm leading-7 ${plan.featured ? "text-white/80" : "text-[#4F5F6F]"}`}>{plan.copy}</p>
-                <p className="mt-6 text-4xl font-extrabold">{plan.price}</p>
-                <ul className="mt-6 grid gap-3 text-sm">
-                  {plan.items.map((item) => (
-                    <li key={item} className="flex gap-3">
-                      <Check size={17} className={plan.featured ? "text-[#FFE492]" : "text-[#043873]"} aria-hidden="true" />
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-                <a
-                  href="#analyze"
-                  className={`mt-7 inline-flex items-center justify-center rounded-md px-5 py-3 text-sm font-semibold transition ${plan.featured ? "bg-[#4F9CF9] text-white hover:bg-[#3b8dea]" : "border border-[#FFE492] text-[#043873] hover:bg-[#FFF7D6]"}`}
-                >
-                  Get started
-                </a>
-              </article>
+              <PricingCard key={plan.name} {...plan} />
             ))}
           </div>
         </div>
       </section>
 
-      <section id="faq" className="bg-white py-12 md:py-16">
-        <div className="mx-auto max-w-5xl px-5 md:px-8 lg:px-10">
-          <div className="mb-7 text-center">
-            <h2 className="text-3xl font-extrabold text-[#043873] md:text-4xl">Questions jobseekers ask first</h2>
-            <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-[#4F5F6F]">
+      <section id="questions" className="bg-white px-5 py-14 md:px-8 md:py-20 lg:px-10">
+        <div className="mx-auto max-w-5xl">
+          <div className="text-center">
+            <h2 className="text-4xl font-extrabold text-[#043873] md:text-5xl">
+              Questions jobseekers ask first
+            </h2>
+            <p className="mt-4 text-sm leading-7 text-[#4F5F6F] md:text-base">
               RoleGuage is built to help you apply better, not to invent experience or automate low-quality applications.
             </p>
           </div>
-          <div className="grid gap-3">
+          <div className="mt-10 grid gap-4">
             {faqs.map(([question, answer]) => (
-              <article key={question} className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5">
-                <h3 className="text-base font-extrabold text-[#212529]">{question}</h3>
-                <p className="mt-2 text-sm leading-7 text-[#4F5F6F]">{answer}</p>
+              <article key={question} className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-6">
+                <h3 className="text-lg font-extrabold text-[#212529]">{question}</h3>
+                <p className="mt-4 text-sm leading-7 text-[#4F5F6F] md:text-base">{answer}</p>
               </article>
             ))}
           </div>
         </div>
       </section>
 
-      <footer className="bg-[#043873] text-white">
-        <div className="mx-auto max-w-7xl px-5 py-10 text-center md:px-8 lg:px-10">
+      <footer className="bg-[#043873] px-5 py-14 text-white md:px-8 md:py-20 lg:px-10">
+        <div className="mx-auto max-w-7xl text-center">
           <h2 className="text-4xl font-extrabold">Try RoleGuage today</h2>
-          <p className="mx-auto mt-5 max-w-xl leading-8 text-white/82">
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-white/82">
             Compare your resume against a real job ad, see the evidence gaps, and leave with a clearer plan for your next application.
           </p>
-          <a href="#analyze" className="mt-7 inline-flex items-center gap-2 rounded-md bg-[#4F9CF9] px-6 py-4 text-sm font-semibold text-white transition hover:bg-[#3b8dea]">
+          <a
+            href="#matcher"
+            className="mt-8 inline-flex items-center gap-2 rounded-md bg-[#4F9CF9] px-6 py-4 text-sm font-bold text-white transition hover:bg-[#3b8dea]"
+          >
             Start analyzing
-            <ArrowRight size={17} aria-hidden="true" />
+            <ArrowRight size={18} aria-hidden="true" />
           </a>
-          <div className="mt-12 flex flex-col items-center justify-between gap-5 border-t border-white/15 pt-8 text-sm text-white/70 md:flex-row">
+          <div className="mt-14 flex flex-col items-center justify-between gap-5 border-t border-white/16 pt-8 text-sm text-white/74 md:flex-row">
             <a href="#" className="flex items-center gap-2 font-bold text-white">
               <span className="grid size-8 place-items-center rounded-md bg-white text-[#043873]">
-                <Radar size={20} aria-hidden="true" />
+                <Radar size={18} aria-hidden="true" />
               </span>
               RoleGuage
             </a>
-            <p>Resume fit scoring, evidence-gap analysis, and targeted application support.</p>
+            <p>Resume fit scoring, evidence-gap analysis, cover letters, and targeted application support.</p>
           </div>
         </div>
       </footer>
@@ -1628,36 +759,175 @@ export default function Home() {
   );
 }
 
-function AgentMetric({ label, value }: { label: string; value: string }) {
+function InputPanel({
+  icon: Icon,
+  label,
+  value,
+  onChange,
+  placeholder,
+  compact = false,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  compact?: boolean;
+}) {
   return (
-    <div className="rounded-md border border-white/15 bg-white/8 p-3">
-      <p className="text-2xl font-extrabold leading-none text-white">{value}</p>
-      <p className="mt-2 text-xs font-bold uppercase text-white/68">{label}</p>
+    <label className="grid gap-2">
+      <span className="flex items-center gap-2 text-sm font-bold">
+        <Icon size={16} className="text-[#4F9CF9]" aria-hidden="true" />
+        {label}
+      </span>
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={`${compact ? "min-h-44 md:min-h-52" : "min-h-64 md:min-h-80"} resize-y rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15`}
+        placeholder={placeholder}
+      />
+    </label>
+  );
+}
+
+function MiniMetric({ label, value, detail }: { label: string; value: string; detail?: string }) {
+  return (
+    <div className="rounded-md border border-[#DDE8F6] bg-white p-3">
+      <p className="text-base font-extrabold text-[#043873]">{value}</p>
+      <p className="mt-1 text-xs font-bold uppercase text-[#4F5F6F]">{label}</p>
+      {detail ? <p className="mt-1 text-xs leading-5 text-[#4F5F6F]">{detail}</p> : null}
     </div>
   );
 }
 
-function estimateAgentMinutes(jobCount: number, mode: AgentSafetyMode) {
-  const secondsPerApplication = {
-    assisted: 75,
-    reviewed: 38,
-    autonomous: 18,
-  }[mode];
+function DetailGroup({
+  title,
+  icon,
+  items,
+  tone,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  items: string[];
+  tone: "match" | "gap";
+}) {
+  const chipClass =
+    tone === "match"
+      ? "border-[#A7CEFC] bg-white text-[#043873]"
+      : "border-[#FFE492] bg-[#FFE492] text-[#043873]";
 
-  return Math.max(5, Math.ceil((jobCount * secondsPerApplication) / 60));
+  return (
+    <section className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
+      <h3 className="flex items-center gap-2 text-sm font-bold text-[#212529]">
+        <span className="text-[#043873]">{icon}</span>
+        {title}
+      </h3>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {items.length ? (
+          items.slice(0, 8).map((item) => (
+            <span key={item} className={`rounded-md border px-3 py-1.5 text-xs font-bold ${chipClass}`}>
+              {item}
+            </span>
+          ))
+        ) : (
+          <span className="rounded-md border border-[#DDE8F6] bg-white px-3 py-1.5 text-xs font-bold text-[#4F5F6F]">
+            None
+          </span>
+        )}
+      </div>
+    </section>
+  );
 }
 
-function clampNumber(value: number, min: number, max: number) {
-  if (!Number.isFinite(value)) return min;
-
-  return Math.min(Math.max(value, min), max);
+function ApplicationKitCard({ title, items }: { title: string; items: string[] }) {
+  return (
+    <section className="rounded-md border border-[#DDE8F6] bg-white p-6 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
+      <h3 className="text-xl font-bold text-[#212529]">{title}</h3>
+      <ul className="mt-5 grid gap-3 text-sm leading-6 text-[#4F5F6F]">
+        {items.map((item) => (
+          <li key={item} className="flex gap-3">
+            <CheckCircle2 size={16} className="mt-1 shrink-0 text-[#4F9CF9]" aria-hidden="true" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
-function getToolHref(title: string) {
-  if (title === "Apply agent") return "#apply-agent";
-  if (title === "Application tracker") return "#tracker";
+function PricingCard({
+  name,
+  price,
+  copy,
+  items,
+  featured,
+}: {
+  name: string;
+  price: string;
+  copy: string;
+  items: string[];
+  featured: boolean;
+}) {
+  return (
+    <article
+      className={`rounded-md border p-7 shadow-[0_14px_40px_rgba(4,56,115,0.08)] ${
+        featured
+          ? "border-[#043873] bg-[#043873] text-white"
+          : "border-[#FFE492] bg-white text-[#212529]"
+      }`}
+    >
+      <h3 className="text-2xl font-extrabold">{name}</h3>
+      <p className={`mt-5 text-sm leading-7 ${featured ? "text-white/82" : "text-[#4F5F6F]"}`}>{copy}</p>
+      <p className={`mt-9 text-4xl font-extrabold ${featured ? "text-white" : "text-[#212529]"}`}>{price}</p>
+      <ul className="mt-8 grid gap-4">
+        {items.map((item) => (
+          <li key={item} className="flex gap-3 text-sm font-semibold leading-6">
+            <Check size={17} className={`mt-1 shrink-0 ${featured ? "text-[#FFE492]" : "text-[#043873]"}`} aria-hidden="true" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+      <a
+        href="#matcher"
+        className={`mt-9 inline-flex h-12 items-center justify-center rounded-md px-5 text-sm font-bold transition ${
+          featured
+            ? "bg-[#4F9CF9] text-white hover:bg-[#3b8dea]"
+            : "border border-[#FFE492] bg-white text-[#043873] hover:bg-[#FFE492]"
+        }`}
+      >
+        Get started
+      </a>
+    </article>
+  );
+}
 
-  return "#analyze";
+function saveMatchToHistory(result: AnalysisResult, jobMeta: JobMeta) {
+  if (typeof window === "undefined") return;
+
+  const item: MatchHistoryItem = {
+    id: `${slugify(jobMeta.title || "role")}-${Date.now()}`,
+    savedAt: new Date().toISOString(),
+    jobMeta,
+    result,
+  };
+  const existing = readMatchHistory();
+  const withoutSameRole = existing.filter(
+    (historyItem) =>
+      `${historyItem.jobMeta.title}-${historyItem.jobMeta.company}` !== `${jobMeta.title}-${jobMeta.company}`,
+  );
+
+  window.localStorage.setItem(matchHistoryStorageKey, JSON.stringify([item, ...withoutSameRole].slice(0, 30)));
+}
+
+function readMatchHistory() {
+  try {
+    const raw = window.localStorage.getItem(matchHistoryStorageKey) ?? "[]";
+    const parsed = JSON.parse(raw) as MatchHistoryItem[];
+
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 function inferJobMeta(jobText: string, current: JobMeta): JobMeta {
@@ -1672,54 +942,6 @@ function inferJobMeta(jobText: string, current: JobMeta): JobMeta {
     location: current.location,
     sourceUrl: current.sourceUrl,
   };
-}
-
-function subscribeToTracker(onStoreChange: () => void) {
-  window.addEventListener("storage", onStoreChange);
-  window.addEventListener(trackerChangeEvent, onStoreChange);
-
-  return () => {
-    window.removeEventListener("storage", onStoreChange);
-    window.removeEventListener(trackerChangeEvent, onStoreChange);
-  };
-}
-
-function getTrackerSnapshot() {
-  const raw =
-    window.localStorage.getItem(trackerStorageKey) ??
-    window.localStorage.getItem(legacyTrackerStorageKey) ??
-    "[]";
-
-  if (raw === cachedTrackerRaw) {
-    return cachedTrackerApplications;
-  }
-
-  cachedTrackerRaw = raw;
-
-  try {
-    const parsed = JSON.parse(raw) as TrackedApplication[];
-    cachedTrackerApplications = Array.isArray(parsed) ? parsed : [];
-  } catch {
-    cachedTrackerApplications = [];
-  }
-
-  return cachedTrackerApplications;
-}
-
-function getTrackerServerSnapshot() {
-  return emptyTrackerApplications;
-}
-
-function writeTrackerApplications(
-  update: (current: TrackedApplication[]) => TrackedApplication[],
-) {
-  const nextApplications = update(getTrackerSnapshot());
-  const raw = JSON.stringify(nextApplications);
-
-  cachedTrackerRaw = raw;
-  cachedTrackerApplications = nextApplications;
-  window.localStorage.setItem(trackerStorageKey, raw);
-  window.dispatchEvent(new Event(trackerChangeEvent));
 }
 
 function cleanImportedTitle(title: string) {
@@ -1743,14 +965,9 @@ function buildReportText(result: AnalysisResult, meta: JobMeta) {
     `Recommendation: ${result.level}`,
     `Decision: ${result.decision}`,
     `Next step: ${result.nextStep}`,
-    `Time estimate: ${result.timeToApply}`,
-    `Confidence: ${result.confidence}`,
     "",
     "Summary",
     result.summary,
-    "",
-    "Score Breakdown",
-    ...result.scoreBreakdown.map((item) => `- ${item.label}: ${item.value} (${item.detail})`),
     "",
     "Matched Skills",
     result.matchedSkills.length ? result.matchedSkills.map((item) => `- ${item}`).join("\n") : "- None detected",
@@ -1758,39 +975,32 @@ function buildReportText(result: AnalysisResult, meta: JobMeta) {
     "Gaps To Cover",
     result.missingSkills.length ? result.missingSkills.map((item) => `- ${item}`).join("\n") : "- None detected",
     "",
-    "Role Signals",
-    result.roleSignals.length ? result.roleSignals.map((item) => `- ${item}`).join("\n") : "- None detected",
-    "",
-    "Recommended Actions",
-    ...result.bullets.map((item) => `- ${item}`),
-    "",
-    "Our Reasoning",
-    ...(result.fitReasoning?.length ? result.fitReasoning.map((item) => `- ${item}`) : ["- No extra notes available"]),
-    "",
-    "Keyword Plan",
-    `- Headline: ${result.keywordPlan.headline}`,
-    ...result.keywordPlan.keep.map((item) => `- Keep visible: ${item}`),
-    ...result.keywordPlan.add.map((item) => `- Missing evidence: ${item}`),
-    "",
-    "Resume Bullet Drafts",
+    "Resume Bullet Ideas",
     ...result.resumeBullets.map((item) => `- ${item}`),
     "",
-    "Interview Prep",
-    ...result.interviewPrep.map((item) => `- ${item}`),
-    "",
-    "Outreach Note",
-    result.outreachMessage,
-    "",
-    "ATS Notes",
-    ...result.atsNotes.map((item) => `- ${item}`),
-    "",
-    "Skill Gap Roadmap",
-    ...(result.gapRoadmap?.length
-      ? result.gapRoadmap.map(
-          (item) => `- ${item.skill}: ${item.action} | Proof: ${item.proofProject} | Timeframe: ${item.timeframe}`,
-        )
-      : ["- No roadmap available"]),
+    "Cover Letter Draft",
+    result.coverLetter ?? buildCoverLetterDraft(result, meta),
   ].join("\n");
+}
+
+function buildCoverLetterDraft(result: Partial<AnalysisResult>, meta: JobMeta) {
+  const role = meta.title || "this role";
+  const company = meta.company || "your team";
+  const matched = result.matchedSkills?.slice(0, 3).join(", ") || "the role requirements";
+  const gap = result.missingSkills?.[0];
+  const gapSentence = gap
+    ? `I also noticed ${gap} is important for the role, and I would be ready to discuss the closest relevant work I have done and how I am strengthening that area.`
+    : "The role appears closely aligned with the experience shown in my resume.";
+
+  return `Dear ${company} team,
+
+I am interested in the ${role} position. My background aligns with the role through ${matched}, and I would like to bring that experience into work that has clear practical impact.
+
+${gapSentence}
+
+I have included my resume for your review and would welcome the opportunity to discuss how my experience fits the needs of this role.
+
+Kind regards`;
 }
 
 function slugify(value: string) {
@@ -1799,410 +1009,4 @@ function slugify(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 80);
-}
-
-function parsePostedDate(value: string) {
-  if (!value) return 0;
-
-  const currentYear = new Date().getFullYear();
-  const parsed = Date.parse(`${value} ${currentYear}`);
-
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-function buildDiscoveredJobText(jobToLoad: DiscoveredJob) {
-  return [
-    jobToLoad.title,
-    jobToLoad.company,
-    jobToLoad.location,
-    jobToLoad.tags.join(" "),
-    "",
-    jobToLoad.description,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-function SmallInput({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-}) {
-  return (
-    <label className="grid min-w-0 gap-2">
-      <span className="text-xs font-bold uppercase text-[#4F5F6F]">{label}</span>
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-11 min-w-0 truncate rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15"
-        placeholder={placeholder}
-      />
-    </label>
-  );
-}
-
-function JobDiscoveryFilters({
-  sourceFilter,
-  onSourceFilterChange,
-  sources,
-  decisionFilter,
-  onDecisionFilterChange,
-  remoteOnly,
-  onRemoteOnlyChange,
-  minScore,
-  onMinScoreChange,
-  sort,
-  onSortChange,
-}: {
-  sourceFilter: string;
-  onSourceFilterChange: (value: string) => void;
-  sources: string[];
-  decisionFilter: JobDecisionFilter;
-  onDecisionFilterChange: (value: JobDecisionFilter) => void;
-  remoteOnly: boolean;
-  onRemoteOnlyChange: (value: boolean) => void;
-  minScore: number;
-  onMinScoreChange: (value: number) => void;
-  sort: JobSort;
-  onSortChange: (value: JobSort) => void;
-}) {
-  return (
-    <section className="rounded-md border border-[#DDE8F6] bg-white p-4">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <label className="grid gap-1.5">
-          <span className="text-xs font-bold uppercase text-[#4F5F6F]">Sort</span>
-          <select
-            value={sort}
-            onChange={(event) => onSortChange(event.target.value as JobSort)}
-            className="h-10 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-semibold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
-          >
-            <option value="fit">Best fit</option>
-            <option value="recent">Most recent</option>
-          </select>
-        </label>
-
-        <label className="grid gap-1.5">
-          <span className="text-xs font-bold uppercase text-[#4F5F6F]">Source</span>
-          <select
-            value={sourceFilter}
-            onChange={(event) => onSourceFilterChange(event.target.value)}
-            className="h-10 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-semibold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
-          >
-            <option value="all">All sources</option>
-            {sources.map((source) => (
-              <option key={source} value={source}>{source}</option>
-            ))}
-          </select>
-        </label>
-
-        <label className="grid gap-1.5">
-          <span className="text-xs font-bold uppercase text-[#4F5F6F]">Decision</span>
-          <select
-            value={decisionFilter}
-            onChange={(event) => onDecisionFilterChange(event.target.value as JobDecisionFilter)}
-            className="h-10 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-semibold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
-          >
-            <option value="all">All decisions</option>
-            <option value="Apply">Apply</option>
-            <option value="Tailor">Tailor</option>
-            <option value="Build">Build</option>
-            <option value="Skip">Skip</option>
-          </select>
-        </label>
-
-        <label className="grid gap-1.5">
-          <span className="text-xs font-bold uppercase text-[#4F5F6F]">Minimum fit</span>
-          <select
-            value={minScore}
-            onChange={(event) => onMinScoreChange(Number(event.target.value))}
-            className="h-10 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm font-semibold text-[#043873] outline-none focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
-          >
-            <option value={0}>Any score</option>
-            <option value={55}>55%+</option>
-            <option value={70}>70%+</option>
-            <option value={82}>82%+</option>
-          </select>
-        </label>
-
-        <label className="flex h-10 items-center justify-between gap-3 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 xl:self-end">
-          <span className="text-sm font-semibold text-[#043873]">Remote only</span>
-          <input
-            checked={remoteOnly}
-            onChange={(event) => onRemoteOnlyChange(event.target.checked)}
-            type="checkbox"
-            className="size-4 accent-[#043873]"
-          />
-        </label>
-      </div>
-    </section>
-  );
-}
-
-function JobMatchCard({
-  job,
-  onLoad,
-}: {
-  job: DiscoveredJob;
-  onLoad: () => void;
-}) {
-  return (
-    <article className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_10px_30px_rgba(4,56,115,0.06)] transition hover:border-[#A7CEFC] hover:shadow-[0_16px_42px_rgba(4,56,115,0.1)]">
-      <div className="grid gap-4 md:grid-cols-[1fr_auto]">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-md bg-[#A7CEFC] px-2.5 py-1 text-xs font-bold text-[#043873]">
-              via {job.source}
-            </span>
-            {job.postedAt ? (
-              <span className="rounded-md border border-[#DDE8F6] px-2.5 py-1 text-xs font-semibold text-[#4F5F6F]">
-                Posted {job.postedAt}
-              </span>
-            ) : null}
-            <span className="rounded-md border border-[#FFE492] bg-[#FFE492] px-2.5 py-1 text-xs font-bold text-[#043873]">
-              {job.level}
-            </span>
-          </div>
-          <h3 className="mt-3 text-xl font-extrabold leading-tight text-[#212529]">{job.title}</h3>
-          <p className="mt-1 text-sm font-semibold text-[#4F5F6F]">
-            {[job.company, job.location].filter(Boolean).join(" | ")}
-          </p>
-          <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#4F5F6F]">{job.summary}</p>
-        </div>
-
-        <div className="flex items-start gap-3 md:flex-col md:items-end">
-          <div className="grid size-20 shrink-0 place-items-center rounded-md bg-[#043873] text-white">
-            <div className="text-center">
-              <p className="text-2xl font-extrabold leading-none">{job.score}</p>
-              <p className="mt-1 text-xs font-bold">fit</p>
-            </div>
-          </div>
-          <div className="flex grow gap-2 md:grow-0">
-            <button
-              type="button"
-              onClick={onLoad}
-              className="inline-flex h-10 items-center justify-center rounded-md border border-[#A7CEFC] px-3 text-xs font-bold text-[#043873] transition hover:bg-[#A7CEFC]/25"
-            >
-              Review
-            </button>
-            <a
-              href={job.applyUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-10 items-center justify-center rounded-md bg-[#4F9CF9] px-3 text-xs font-bold text-white transition hover:bg-[#3b8dea]"
-            >
-              Apply
-            </a>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
-        <p className="mb-3 text-xs font-bold uppercase text-[#4F5F6F]">Job brief</p>
-        <div className="grid gap-2 text-sm leading-6 text-[#4F5F6F]">
-          <BriefRow label="Work" value={job.descriptionSummary.work} />
-          <BriefRow label="Needs" value={job.descriptionSummary.requirements} />
-          <BriefRow label="Level" value={job.descriptionSummary.experience} />
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 border-t border-[#DDE8F6] pt-4 lg:grid-cols-2">
-        <JobChipGroup label="Matched" items={job.matchedSkills} tone="match" />
-        <JobChipGroup label="Gaps" items={job.missingSkills} tone="gap" />
-      </div>
-
-      {job.tags.length ? (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {job.tags.slice(0, 5).map((tag) => (
-            <span key={tag} className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-2.5 py-1 text-xs font-semibold text-[#4F5F6F]">
-              {tag}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </article>
-  );
-}
-
-function BriefRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid gap-1 sm:grid-cols-[70px_1fr]">
-      <span className="font-bold text-[#043873]">{label}</span>
-      <span>{value}</span>
-    </div>
-  );
-}
-
-function JobChipGroup({
-  label,
-  items,
-  tone,
-}: {
-  label: string;
-  items: string[];
-  tone: "match" | "gap";
-}) {
-  const chipClass =
-    tone === "match"
-      ? "border-[#A7CEFC] bg-white text-[#043873]"
-      : "border-[#FFE492] bg-[#FFE492] text-[#043873]";
-
-  return (
-    <div>
-      <p className="mb-2 text-xs font-bold uppercase text-[#4F5F6F]">{label}</p>
-      <div className="flex flex-wrap gap-1.5">
-        {items.length ? (
-          items.map((item) => (
-            <span key={item} className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${chipClass}`}>
-              {item}
-            </span>
-          ))
-        ) : (
-          <span className="rounded-md border border-[#DDE8F6] px-2.5 py-1 text-xs font-semibold text-[#4F5F6F]">
-            None detected
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function TrackerSkillList({ label, items }: { label: string; items: string[] }) {
-  return (
-    <div>
-      <p className="mb-2 text-sm font-bold text-[#212529]">{label}</p>
-      <div className="flex flex-wrap gap-2">
-        {items.length ? (
-          items.slice(0, 8).map((item) => (
-            <span key={item} className="rounded-md border border-[#A7CEFC] bg-white px-3 py-1.5 text-xs font-semibold text-[#043873]">
-              {item}
-            </span>
-          ))
-        ) : (
-          <span className="rounded-md border border-[#DDE8F6] bg-white px-3 py-1.5 text-xs font-bold text-[#4F5F6F]">
-            None
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ApplicationKitCard({
-  title,
-  items,
-}: {
-  title: string;
-  items: string[];
-}) {
-  return (
-    <section className="rounded-md border border-[#DDE8F6] bg-white p-6 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
-      <h3 className="text-xl font-bold text-[#212529]">{title}</h3>
-      <ul className="mt-5 grid gap-3 text-sm leading-6 text-[#4F5F6F]">
-        {items.map((item) => (
-          <li key={item} className="flex gap-3">
-            <CheckCircle2 size={16} className="mt-1 shrink-0 text-[#4F9CF9]" aria-hidden="true" />
-            <span>{item}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-function InputPanel({
-  icon: Icon,
-  label,
-  value,
-  onChange,
-  placeholder,
-  compact = false,
-  fillAvailable = false,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  compact?: boolean;
-  fillAvailable?: boolean;
-}) {
-  return (
-    <label className={`grid gap-2 ${fillAvailable ? "h-full grid-rows-[auto_1fr]" : ""}`}>
-      <span className="flex items-center gap-2 text-sm font-bold">
-        <Icon size={16} className="text-[#4F9CF9]" aria-hidden="true" />
-        {label}
-      </span>
-      <textarea
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={`${fillAvailable ? "h-full min-h-44 md:min-h-56" : compact ? "min-h-44 md:min-h-52" : "min-h-64 md:min-h-80"} resize-y rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15`}
-        placeholder={placeholder}
-      />
-    </label>
-  );
-}
-
-function CompactResultBlock({
-  title,
-  icon: Icon,
-  items,
-  tone,
-  limit = 4,
-}: {
-  title: string;
-  icon: LucideIcon;
-  items: string[];
-  tone: "match" | "gap" | "signal";
-  limit?: number;
-}) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const chipClass = {
-    match: "border-[#A7CEFC] bg-white text-[#043873]",
-    gap: "border-[#FFE492] bg-[#FFE492] text-[#043873]",
-    signal: "border-[#A7CEFC] bg-[#A7CEFC] text-[#043873]",
-  }[tone];
-
-  const visibleItems = isExpanded ? items : items.slice(0, limit);
-  const hiddenCount = Math.max(items.length - visibleItems.length, 0);
-
-  return (
-    <div className="border-b border-[#DDE8F6] pb-3 last:border-b-0 last:pb-0">
-      <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-[#212529]">
-        <span className="grid size-5 shrink-0 place-items-center rounded-md border border-[#043873] text-[#043873]">
-          <Icon size={12} strokeWidth={2.5} aria-hidden="true" />
-        </span>
-        <span className="leading-tight">{title}</span>
-      </h3>
-      <div className="flex flex-wrap gap-1.5">
-        {items.length ? (
-          <>
-          {visibleItems.map((item) => (
-            <span key={item} className={`rounded-md border px-2.5 py-1.5 text-xs font-semibold leading-tight ${chipClass}`}>
-              {item}
-            </span>
-          ))}
-          {hiddenCount ? (
-            <button
-              type="button"
-              onClick={() => setIsExpanded(true)}
-              className="rounded-md border border-[#DDE8F6] bg-white px-2.5 py-1.5 text-xs font-semibold leading-tight text-[#4F5F6F] transition hover:border-[#A7CEFC] hover:text-[#043873]"
-            >
-              +{hiddenCount} more
-            </button>
-          ) : null}
-          </>
-        ) : (
-          <span className="rounded-md border border-[#DDE8F6] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#4F5F6F]">
-            None
-          </span>
-        )}
-      </div>
-    </div>
-  );
 }

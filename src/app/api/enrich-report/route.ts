@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
       bullets: aiEnrichment.fitReasoning,
       fitReasoning: aiEnrichment.fitReasoning,
       ...(aiEnrichment.resumeBullets ? { resumeBullets: aiEnrichment.resumeBullets } : {}),
+      ...(aiEnrichment.coverLetter ? { coverLetter: aiEnrichment.coverLetter } : {}),
       ...(aiEnrichment.interviewPrep ? { interviewPrep: aiEnrichment.interviewPrep } : {}),
       ...(aiEnrichment.outreachMessage ? { outreachMessage: aiEnrichment.outreachMessage } : {}),
       ...(aiEnrichment.atsNotes ? { atsNotes: aiEnrichment.atsNotes } : {}),

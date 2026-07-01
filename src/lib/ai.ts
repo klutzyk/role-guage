@@ -29,6 +29,7 @@ export type AiFitEnrichment = {
   nextStep: string;
   fitReasoning: string[];
   resumeBullets?: string[];
+  coverLetter?: string;
   interviewPrep?: string[];
   outreachMessage?: string;
   atsNotes?: string[];
@@ -108,6 +109,7 @@ Avoid generic filler. Every sentence must tell the user what to do, what to high
 Do not copy the base summary or base next step verbatim. Use them only as guardrails.
 The nextStep must be one short, direct instruction under 24 words.
 Resume bullets must be honest draft ideas based only on evidence in the resume and job ad.
+Cover letter must be short, plain, truthful, and specific to the role. Do not invent achievements.
 
 MATCH RESULT
 Score: ${analysis.score}
@@ -254,12 +256,17 @@ const fitEnrichmentSchema = {
       ...stringArraySchema,
       description: "Two or three honest resume bullet draft ideas based only on evidence.",
     },
+    coverLetter: {
+      type: "string",
+      description: "A short truthful cover letter draft based only on the resume and job ad.",
+    },
   },
   required: [
     "summary",
     "nextStep",
     "fitReasoning",
     "resumeBullets",
+    "coverLetter",
   ],
 };
 
