@@ -125,10 +125,10 @@ RESUME AND JOB EVIDENCE
 ${context}`;
 
   const enrichment = await cachedJsonWithLimit<AiFitEnrichmentPayload>(
-    ["fit", resume, job, JSON.stringify(analysis)].join("\n"),
+    ["fit-v2-cover-letter", resume, job, JSON.stringify(analysis)].join("\n"),
     fitEnrichmentSchema,
     prompt,
-    500,
+    800,
   );
 
   return {

@@ -61,6 +61,9 @@ const skillTaxonomy: SkillDefinition[] = [
   },
   { name: "ETL", category: "Data", weight: 6, aliases: ["etl", "extract transform load"] },
   { name: "Data pipelines", category: "Data", weight: 7, aliases: ["data pipeline", "data pipelines", "pipeline", "pipelines"] },
+  { name: "Distributed processing", category: "Data", weight: 8, aliases: ["distributed processing", "spark", "ray", "dask", "emr", "tb scale", "pb scale", "terabyte", "petabyte"] },
+  { name: "Data quality", category: "Data", weight: 7, aliases: ["data quality", "dedupe", "deduplication", "filter", "classifiers", "quality classification", "audit", "data cleaning"] },
+  { name: "Training data", category: "Data", weight: 8, aliases: ["training data", "pretraining", "pre-training", "corpus", "dataset mixture", "tokenisation", "tokenization", "web-scale corpora"] },
   { name: "Cloud deployment", category: "Cloud", weight: 5, aliases: ["cloud deployment", "deployment", "deploy", "vercel", "netlify"] },
 ];
 
@@ -124,6 +127,12 @@ const roleFamilyChecks = [
     name: "Data engineering",
     jobAliases: ["data engineer", "analytics engineer", "data officer", "data platform", "etl developer"],
     resumeAliases: ["data pipeline", "data pipelines", "etl", "postgresql", "sql", "cloud deployment"],
+    strict: true,
+  },
+  {
+    name: "AI data engineering",
+    jobAliases: ["signal engineer", "training data", "pretraining", "corpus", "dataset mixture", "web-scale corpora"],
+    resumeAliases: ["data pipeline", "data pipelines", "etl", "distributed processing", "spark", "ray", "deduplication", "training data", "pretraining", "corpus"],
     strict: true,
   },
   {

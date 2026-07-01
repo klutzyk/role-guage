@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
               nextStep: aiEnrichment.nextStep,
               fitReasoning: aiEnrichment.fitReasoning,
               resumeBullets: aiEnrichment.resumeBullets ?? [],
+              coverLetter: aiEnrichment.coverLetter ?? "",
               interviewPrep: aiEnrichment.interviewPrep ?? [],
               outreachMessage: aiEnrichment.outreachMessage ?? "",
               atsNotes: aiEnrichment.atsNotes ?? [],
