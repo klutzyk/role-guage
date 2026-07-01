@@ -230,6 +230,18 @@ function extractJobTextFromPage() {
     }
   }
 
+  if (location.hostname.includes("indeed.")) {
+    const indeedJob = extractIndeedJob();
+
+    if (indeedJob.length > 120) {
+      return {
+        pageTitle,
+        pageUrl,
+        jobText: indeedJob.slice(0, 18000),
+      };
+    }
+  }
+
   const titleText = getFirstText([
     "h1",
     "[data-automation='job-detail-title']",
@@ -282,6 +294,42 @@ function extractJobTextFromPage() {
       applicationVolume ? `Application volume: ${applicationVolume}` : "",
       description,
       employerQuestions,
+    ];
+
+    return cleanText(parts.filter(Boolean).join("\n\n"));
+  }
+
+  function extractIndeedJob() {
+    const root =
+      document.querySelector("#job-full-details") ||
+      document.querySelector("#vjs-container") ||
+      document.querySelector(".jobsearch-ViewJobContainer");
+
+    if (!root) return "";
+
+    const title = cleanIndeedText(
+      getTextFrom(root, "[data-testid='jobsearch-JobInfoHeader-title']") ||
+        getTextFrom(root, ".jobsearch-JobInfoHeader-title") ||
+        getTextFrom(root, "h1, h2"),
+    ).replace(/\s+-\s+job post$/i, "");
+    const company = cleanIndeedText(
+      getTextFrom(root, "[data-testid='inlineHeader-companyName']") ||
+        getTextFrom(root, "[data-company-name='true']") ||
+        getTextFrom(root, "#companyLink"),
+    );
+    const locationText = cleanIndeedText(
+      getTextFrom(root, "[data-testid='inlineHeader-companyLocation'] [data-testid='job-location']") ||
+        getTextFrom(root, "#jobLocationText [data-testid='job-location']") ||
+        getTextFrom(root, "[data-testid='job-location']"),
+    );
+    const payAndType = cleanIndeedText(getTextFrom(root, "#salaryInfoAndJobType"));
+    const description = cleanIndeedText(getTextFrom(root, "#jobDescriptionText"));
+    const parts = [
+      title ? `Job title: ${title}` : "",
+      company ? `Company: ${company}` : "",
+      locationText ? `Location: ${locationText}` : "",
+      payAndType ? `Pay / job type: ${payAndType}` : "",
+      description ? `Full job description\n${description}` : "",
     ];
 
     return cleanText(parts.filter(Boolean).join("\n\n"));
@@ -634,6 +682,47 @@ function extractJobTextFromPage() {
 
     return String(value)
       .replace(/\u00a0/g, " ")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => {
+        if (!line) return false;
+        if (removeExact.has(line)) return false;
+
+        return !removePatterns.some((pattern) => pattern.test(line));
+      })
+      .join("\n")
+      .trim();
+  }
+
+  function cleanIndeedText(value) {
+    const removeExact = new Set([
+      "Welcome, Kulunu",
+      "Job details",
+      "Here’s how the job details align with your profile.",
+      "Here's how the job details align with your profile.",
+      "Location",
+      "Estimated commute",
+      "Add commute preference",
+      "Job address",
+      "Apply with Indeed",
+      "Save job",
+      "Not interested",
+      "Share Job",
+      "Report job",
+    ]);
+    const removePatterns = [
+      /^here.?s how the job details align with your profile/i,
+      /^missing preference$/i,
+      /^matching preference$/i,
+      /^save-icon$/i,
+      /^&nbsp;$/i,
+    ];
+
+    return String(value)
+      .replace(/\u00a0/g, " ")
+      .replace(/&nbsp;/gi, " ")
       .replace(/[ \t]+/g, " ")
       .replace(/\n{3,}/g, "\n\n")
       .split("\n")
