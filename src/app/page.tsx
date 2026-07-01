@@ -164,9 +164,7 @@ export default function Home() {
     [resume, job],
   );
   const isPreparingReport = Boolean(result && isEnrichingReport);
-  const coverLetter = result
-    ? result.coverLetter ?? buildCoverLetterDraft(result, inferJobMeta(job, jobMeta))
-    : "";
+  const coverLetter = result?.coverLetter?.trim() ?? "";
 
   async function analyzeRole(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -223,7 +221,7 @@ export default function Home() {
       const enrichedResult = {
         ...baseResult,
         ...enrichment,
-        coverLetter: enrichment.coverLetter ?? buildCoverLetterDraft({ ...baseResult, ...enrichment }, jobMeta),
+        coverLetter: enrichment.coverLetter?.trim() ?? "",
       };
       setResult(enrichedResult);
       saveMatchToHistory(enrichedResult, inferJobMeta(jobText, jobMeta));
@@ -231,7 +229,8 @@ export default function Home() {
       if (activeRequest.current === requestId) {
         const fallbackResult = {
           ...baseResult,
-          coverLetter: buildCoverLetterDraft(baseResult, jobMeta),
+          coverLetter: "",
+          aiStatus: "fallback" as const,
         };
         setResult(fallbackResult);
         saveMatchToHistory(fallbackResult, inferJobMeta(jobText, jobMeta));
@@ -629,12 +628,13 @@ export default function Home() {
         <section id="application-kit" className="bg-[#043873] px-5 py-10 text-white md:px-8 md:py-14 lg:px-10">
           <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[0.72fr_1.28fr]">
             <div>
-              <p className="text-sm font-bold uppercase text-[#A7CEFC]">Application kit</p>
+              <p className="text-sm font-bold uppercase text-[#A7CEFC]">Cover letter kit</p>
               <h2 className="mt-3 text-4xl font-extrabold leading-tight">
-                Turn the match into usable application material.
+                Write the cover letter around the strongest evidence.
               </h2>
               <p className="mt-4 text-sm leading-7 text-white/82">
-                The output is based on the resume and job description you provide. Review and edit before using it.
+                RoleGuage uses the job ad, your resume evidence, and your fit report to draft a plain,
+                role-specific cover letter. Resume bullets and interview notes sit underneath as supporting material.
               </p>
             </div>
             <div className="grid gap-5">
@@ -644,13 +644,16 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={copyCoverLetter}
-                    className="h-10 rounded-md border border-[#A7CEFC] px-3 text-sm font-bold text-[#043873] transition hover:bg-[#A7CEFC]/20"
+                    disabled={!coverLetter}
+                    className="h-10 rounded-md border border-[#A7CEFC] px-3 text-sm font-bold text-[#043873] transition hover:bg-[#A7CEFC]/20 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Copy
                   </button>
                 </div>
                 <div className="mt-4 whitespace-pre-line rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 text-[#4F5F6F]">
-                  {coverLetter}
+                  {isPreparingReport
+                    ? "Writing a role-specific cover letter from your resume evidence..."
+                    : coverLetter || "The cover letter could not be generated this time. Try generating the report again."}
                 </div>
               </section>
               <div className="grid gap-5 lg:grid-cols-2">
@@ -979,28 +982,8 @@ function buildReportText(result: AnalysisResult, meta: JobMeta) {
     ...result.resumeBullets.map((item) => `- ${item}`),
     "",
     "Cover Letter Draft",
-    result.coverLetter ?? buildCoverLetterDraft(result, meta),
+    result.coverLetter?.trim() || "No cover letter was generated for this report.",
   ].join("\n");
-}
-
-function buildCoverLetterDraft(result: Partial<AnalysisResult>, meta: JobMeta) {
-  const role = meta.title || "this role";
-  const company = meta.company || "your team";
-  const matched = result.matchedSkills?.slice(0, 3).join(", ") || "the role requirements";
-  const gap = result.missingSkills?.[0];
-  const gapSentence = gap
-    ? `I also noticed ${gap} is important for the role, and I would be ready to discuss the closest relevant work I have done and how I am strengthening that area.`
-    : "The role appears closely aligned with the experience shown in my resume.";
-
-  return `Dear ${company} team,
-
-I am interested in the ${role} position. My background aligns with the role through ${matched}, and I would like to bring that experience into work that has clear practical impact.
-
-${gapSentence}
-
-I have included my resume for your review and would welcome the opportunity to discuss how my experience fits the needs of this role.
-
-Kind regards`;
 }
 
 function slugify(value: string) {

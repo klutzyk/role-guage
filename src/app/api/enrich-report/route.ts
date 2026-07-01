@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       aiStatus: "generated",
-      aiModel: getAiModel(),
+      aiModel: aiEnrichment.aiModel ?? getAiModel(),
       summary: aiEnrichment.summary,
       nextStep: aiEnrichment.nextStep,
       bullets: aiEnrichment.fitReasoning,
@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       aiStatus: "fallback",
       aiModel: getAiModel(),
+      ...(process.env.NODE_ENV !== "production" ? { aiError: getErrorSummary(error) } : {}),
     });
   }
 }

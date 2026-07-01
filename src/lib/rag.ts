@@ -1,6 +1,6 @@
 export type RagChunk = {
   id: string;
-  source: "resume" | "job";
+  source: "resume" | "job" | "profile";
   title: string;
   text: string;
 };
@@ -26,9 +26,40 @@ const stopWords = new Set([
 
 export function buildRagCorpus(resume: string, job: string) {
   return [
+    ...buildProfileChunks(resume),
     ...chunkText("resume", "Resume evidence", resume),
     ...chunkText("job", "Job description", job),
   ];
+}
+
+export function buildStructuredProfile(resume: string) {
+  const normalized = resume.replace(/\s+/g, " ").trim();
+  const experienceYears = extractExperienceYears(normalized);
+  const education = findMatches(normalized, [
+    /master'?s? of [a-z ]+/gi,
+    /bachelor'?s? of [a-z ]+/gi,
+    /graduate diploma in [a-z ]+/gi,
+  ]);
+  const skills = findKnownSkills(normalized);
+  const projects = findProjectSignals(normalized);
+
+  return {
+    experienceYears,
+    education,
+    skills,
+    projects,
+    writingPreferences: {
+      tone: "professional, direct, conversational",
+      avoid: [
+        "I am passionate",
+        "What attracted me",
+        "What stood out",
+        "I thrive",
+        "I am excited to apply",
+        "perfect fit",
+      ],
+    },
+  };
 }
 
 export function retrieveContext(query: string, corpus: RagChunk[], limit = 8) {
@@ -85,6 +116,93 @@ function makeChunk(source: RagChunk["source"], title: string, text: string, inde
     title,
     text: text.replace(/\s+/g, " ").trim().slice(0, 900),
   };
+}
+
+function buildProfileChunks(resume: string) {
+  const profile = buildStructuredProfile(resume);
+  const chunks: RagChunk[] = [];
+
+  if (profile.experienceYears) {
+    chunks.push(makeChunk("profile", "Experience length", `${profile.experienceYears} years of relevant experience are evidenced in the resume.`, chunks.length));
+  }
+
+  if (profile.education.length) {
+    chunks.push(makeChunk("profile", "Education", profile.education.join("; "), chunks.length));
+  }
+
+  if (profile.skills.length) {
+    chunks.push(makeChunk("profile", "Technical skills", profile.skills.join(", "), chunks.length));
+  }
+
+  for (const project of profile.projects) {
+    chunks.push(makeChunk("profile", project.title, project.text, chunks.length));
+  }
+
+  return chunks;
+}
+
+function extractExperienceYears(text: string) {
+  const years = Array.from(text.matchAll(/(\d{1,2}(?:\.\d+)?)\+?\s+years?/gi))
+    .map((match) => Number(match[1]))
+    .filter(Number.isFinite);
+
+  return years.length ? Math.max(...years) : 0;
+}
+
+function findMatches(text: string, patterns: RegExp[]) {
+  return Array.from(
+    new Set(
+      patterns.flatMap((pattern) =>
+        Array.from(text.matchAll(pattern)).map((match) => cleanMatch(match[0])),
+      ),
+    ),
+  ).slice(0, 6);
+}
+
+function findKnownSkills(text: string) {
+  const candidates = [
+    "Python",
+    "SQL",
+    "PostgreSQL",
+    "React",
+    "TypeScript",
+    "JavaScript",
+    "C#",
+    ".NET",
+    "REST APIs",
+    "FastAPI",
+    "Machine learning",
+    "NLP",
+    "Power BI",
+    "Tableau",
+    "Dashboards",
+    "Data pipelines",
+    "AWS",
+    "Azure",
+    "Docker",
+  ];
+  const normalized = text.toLowerCase();
+
+  return candidates.filter((skill) => normalized.includes(skill.toLowerCase())).slice(0, 16);
+}
+
+function findProjectSignals(text: string) {
+  const sentences = text
+    .split(/(?<=[.!?])\s+|\n+/g)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 40);
+
+  return sentences
+    .filter((sentence) => /project|built|developed|created|implemented|designed|dashboard|model|pipeline|api/i.test(sentence))
+    .slice(0, 8)
+    .map((sentence, index) => ({
+      title: `Evidence ${index + 1}`,
+      text: sentence,
+    }));
+}
+
+function cleanMatch(value: string) {
+  return value.replace(/\s+/g, " ").replace(/[.,;:]$/, "").trim();
 }
 
 function scoreChunk(queryTerms: string[], text: string) {
