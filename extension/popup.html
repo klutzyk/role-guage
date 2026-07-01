@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RoleGuage</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <p class="eyebrow">RoleGuage</p>
+        <h1>Match this job</h1>
+        <p>Save your resume once, then analyze the job page you are viewing.</p>
+      </header>
+
+      <section class="panel resumePanel">
+        <div class="sectionHead">
+          <div>
+            <p class="eyebrow">Resume profile</p>
+            <h2 id="resumeStateTitle" class="panelTitle">Upload resume once</h2>
+          </div>
+          <div class="resumeActions">
+            <button id="deleteResume" class="danger compact hidden" type="button">Delete</button>
+          </div>
+        </div>
+
+        <p id="resumeMeta" class="muted small">
+          Upload a text-based PDF. RoleGuage stores only the extracted text in this browser.
+        </p>
+
+        <div class="uploadBox">
+          <input id="resumeFile" class="fileInput" type="file" accept="application/pdf" tabindex="-1" />
+          <button id="uploadResume" class="secondary" type="button">Upload Resume PDF</button>
+        </div>
+
+        <div id="resumeEditor" class="resumeEditor hidden">
+          <label for="resume">Resume text</label>
+          <textarea id="resume" placeholder="Review or paste resume text here."></textarea>
+          <div class="row">
+            <button id="saveResume" class="secondary" type="button">Save text</button>
+            <button id="clearResume" class="ghost" type="button">Clear</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="sectionHead">
+          <label for="jobText">Job text</label>
+          <button id="extractJob" class="secondary compact" type="button">Extract page</button>
+        </div>
+        <textarea id="jobText" placeholder="Open a job ad and click Analyze this job. You can also paste or edit the extracted job text here."></textarea>
+        <button id="analyze" class="primary" type="button">Analyze this job</button>
+      </section>
+
+      <p id="status" class="status">Ready.</p>
+
+      <section id="result" class="result hidden" aria-live="polite">
+        <div class="scoreRow">
+          <div>
+            <p class="eyebrow">Recommended move</p>
+            <h2 id="decision">-</h2>
+            <p id="level" class="muted">-</p>
+          </div>
+          <div id="score" class="score">-</div>
+        </div>
+
+        <p id="summary" class="summary"></p>
+
+        <div class="callout">
+          <p class="eyebrow">Next best action</p>
+          <p id="nextStep"></p>
+        </div>
+
+        <div class="split">
+          <div>
+            <p class="label">Matched</p>
+            <div id="matchedSkills" class="chips"></div>
+          </div>
+          <div>
+            <p class="label">Gaps</p>
+            <div id="missingSkills" class="chips warning"></div>
+          </div>
+        </div>
+
+        <div>
+          <p class="label">Resume bullets</p>
+          <ul id="resumeBullets"></ul>
+        </div>
+
+        <div class="row">
+          <button id="copyResult" class="secondary" type="button">Copy report</button>
+          <button id="openApp" class="ghost" type="button">Open app</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

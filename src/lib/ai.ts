@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { GoogleGenAI } from "@google/genai";
-import { buildRagCorpus, formatRetrievedContext, retrieveContext } from "./rag";
+import { buildRagCorpus, buildStructuredProfile, formatRetrievedContext, retrieveContext } from "./rag";
 
 type AnalysisLike = {
   score: number;
@@ -29,6 +29,7 @@ export type AiFitEnrichment = {
   nextStep: string;
   fitReasoning: string[];
   resumeBullets?: string[];
+  coverLetter?: string;
   interviewPrep?: string[];
   outreachMessage?: string;
   atsNotes?: string[];
@@ -55,8 +56,14 @@ type JobForBrief = {
   missingSkills: string[];
 };
 
+type PromptContext = {
+  profileBlock: string;
+  evidenceBlock: string;
+  matchBlock: string;
+};
+
 const aiCache = new Map<string, { expiresAt: number; value: unknown }>();
-const defaultModel = "gemini-2.5-flash-lite";
+const defaultModel = "gemini-2.5-flash";
 const aiTimeoutMs = getConfiguredTimeout();
 const cacheTtlMs = 1000 * 60 * 60 * 12;
 
@@ -69,11 +76,112 @@ export function getAiModel() {
 }
 
 function getConfiguredTimeout() {
-  const timeout = Number(process.env.GEMINI_TIMEOUT_MS ?? 12000);
+  const timeout = Number(process.env.GEMINI_TIMEOUT_MS ?? 18000);
 
-  if (!Number.isFinite(timeout)) return 12000;
+  if (!Number.isFinite(timeout)) return 18000;
 
-  return Math.min(Math.max(timeout, 3000), 30000);
+  return Math.min(Math.max(timeout, 8000), 45000);
+}
+
+function getAiModelCandidates() {
+  const configuredModel = getAiModel();
+  const preferredModels = configuredModel.includes("flash-lite")
+    ? ["gemini-2.5-flash"]
+    : [configuredModel, "gemini-2.5-flash"];
+
+  return Array.from(new Set(preferredModels));
+}
+
+function buildPromptContext(resume: string, job: string, analysis: AnalysisLike): PromptContext {
+  const query = [
+    analysis.decision,
+    analysis.level,
+    ...analysis.matchedSkills,
+    ...analysis.missingSkills,
+    ...analysis.roleSignals,
+    job.slice(0, 360),
+  ].join(" ");
+  const profile = buildStructuredProfile(resume);
+  const evidence = formatRetrievedContext(retrieveContext(query, buildRagCorpus(resume, job), 4));
+
+  return {
+    profileBlock: toCompactProfile(profile),
+    evidenceBlock: evidence.slice(0, 2600),
+    matchBlock: [
+      `score: ${analysis.score}`,
+      `decision: ${analysis.decision}`,
+      `level: ${analysis.level}`,
+      `matched: ${analysis.matchedSkills.join(", ") || "None"}`,
+      `missing: ${analysis.missingSkills.join(", ") || "None"}`,
+      `signals: ${analysis.roleSignals.join(", ") || "None"}`,
+      `base_summary: ${analysis.summary}`,
+      `base_next_step: ${analysis.nextStep}`,
+    ].join("\n"),
+  };
+}
+
+function buildFitPrompt(context: PromptContext) {
+  return `You are RoleGuage, an evidence-first job application assistant.
+
+Use only the profile, evidence, and match result below. Never invent facts.
+Write direct jobseeker advice. Do not mention AI, models, RAG, algorithms, backend, or scoring rules.
+Avoid filler and cliches.
+
+Return JSON only.
+summary: one honest paragraph.
+nextStep: one direct instruction under 24 words.
+fitReasoning: 3 concise evidence-based reasons.
+resumeBullets: 2-3 honest resume bullet ideas.
+
+PROFILE
+${context.profileBlock}
+
+MATCH
+${context.matchBlock}
+
+EVIDENCE
+${context.evidenceBlock}`;
+}
+
+function buildCoverLetterPrompt(context: PromptContext) {
+  return `Write a cover letter for the jobseeker.
+
+Rules:
+- Use only the profile, evidence, and match result below.
+- Do not invent tools, employers, certifications, achievements, locations, work rights, or degrees.
+- Natural Australian professional tone.
+- 180-240 words.
+- No headings, no markdown, no placeholders, no bracketed text.
+- If the hiring manager is unknown, start with "Hi team,".
+- End with "Kind regards" only. Do not add a name unless the profile clearly states one.
+- Avoid: "What attracted me", "What stood out", "I am passionate", "I thrive", "perfect fit", "I am excited to apply".
+- If evidence is transferable but not direct, phrase it honestly.
+- Silently revise once for fake claims, generic filler, repeated wording, and AI cliches.
+
+PROFILE
+${context.profileBlock}
+
+MATCH
+${context.matchBlock}
+
+EVIDENCE
+${context.evidenceBlock}`;
+}
+
+function toCompactProfile(profile: ReturnType<typeof buildStructuredProfile>) {
+  return [
+    `years: ${profile.experienceYears || "not stated"}`,
+    `education: ${profile.education.join(" | ") || "not stated"}`,
+    `skills: ${profile.skills.join(", ") || "not stated"}`,
+    profile.projects.length
+      ? `evidence:\n${profile.projects
+          .slice(0, 5)
+          .map((project, index) => `${index + 1}. ${project.text}`)
+          .join("\n")}`
+      : "evidence: not stated",
+    `tone: ${profile.writingPreferences.tone}`,
+    `avoid: ${profile.writingPreferences.avoid.join(", ")}`,
+  ].join("\n");
 }
 
 export async function generateFitEnrichment({
@@ -87,50 +195,53 @@ export async function generateFitEnrichment({
 }): Promise<AiFitEnrichment | null> {
   if (!isAiConfigured()) return null;
 
-  const query = [
-    analysis.decision,
-    analysis.level,
-    ...analysis.matchedSkills,
-    ...analysis.missingSkills,
-    ...analysis.roleSignals,
-    job.slice(0, 600),
-  ].join(" ");
-  const context = formatRetrievedContext(retrieveContext(query, buildRagCorpus(resume, job), 4));
-  const prompt = `You are RoleGuage, an evidence-first job application assistant.
+  const promptContext = buildPromptContext(resume, job, analysis);
+  const [reportResult, coverLetterResult] = await Promise.allSettled([
+    cachedJsonWithLimit<Omit<AiFitEnrichmentPayload, "coverLetter">>(
+      ["fit-v5-compact-report", resume, job, JSON.stringify(analysis)].join("\n"),
+      fitEnrichmentSchema,
+      buildFitPrompt(promptContext),
+      650,
+    ),
+    cachedTextWithLimit(
+      ["cover-v2-validated-profile-evidence", resume, job, JSON.stringify(analysis)].join("\n"),
+      buildCoverLetterPrompt(promptContext),
+      1000,
+    ),
+  ]);
+  const enrichment =
+    reportResult.status === "fulfilled"
+      ? reportResult.value
+      : buildFallbackAiReport(analysis);
 
-Use ONLY the retrieved resume and job snippets plus the deterministic score below.
-Do not invent experience, employment history, tools, certifications, locations, work rights, or achievements.
-If evidence is transferable but not direct, say so plainly.
-Keep every field concise and useful for a jobseeker.
-Write for a normal jobseeker, not for recruiters, engineers, or product managers.
-Do not mention AI, models, rules, fallback, algorithms, deterministic scoring, RAG, snippets, retrieved context, or backend implementation.
-Avoid generic filler. Every sentence must tell the user what to do, what to highlight, what to fix, or what to check before applying.
-Do not copy the base summary or base next step verbatim. Use them only as guardrails.
-
-MATCH RESULT
-Score: ${analysis.score}
-Decision: ${analysis.decision}
-Level: ${analysis.level}
-Matched skills: ${analysis.matchedSkills.join(", ") || "None"}
-Missing skills: ${analysis.missingSkills.join(", ") || "None"}
-Role signals: ${analysis.roleSignals.join(", ") || "None"}
-Base summary: ${analysis.summary}
-Base next step: ${analysis.nextStep}
-
-RESUME AND JOB EVIDENCE
-${context}`;
-
-  const enrichment = await cachedJsonWithLimit<AiFitEnrichmentPayload>(
-    ["fit", resume, job, JSON.stringify(analysis)].join("\n"),
-    fitEnrichmentSchema,
-    prompt,
-    500,
-  );
+  if (coverLetterResult.status === "rejected") {
+    throw coverLetterResult.reason;
+  }
 
   return {
     ...enrichment,
+    coverLetter: coverLetterResult.value,
     aiStatus: "generated",
-    aiModel: getAiModel(),
+    aiModel: getAiModelCandidates()[0],
+  };
+}
+
+function buildFallbackAiReport(analysis: AnalysisLike): Omit<AiFitEnrichmentPayload, "coverLetter"> {
+  const matched = analysis.matchedSkills.slice(0, 3).join(", ") || "the closest matched evidence";
+  const gap = analysis.missingSkills[0] || "the largest missing requirement";
+
+  return {
+    summary: analysis.summary,
+    nextStep: analysis.nextStep,
+    fitReasoning: [
+      `The strongest visible overlap is ${matched}.`,
+      `The main area to check before applying is ${gap}.`,
+      "Use only evidence you can support from your resume or real project work.",
+    ],
+    resumeBullets: [
+      `Make ${matched} visible in one clear resume bullet if it is truthful.`,
+      `Add a concrete proof point for ${gap} if you have one; otherwise leave it as a gap.`,
+    ],
   };
 }
 
@@ -183,7 +294,35 @@ async function cachedJsonWithLimit<T>(
     return cached.value as T;
   }
 
-  const value = await withTimeout(generateJsonWithLimit<T>(prompt, schema, maxOutputTokens), aiTimeoutMs);
+  const value = await withTimeout(
+    generateJsonWithLimit<T>(prompt, schema, maxOutputTokens),
+    aiTimeoutMs * getAiModelCandidates().length,
+  );
+
+  aiCache.set(key, {
+    expiresAt: Date.now() + cacheTtlMs,
+    value,
+  });
+
+  return value;
+}
+
+async function cachedTextWithLimit(
+  seed: string,
+  prompt: string,
+  maxOutputTokens: number,
+) {
+  const key = createHash("sha256").update(seed).digest("hex");
+  const cached = aiCache.get(key);
+
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value as string;
+  }
+
+  const value = await withTimeout(
+    generateTextWithLimit(prompt, maxOutputTokens),
+    aiTimeoutMs * getAiModelCandidates().length,
+  );
 
   aiCache.set(key, {
     expiresAt: Date.now() + cacheTtlMs,
@@ -200,23 +339,126 @@ async function generateJsonWithLimit<T>(
 ) {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   const ai = new GoogleGenAI({ apiKey });
-  const response = await ai.models.generateContent({
-    model: getAiModel(),
-    contents: prompt,
-    config: {
-      temperature: 0.2,
-      maxOutputTokens,
-      responseMimeType: "application/json",
-      responseJsonSchema: schema,
-    },
-  });
-  const text = response.text;
+  let lastError: unknown;
 
-  if (!text) {
-    throw new Error("AI response was empty.");
+  for (const model of getAiModelCandidates()) {
+    try {
+      const response = await withTimeout(
+        ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+          temperature: 0.2,
+          maxOutputTokens,
+          responseMimeType: "application/json",
+          responseJsonSchema: schema,
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      }),
+        aiTimeoutMs,
+      );
+      const text = response.text;
+
+      if (!text) {
+        throw new Error(`AI response was empty for ${model}.`);
+      }
+
+      return parseJsonResponse<T>(text);
+    } catch (error) {
+      lastError = error;
+
+      if (!isRetryableAiError(error) && !(error instanceof SyntaxError)) {
+        break;
+      }
+    }
   }
 
-  return JSON.parse(text) as T;
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+async function generateTextWithLimit(prompt: string, maxOutputTokens: number) {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const ai = new GoogleGenAI({ apiKey });
+  let lastError: unknown;
+
+  for (const model of getAiModelCandidates()) {
+    try {
+      const response = await withTimeout(
+        ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            temperature: 0.25,
+            maxOutputTokens,
+            thinkingConfig: { thinkingBudget: 0 },
+          },
+        }),
+        aiTimeoutMs,
+      );
+      const text = response.text?.trim();
+
+      if (!text) {
+        throw new Error(`AI text response was empty for ${model}.`);
+      }
+
+      const cleaned = text
+        .replace(/^```(?:text)?\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+
+      validateCoverLetterText(cleaned, model);
+
+      return cleaned;
+    } catch (error) {
+      lastError = error;
+
+      if (!isRetryableAiError(error) && !isRetryableTextError(error)) {
+        break;
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+function validateCoverLetterText(text: string, model: string) {
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+
+  if (wordCount < 120) {
+    throw new Error(`AI text response was too short for ${model}.`);
+  }
+
+  if (/\[[^\]]+\]/.test(text) || /placeholder/i.test(text)) {
+    throw new Error(`AI text response included placeholders for ${model}.`);
+  }
+}
+
+function isRetryableTextError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+
+  return /too short|included placeholders/i.test(error.message);
+}
+
+function parseJsonResponse<T>(text: string) {
+  const trimmed = text.trim();
+  const unfenced = trimmed
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  const start = unfenced.indexOf("{");
+  const end = unfenced.lastIndexOf("}");
+  const candidate = start >= 0 && end > start ? unfenced.slice(start, end + 1) : unfenced;
+
+  return JSON.parse(candidate) as T;
+}
+
+function isRetryableAiError(error: unknown) {
+  const status =
+    error && typeof error === "object" && "status" in error
+      ? Number((error as { status?: unknown }).status)
+      : 0;
+
+  return status === 429 || status === 503;
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
@@ -242,17 +484,22 @@ const fitEnrichmentSchema = {
     },
     nextStep: {
       type: "string",
-      description: "The single best next action for the candidate.",
+      description: "One short direct next action under 24 words.",
     },
     fitReasoning: {
       ...stringArraySchema,
       description: "Three concise evidence-based reasons behind the recommendation.",
+    },
+    resumeBullets: {
+      ...stringArraySchema,
+      description: "Two or three honest resume bullet draft ideas based only on evidence.",
     },
   },
   required: [
     "summary",
     "nextStep",
     "fitReasoning",
+    "resumeBullets",
   ],
 };
 

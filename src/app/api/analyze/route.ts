@@ -43,9 +43,27 @@ const skillTaxonomy: SkillDefinition[] = [
   { name: "REST APIs", category: "Backend", weight: 7, aliases: ["rest api", "rest apis", "backend api", "backend apis", "building apis"] },
   { name: "LLM tools", category: "Product", weight: 5, aliases: ["llm", "large language model", "openai", "gemini", "generative ai"] },
   { name: "Experimentation", category: "Product", weight: 5, aliases: ["experiment", "experimentation", "a/b", "ab test"] },
-  { name: "Stakeholder communication", category: "Product", weight: 8, aliases: ["stakeholder", "communication", "presenting", "presentation"] },
+  {
+    name: "Stakeholder communication",
+    category: "Product",
+    weight: 8,
+    aliases: [
+      "stakeholder communication",
+      "stakeholder management",
+      "stakeholder engagement",
+      "cross-functional",
+      "cross functional",
+      "client-facing",
+      "customer-facing",
+      "non-technical stakeholders",
+      "business stakeholders",
+    ],
+  },
   { name: "ETL", category: "Data", weight: 6, aliases: ["etl", "extract transform load"] },
   { name: "Data pipelines", category: "Data", weight: 7, aliases: ["data pipeline", "data pipelines", "pipeline", "pipelines"] },
+  { name: "Distributed processing", category: "Data", weight: 8, aliases: ["distributed processing", "spark", "ray", "dask", "emr", "tb scale", "pb scale", "terabyte", "petabyte"] },
+  { name: "Data quality", category: "Data", weight: 7, aliases: ["data quality", "dedupe", "deduplication", "filter", "classifiers", "quality classification", "audit", "data cleaning"] },
+  { name: "Training data", category: "Data", weight: 8, aliases: ["training data", "pretraining", "pre-training", "corpus", "dataset mixture", "tokenisation", "tokenization", "web-scale corpora"] },
   { name: "Cloud deployment", category: "Cloud", weight: 5, aliases: ["cloud deployment", "deployment", "deploy", "vercel", "netlify"] },
 ];
 
@@ -112,9 +130,15 @@ const roleFamilyChecks = [
     strict: true,
   },
   {
+    name: "AI data engineering",
+    jobAliases: ["signal engineer", "training data", "pretraining", "corpus", "dataset mixture", "web-scale corpora"],
+    resumeAliases: ["data pipeline", "data pipelines", "etl", "distributed processing", "spark", "ray", "deduplication", "training data", "pretraining", "corpus"],
+    strict: true,
+  },
+  {
     name: "Product or stakeholder role",
     jobAliases: ["product manager", "product analyst", "product owner", "stakeholder", "decision makers", "messaging"],
-    resumeAliases: ["stakeholder", "product", "dashboards", "business analytics", "communication"],
+    resumeAliases: ["stakeholder", "product", "dashboards", "business analytics", "cross-functional", "client-facing"],
     strict: false,
   },
 ];

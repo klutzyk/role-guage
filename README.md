@@ -6,8 +6,11 @@ Role Guage is a job-search workspace for jobseekers who want to apply with bette
 
 This version includes:
 
+- Apply Agent command center for application batching and assisted submission planning
 - Resume and job description matching workflow
+- Chrome extension MVP for manually analyzing the current job page or selected job text
 - Deterministic fit scoring API at `src/app/api/analyze/route.ts`
+- Extension analysis API at `src/app/api/extension/analyze/route.ts`
 - Job URL import API at `src/app/api/import-job/route.ts`
 - Job discovery API at `src/app/api/discover-jobs/route.ts`
 - Resume PDF extraction API at `src/app/api/extract-resume/route.ts`
@@ -42,6 +45,47 @@ Job URL import works best with company career pages and public ATS pages. Some l
 Job discovery uses a local ingestion layer for public company career pages and ATS feeds. The first implementation supports Greenhouse and SmartRecruiters sources with a curated seed list and optional `ROLEGUAGE_JOB_SOURCES_JSON` configuration. Results are normalized, deduplicated, cached in memory, and scored against the active resume. RapidAPI providers are disabled by default and must be explicitly enabled with `RAPIDAPI_JOBS_ENABLED=true` to avoid burning small free-tier quotas.
 
 SEEK, Indeed, and LinkedIn direct coverage should still be handled through approved APIs, licensed providers, or explicit crawling permission rather than brittle scraping.
+
+## Chrome Extension
+
+The `extension/` folder contains an unpacked Chrome extension MVP. It is intentionally user-triggered:
+
+- The user opens a job page.
+- The user clicks the RoleGuage extension.
+- The extension reads selected text first, or extracts visible page text after the click.
+- The extension sends the resume and job text to the local RoleGuage API.
+- The popup returns a fit score, matched skills, gaps, next action, and resume bullet guidance.
+
+This avoids server-side job-board crawling and keeps the product focused on application help, not mass scraping. For the safest workflow on restricted sites, highlight the job description yourself and click `Extract page` so RoleGuage analyzes user-selected text.
+
+Install locally:
+
+1. Run the web app with `npm run dev`.
+2. Open `chrome://extensions`.
+3. Enable `Developer mode`.
+4. Click `Load unpacked`.
+5. Select the `extension/` folder.
+
+The local extension expects the app to run on `http://localhost:3000`. For production, update `extension/manifest.json` and `extension/popup.js` to use the deployed RoleGuage domain, then add a privacy policy before publishing.
+
+## Apply Agent Direction
+
+RoleGuage is moving toward a job application agent, not just a fit checker. The current implementation adds the product surface for batching applications, setting fit thresholds, estimating run time, and separating safe automation modes:
+
+- Assisted fill: prepare answers/materials and keep final submission user-controlled.
+- Review then submit: allow faster batches after the user has approved generated content.
+- Allowed sites only: reserve full automation for company career pages or ATS flows that permit it.
+
+The architecture should avoid credential collection, CAPTCHA bypassing, account evasion, or hidden mass submission. LinkedIn and Indeed both restrict unauthorized bots/automation, so the practical path is a browser extension or local companion that helps the user fill forms, preserves an audit log, and only submits where the user has approved the action and the target site permits it.
+
+Future implementation layers:
+
+- Browser extension for detecting form fields and filling reusable profile answers.
+- Local Playwright/native companion for user-owned browser sessions on allowed sites.
+- Application queue with dedupe, rate limits, quality gates, and per-site rules.
+- Answer bank for common screener questions.
+- Tailored resume/cover snippets generated from truthful resume evidence.
+- Submission audit log with URL, timestamp, materials used, and final status.
 
 ## AI/RAG Architecture
 
