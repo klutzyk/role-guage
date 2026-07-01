@@ -256,17 +256,47 @@ function extractJobTextFromPage() {
     const workType = getTextFrom(detailsPage, "[data-automation='job-detail-work-type']");
     const classifications = getTextFrom(detailsPage, "[data-automation='job-detail-classifications']");
     const adDetails = detailsPage?.querySelector("[data-automation='jobAdDetails']");
-    const description = cleanText(adDetails?.innerText || adDetails?.textContent || "");
+    const postedText = findSeekSignal(detailsPage, /posted\s+\d+/i);
+    const applicationVolume = findSeekSignal(detailsPage, /application volume/i);
+    const employerQuestions = extractSeekEmployerQuestions(detailsPage);
+    const description = cleanSeekText(adDetails?.innerText || adDetails?.textContent || "");
     const parts = [
       title ? `Job title: ${title}` : "",
       company ? `Company: ${company}` : "",
       locationText ? `Location: ${locationText}` : "",
       workType ? `Work type: ${workType}` : "",
       classifications ? `Category: ${classifications}` : "",
+      postedText ? `Posted: ${postedText}` : "",
+      applicationVolume ? `Application volume: ${applicationVolume}` : "",
       description,
+      employerQuestions,
     ];
 
     return cleanText(parts.filter(Boolean).join("\n\n"));
+  }
+
+  function extractSeekEmployerQuestions(root) {
+    const headings = Array.from(root?.querySelectorAll("h2") || []);
+    const employerQuestionHeading = headings.find((heading) =>
+      cleanText(heading.innerText || heading.textContent || "").toLowerCase() === "employer questions",
+    );
+    const section = employerQuestionHeading?.closest("section");
+    const questions = Array.from(section?.querySelectorAll("li") || [])
+      .map((item) => cleanSeekText(item.innerText || item.textContent || ""))
+      .filter((item) => item.length > 12);
+
+    if (!questions.length) return "";
+
+    return ["Employer questions:", ...questions.map((question) => `- ${question}`)].join("\n");
+  }
+
+  function findSeekSignal(root, pattern) {
+    const nodes = Array.from(root?.querySelectorAll("span, div") || []);
+    const match = nodes
+      .map((node) => cleanText(node.innerText || node.textContent || ""))
+      .find((text) => text.length < 80 && pattern.test(text));
+
+    return match || "";
   }
 
   function getTextFrom(root, selector) {
@@ -337,6 +367,54 @@ function extractJobTextFromPage() {
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean)
+      .join("\n")
+      .trim();
+  }
+
+  function cleanSeekText(value) {
+    const removeExact = new Set([
+      "View all jobs",
+      "Add expected salary to your profile for insights",
+      "How you match",
+      "Skills and credentials from the job description",
+      "Apply now",
+      "Quick apply",
+      "Save",
+      "Report this job advert",
+      "Report this job ad",
+      "Be careful",
+      "Learn how to protect yourself",
+      "Your email address",
+      "Reason for reporting job",
+      "Additional comments",
+      "Report job",
+      "Cancel",
+    ]);
+    const removePatterns = [
+      /^\+\d+\s+more/i,
+      /^don.?t provide your bank or credit card details/i,
+      /^to help fast track investigation/i,
+      /^what can i earn as/i,
+      /^see more detailed salary information/i,
+      /^please select$/i,
+      /^fraudulent$/i,
+      /^discrimination$/i,
+      /^misleading$/i,
+      /^salary below minimum wage$/i,
+    ];
+
+    return String(value)
+      .replace(/\u00a0/g, " ")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => {
+        if (!line) return false;
+        if (removeExact.has(line)) return false;
+
+        return !removePatterns.some((pattern) => pattern.test(line));
+      })
       .join("\n")
       .trim();
   }
