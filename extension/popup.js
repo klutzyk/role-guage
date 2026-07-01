@@ -218,6 +218,18 @@ function extractJobTextFromPage() {
     }
   }
 
+  if (location.hostname.includes("linkedin.")) {
+    const linkedInJob = extractLinkedInJob();
+
+    if (linkedInJob.length > 120) {
+      return {
+        pageTitle,
+        pageUrl,
+        jobText: linkedInJob.slice(0, 18000),
+      };
+    }
+  }
+
   const titleText = getFirstText([
     "h1",
     "[data-automation='job-detail-title']",
@@ -273,6 +285,223 @@ function extractJobTextFromPage() {
     ];
 
     return cleanText(parts.filter(Boolean).join("\n\n"));
+  }
+
+  function extractLinkedInJob() {
+    const detailsPane = getLinkedInDetailsPane();
+
+    if (!detailsPane) return "";
+
+    const lines = cleanLinkedInText(detailsPane.innerText || detailsPane.textContent || "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const title = getLinkedInTitle(detailsPane, lines);
+    const company = getLinkedInCompany(detailsPane, lines);
+    const locationAndMeta = getLinkedInLocationAndMeta(lines, title, company);
+    const description = getLinkedInDescription(lines);
+    const parts = [
+      title ? `Job title: ${title}` : "",
+      company ? `Company: ${company}` : "",
+      locationAndMeta,
+      description,
+    ];
+
+    return cleanText(parts.filter(Boolean).join("\n\n"));
+  }
+
+  function getLinkedInDetailsPane() {
+    const selectors = [
+      "[data-sdui-screen*='SemanticJobDetails']",
+      ".jobs-search__job-details--container",
+      ".jobs-search__job-details",
+      ".jobs-details",
+      ".job-view-layout",
+    ];
+
+    for (const selector of selectors) {
+      const node = document.querySelector(selector);
+      const text = cleanText(node?.innerText || node?.textContent || "");
+
+      if (text.length > 300 && /about the job|apply|full-time|hybrid|remote|on-site/i.test(text)) {
+        return node;
+      }
+    }
+
+    const candidates = Array.from(document.querySelectorAll("main, aside, section, div"))
+      .map((node) => ({
+        node,
+        text: cleanText(node.innerText || node.textContent || ""),
+      }))
+      .filter(({ text }) => text.length > 500 && /about the job/i.test(text))
+      .sort((a, b) => scoreLinkedInPane(b.text) - scoreLinkedInPane(a.text));
+
+    return candidates[0]?.node || null;
+  }
+
+  function scoreLinkedInPane(text) {
+    const lower = text.toLowerCase();
+    const hasListNoise = lower.includes("jobs based on your preferences") || lower.includes("99+ results");
+    const keywordScore = [
+      "about the job",
+      "apply",
+      "full-time",
+      "hybrid",
+      "remote",
+      "people clicked apply",
+      "responses managed",
+    ].reduce((score, keyword) => score + (lower.includes(keyword) ? 1000 : 0), 0);
+
+    return keywordScore + Math.min(text.length, 8000) - (hasListNoise ? 5000 : 0);
+  }
+
+  function getLinkedInTitle(root, lines) {
+    const linkedTitle = Array.from(root.querySelectorAll("a[href*='/jobs/view/']"))
+      .map((node) => cleanLinkedInText(node.innerText || node.textContent || ""))
+      .find((text) => text.length > 3 && text.length < 120 && !/^show|^apply/i.test(text));
+
+    if (linkedTitle) return linkedTitle;
+
+    return lines.find((line) => line.length > 3 && line.length < 120 && !isLinkedInNoiseLine(line)) || "";
+  }
+
+  function getLinkedInCompany(root, lines) {
+    const companyLink = Array.from(root.querySelectorAll("a[href*='/company/']"))
+      .map((node) => cleanLinkedInText(node.innerText || node.textContent || ""))
+      .find((text) => text.length > 1 && text.length < 100 && !/^show|^view/i.test(text));
+
+    if (companyLink) return companyLink;
+
+    const companyMeta = lines.find((line) => line.includes(" • ") && !line.toLowerCase().includes("promoted"));
+
+    return companyMeta?.split(" • ")[0]?.trim() || "";
+  }
+
+  function getLinkedInLocationAndMeta(lines, title, company) {
+    const usefulLines = [];
+
+    for (const line of lines) {
+      const lower = line.toLowerCase();
+      const isUseful =
+        line.includes("•") ||
+        lower.includes("hybrid") ||
+        lower.includes("remote") ||
+        lower.includes("on-site") ||
+        lower.includes("full-time") ||
+        lower.includes("part-time") ||
+        lower.includes("contract") ||
+        lower.includes("people clicked apply") ||
+        lower.includes("responses managed off linkedin") ||
+        lower.includes("promoted by hirer");
+
+      if (!isUseful) continue;
+      if (line === title || line === company) continue;
+      if (isLinkedInNoiseLine(line)) continue;
+
+      usefulLines.push(line);
+    }
+
+    return uniqueLines(usefulLines).slice(0, 6).join("\n");
+  }
+
+  function getLinkedInDescription(lines) {
+    const startIndex = lines.findIndex((line) => line.toLowerCase() === "about the job");
+
+    if (startIndex === -1) return "";
+
+    const stopPatterns = [
+      /^people you can reach out to$/i,
+      /^school alumni/i,
+      /^meet the hiring team$/i,
+      /^about the company$/i,
+      /^similar jobs$/i,
+      /^job search faster with premium$/i,
+      /^access company insights/i,
+      /^try premium/i,
+      /^premium$/i,
+      /^show more$/i,
+      /^show all$/i,
+      /^company photos$/i,
+    ];
+    const descriptionLines = [];
+
+    for (let index = startIndex; index < lines.length; index += 1) {
+      const line = lines[index];
+      const enoughDescription = descriptionLines.join("\n").length > 500;
+
+      if (enoughDescription && stopPatterns.some((pattern) => pattern.test(line))) {
+        break;
+      }
+
+      if (isLinkedInNoiseLine(line)) continue;
+      descriptionLines.push(line);
+    }
+
+    return cleanText(uniqueLines(descriptionLines).join("\n"));
+  }
+
+  function cleanLinkedInText(value) {
+    return cleanText(value)
+      .replace(/\u00b7/g, "•")
+      .replace(/\u2060/g, "")
+      .replace(/\s+•\s+/g, " • ");
+  }
+
+  function isLinkedInNoiseLine(line) {
+    const normalized = line.trim().toLowerCase();
+    const exactNoise = new Set([
+      "save",
+      "apply",
+      "show all",
+      "show more",
+      "show less",
+      "back to results list",
+      "more options",
+      "beta • is this information helpful?",
+      "your profile and resume match some required qualifications",
+      "show match details",
+      "people you can reach out to",
+      "job search faster with premium",
+      "try premium for a$0",
+      "1-month free trial. easy to cancel. we’ll remind you 7 days before your trial ends.",
+    ]);
+    const noisePatterns = [
+      /^company logo for/i,
+      /^verified job$/i,
+      /^view company photo$/i,
+      /^jobs based on your preferences/i,
+      /^\d+\+ results$/i,
+      /^how promoted jobs are ranked$/i,
+      /^selected,/i,
+      /^viewed$/i,
+      /^easy apply$/i,
+      /^be an early applicant$/i,
+      /^school alumni/i,
+      /^company alumni/i,
+      /^connections? work here/i,
+      /^access company insights/i,
+      /^.+ and millions of other members use premium$/i,
+      /^actvely reviewing applicants/i,
+      /^actively reviewing applicants/i,
+      /^compare /i,
+    ];
+
+    if (exactNoise.has(normalized)) return true;
+
+    return noisePatterns.some((pattern) => pattern.test(line));
+  }
+
+  function uniqueLines(lines) {
+    const seen = new Set();
+
+    return lines.filter((line) => {
+      const key = line.toLowerCase();
+
+      if (seen.has(key)) return false;
+      seen.add(key);
+
+      return true;
+    });
   }
 
   function extractSeekEmployerQuestions(root) {
