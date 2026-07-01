@@ -11,15 +11,34 @@
       <header class="hero">
         <p class="eyebrow">RoleGuage</p>
         <h1>Match this job</h1>
-        <p>Use selected text first, or extract the visible job page.</p>
+        <p>Save your resume once, then analyze the job page you are viewing.</p>
       </header>
 
-      <section class="panel">
-        <label for="resume">Your resume</label>
-        <textarea id="resume" placeholder="Paste your resume once. It stays in Chrome local storage."></textarea>
-        <div class="row">
-          <button id="saveResume" class="secondary" type="button">Save resume</button>
-          <button id="clearResume" class="ghost" type="button">Clear</button>
+      <section class="panel resumePanel">
+        <div class="sectionHead">
+          <div>
+            <p class="eyebrow">Resume profile</p>
+            <h2 id="resumeStateTitle" class="panelTitle">Upload resume once</h2>
+          </div>
+          <button id="reviewResume" class="ghost compact hidden" type="button">Review</button>
+        </div>
+
+        <p id="resumeMeta" class="muted small">
+          Upload a text-based PDF. RoleGuage stores only the extracted text in this browser.
+        </p>
+
+        <div class="uploadBox">
+          <input id="resumeFile" class="fileInput" type="file" accept="application/pdf" />
+          <button id="uploadResume" class="secondary" type="button">Upload Resume PDF</button>
+        </div>
+
+        <div id="resumeEditor" class="resumeEditor hidden">
+          <label for="resume">Resume text</label>
+          <textarea id="resume" placeholder="Review or paste resume text here."></textarea>
+          <div class="row">
+            <button id="saveResume" class="secondary" type="button">Save text</button>
+            <button id="clearResume" class="ghost" type="button">Clear</button>
+          </div>
         </div>
       </section>
 
@@ -28,8 +47,8 @@
           <label for="jobText">Job text</label>
           <button id="extractJob" class="secondary compact" type="button">Extract page</button>
         </div>
-        <textarea id="jobText" placeholder="Open a job ad, highlight the JD if needed, then click Extract page."></textarea>
-        <button id="analyze" class="primary" type="button">Analyze fit</button>
+        <textarea id="jobText" placeholder="Open a job ad and click Analyze this job. You can also paste or edit the extracted job text here."></textarea>
+        <button id="analyze" class="primary" type="button">Analyze this job</button>
       </section>
 
       <p id="status" class="status">Ready.</p>

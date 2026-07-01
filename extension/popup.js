@@ -1,7 +1,14 @@
 const API_BASE = "http://localhost:3000";
+const RESUME_KEYS = ["resume", "resumeFileName", "resumePageCount", "resumeUpdatedAt"];
 
 const elements = {
   resume: document.querySelector("#resume"),
+  resumeStateTitle: document.querySelector("#resumeStateTitle"),
+  resumeMeta: document.querySelector("#resumeMeta"),
+  resumeFile: document.querySelector("#resumeFile"),
+  uploadResume: document.querySelector("#uploadResume"),
+  reviewResume: document.querySelector("#reviewResume"),
+  resumeEditor: document.querySelector("#resumeEditor"),
   jobText: document.querySelector("#jobText"),
   saveResume: document.querySelector("#saveResume"),
   clearResume: document.querySelector("#clearResume"),
@@ -26,9 +33,13 @@ let lastReport = null;
 init();
 
 async function init() {
-  const saved = await chrome.storage.local.get(["resume"]);
+  const saved = await chrome.storage.local.get(RESUME_KEYS);
   elements.resume.value = saved.resume || "";
+  updateResumeUi(saved);
 
+  elements.uploadResume.addEventListener("click", uploadResumePdf);
+  elements.resumeFile.addEventListener("change", uploadResumePdf);
+  elements.reviewResume.addEventListener("click", toggleResumeReview);
   elements.saveResume.addEventListener("click", saveResume);
   elements.clearResume.addEventListener("click", clearResume);
   elements.extractJob.addEventListener("click", extractJobFromActiveTab);
@@ -37,19 +48,108 @@ async function init() {
   elements.openApp.addEventListener("click", openApp);
 }
 
+async function uploadResumePdf() {
+  const file = elements.resumeFile.files?.[0];
+
+  if (!file) {
+    elements.resumeFile.click();
+    return;
+  }
+
+  if (!file.name.toLowerCase().endsWith(".pdf")) {
+    setStatus("Upload a PDF resume.", true);
+    return;
+  }
+
+  setBusy(true, "Reading your resume PDF...");
+
+  try {
+    const formData = new FormData();
+    formData.append("resume", file);
+
+    const response = await fetch(`${API_BASE}/api/extract-resume`, {
+      method: "POST",
+      body: formData,
+    });
+    const data = await response.json();
+
+    if (!response.ok || !data.text || data.text.length < 80) {
+      throw new Error(data.error || "Could not read enough text from this PDF.");
+    }
+
+    const resumeProfile = {
+      resume: data.text.trim(),
+      resumeFileName: data.filename || file.name,
+      resumePageCount: data.pages || "",
+      resumeUpdatedAt: new Date().toISOString(),
+    };
+
+    await chrome.storage.local.set(resumeProfile);
+    elements.resume.value = resumeProfile.resume;
+    elements.resumeFile.value = "";
+    updateResumeUi(resumeProfile);
+    setStatus("Resume saved. Open a job ad and click Analyze this job.");
+  } catch (error) {
+    setStatus(error.message || "Could not upload this resume.", true);
+  } finally {
+    setBusy(false);
+  }
+}
+
 async function saveResume() {
-  await chrome.storage.local.set({ resume: elements.resume.value.trim() });
-  setStatus("Resume saved in Chrome local storage.");
+  const resume = elements.resume.value.trim();
+
+  if (resume.length < 80) {
+    setStatus("Add more resume text before saving.", true);
+    return;
+  }
+
+  const resumeProfile = {
+    resume,
+    resumeFileName: "Manual resume text",
+    resumePageCount: "",
+    resumeUpdatedAt: new Date().toISOString(),
+  };
+
+  await chrome.storage.local.set(resumeProfile);
+  updateResumeUi(resumeProfile);
+  setStatus("Resume saved. Open a job ad and click Analyze this job.");
 }
 
 async function clearResume() {
   elements.resume.value = "";
-  await chrome.storage.local.remove(["resume"]);
+  elements.resumeFile.value = "";
+  await chrome.storage.local.remove(RESUME_KEYS);
+  updateResumeUi({});
   setStatus("Resume cleared.");
 }
 
-async function extractJobFromActiveTab() {
-  setBusy(true, "Extracting the current page...");
+function toggleResumeReview() {
+  const isHidden = elements.resumeEditor.classList.toggle("hidden");
+  elements.reviewResume.textContent = isHidden ? "Review" : "Hide";
+}
+
+function updateResumeUi(saved) {
+  const resume = (saved.resume || elements.resume.value || "").trim();
+  const hasResume = resume.length >= 80;
+  const name = saved.resumeFileName || "Saved resume";
+  const pages = saved.resumePageCount ? `${saved.resumePageCount} page${saved.resumePageCount === 1 ? "" : "s"}` : "";
+  const chars = hasResume ? `${resume.length.toLocaleString()} characters` : "";
+
+  elements.resumeStateTitle.textContent = hasResume ? "Resume saved" : "Upload resume once";
+  elements.resumeMeta.textContent = hasResume
+    ? [name, pages, chars].filter(Boolean).join(" - ")
+    : "Upload a text-based PDF. RoleGuage stores only the extracted text in this browser.";
+  elements.uploadResume.textContent = hasResume ? "Replace Resume PDF" : "Upload Resume PDF";
+  elements.reviewResume.classList.toggle("hidden", !hasResume);
+  elements.resumeEditor.classList.toggle("hidden", hasResume);
+  elements.reviewResume.textContent = "Review";
+}
+
+async function extractJobFromActiveTab(options = {}) {
+  if (!options.quiet) {
+    setBusy(true, "Extracting the current page...");
+  }
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -72,32 +172,41 @@ async function extractJobFromActiveTab() {
     elements.jobText.value = payload.jobText;
     elements.jobText.dataset.pageTitle = payload.pageTitle || "";
     elements.jobText.dataset.pageUrl = payload.pageUrl || "";
-    setStatus(`Extracted ${payload.jobText.length.toLocaleString()} characters from this page.`);
+    if (!options.quiet) {
+      setStatus(`Extracted ${payload.jobText.length.toLocaleString()} characters from this page.`);
+    }
+    return payload;
   } catch (error) {
-    setStatus(error.message || "Could not extract this page.", true);
+    if (!options.quiet) {
+      setStatus(error.message || "Could not extract this page.", true);
+    }
+    throw error;
   } finally {
-    setBusy(false);
+    if (!options.quiet) {
+      setBusy(false);
+    }
   }
 }
 
 async function analyzeFit() {
-  const resume = elements.resume.value.trim();
-  const job = elements.jobText.value.trim();
+  const saved = await chrome.storage.local.get(["resume"]);
+  const resume = (saved.resume || elements.resume.value || "").trim();
+  let job = elements.jobText.value.trim();
 
   if (resume.length < 80) {
-    setStatus("Paste or save a resume first.", true);
+    elements.resumeEditor.classList.remove("hidden");
+    setStatus("Upload or save your resume first.", true);
     return;
   }
 
-  if (job.length < 80) {
-    setStatus("Extract or paste the job description first.", true);
-    return;
-  }
-
-  setBusy(true, "Analyzing fit...");
+  setBusy(true, "Analyzing this job...");
 
   try {
-    await chrome.storage.local.set({ resume });
+    if (job.length < 80) {
+      setStatus("Extracting this job page...");
+      const payload = await extractJobFromActiveTab({ quiet: true });
+      job = payload.jobText.trim();
+    }
 
     const response = await fetch(`${API_BASE}/api/extension/analyze`, {
       method: "POST",
@@ -171,6 +280,10 @@ async function openApp() {
 }
 
 function setBusy(isBusy, message) {
+  elements.uploadResume.disabled = isBusy;
+  elements.saveResume.disabled = isBusy;
+  elements.clearResume.disabled = isBusy;
+  elements.reviewResume.disabled = isBusy;
   elements.extractJob.disabled = isBusy;
   elements.analyze.disabled = isBusy;
 
