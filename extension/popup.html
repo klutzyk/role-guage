@@ -20,7 +20,9 @@
             <p class="eyebrow">Resume profile</p>
             <h2 id="resumeStateTitle" class="panelTitle">Upload resume once</h2>
           </div>
-          <button id="reviewResume" class="ghost compact hidden" type="button">Review</button>
+          <div class="resumeActions">
+            <button id="deleteResume" class="danger compact hidden" type="button">Delete</button>
+          </div>
         </div>
 
         <p id="resumeMeta" class="muted small">
@@ -28,7 +30,7 @@
         </p>
 
         <div class="uploadBox">
-          <input id="resumeFile" class="fileInput" type="file" accept="application/pdf" />
+          <input id="resumeFile" class="fileInput" type="file" accept="application/pdf" tabindex="-1" />
           <button id="uploadResume" class="secondary" type="button">Upload Resume PDF</button>
         </div>
 

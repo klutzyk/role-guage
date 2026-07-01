@@ -106,6 +106,8 @@ Write for a normal jobseeker, not for recruiters, engineers, or product managers
 Do not mention AI, models, rules, fallback, algorithms, deterministic scoring, RAG, snippets, retrieved context, or backend implementation.
 Avoid generic filler. Every sentence must tell the user what to do, what to highlight, what to fix, or what to check before applying.
 Do not copy the base summary or base next step verbatim. Use them only as guardrails.
+The nextStep must be one short, direct instruction under 24 words.
+Resume bullets must be honest draft ideas based only on evidence in the resume and job ad.
 
 MATCH RESULT
 Score: ${analysis.score}
@@ -242,17 +244,22 @@ const fitEnrichmentSchema = {
     },
     nextStep: {
       type: "string",
-      description: "The single best next action for the candidate.",
+      description: "One short direct next action under 24 words.",
     },
     fitReasoning: {
       ...stringArraySchema,
       description: "Three concise evidence-based reasons behind the recommendation.",
+    },
+    resumeBullets: {
+      ...stringArraySchema,
+      description: "Two or three honest resume bullet draft ideas based only on evidence.",
     },
   },
   required: [
     "summary",
     "nextStep",
     "fitReasoning",
+    "resumeBullets",
   ],
 };
 

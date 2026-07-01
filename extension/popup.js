@@ -1,5 +1,6 @@
 const API_BASE = "http://localhost:3000";
 const RESUME_KEYS = ["resume", "resumeFileName", "resumePageCount", "resumeUpdatedAt"];
+const LAST_REPORT_KEY = "lastReportByPage";
 
 const elements = {
   resume: document.querySelector("#resume"),
@@ -7,7 +8,7 @@ const elements = {
   resumeMeta: document.querySelector("#resumeMeta"),
   resumeFile: document.querySelector("#resumeFile"),
   uploadResume: document.querySelector("#uploadResume"),
-  reviewResume: document.querySelector("#reviewResume"),
+  deleteResume: document.querySelector("#deleteResume"),
   resumeEditor: document.querySelector("#resumeEditor"),
   jobText: document.querySelector("#jobText"),
   saveResume: document.querySelector("#saveResume"),
@@ -36,10 +37,11 @@ async function init() {
   const saved = await chrome.storage.local.get(RESUME_KEYS);
   elements.resume.value = saved.resume || "";
   updateResumeUi(saved);
+  await restoreLastResultForActivePage();
 
   elements.uploadResume.addEventListener("click", uploadResumePdf);
   elements.resumeFile.addEventListener("change", uploadResumePdf);
-  elements.reviewResume.addEventListener("click", toggleResumeReview);
+  elements.deleteResume.addEventListener("click", clearResume);
   elements.saveResume.addEventListener("click", saveResume);
   elements.clearResume.addEventListener("click", clearResume);
   elements.extractJob.addEventListener("click", extractJobFromActiveTab);
@@ -85,6 +87,7 @@ async function uploadResumePdf() {
     };
 
     await chrome.storage.local.set(resumeProfile);
+    await chrome.storage.local.remove([LAST_REPORT_KEY]);
     elements.resume.value = resumeProfile.resume;
     elements.resumeFile.value = "";
     updateResumeUi(resumeProfile);
@@ -112,6 +115,7 @@ async function saveResume() {
   };
 
   await chrome.storage.local.set(resumeProfile);
+  await chrome.storage.local.remove([LAST_REPORT_KEY]);
   updateResumeUi(resumeProfile);
   setStatus("Resume saved. Open a job ad and click Analyze this job.");
 }
@@ -119,14 +123,9 @@ async function saveResume() {
 async function clearResume() {
   elements.resume.value = "";
   elements.resumeFile.value = "";
-  await chrome.storage.local.remove(RESUME_KEYS);
+  await chrome.storage.local.remove([...RESUME_KEYS, LAST_REPORT_KEY]);
   updateResumeUi({});
   setStatus("Resume cleared.");
-}
-
-function toggleResumeReview() {
-  const isHidden = elements.resumeEditor.classList.toggle("hidden");
-  elements.reviewResume.textContent = isHidden ? "Review" : "Hide";
 }
 
 function updateResumeUi(saved) {
@@ -141,9 +140,26 @@ function updateResumeUi(saved) {
     ? [name, pages, chars].filter(Boolean).join(" - ")
     : "Upload a text-based PDF. RoleGuage stores only the extracted text in this browser.";
   elements.uploadResume.textContent = hasResume ? "Replace Resume PDF" : "Upload Resume PDF";
-  elements.reviewResume.classList.toggle("hidden", !hasResume);
+  elements.deleteResume.classList.toggle("hidden", !hasResume);
   elements.resumeEditor.classList.toggle("hidden", hasResume);
-  elements.reviewResume.textContent = "Review";
+}
+
+async function restoreLastResultForActivePage() {
+  const pageKey = await getActivePageKey();
+
+  if (!pageKey) return;
+
+  const saved = await chrome.storage.local.get([LAST_REPORT_KEY]);
+  const cached = saved[LAST_REPORT_KEY]?.[pageKey];
+
+  if (!cached?.report) return;
+
+  lastReport = cached.report;
+  elements.jobText.value = cached.jobText || "";
+  elements.jobText.dataset.pageTitle = cached.pageTitle || "";
+  elements.jobText.dataset.pageUrl = cached.pageUrl || "";
+  renderResult(cached.report);
+  setStatus("Restored the last report for this page.");
 }
 
 async function extractJobFromActiveTab(options = {}) {
@@ -227,12 +243,43 @@ async function analyzeFit() {
 
     lastReport = data;
     renderResult(data);
+    await saveLastResultForActivePage({
+      report: data,
+      jobText: job,
+      pageTitle: elements.jobText.dataset.pageTitle || "",
+      pageUrl: elements.jobText.dataset.pageUrl || "",
+    });
     setStatus(data.enrichment?.aiStatus === "generated" ? "Personalized report ready." : "Report ready.");
   } catch (error) {
     setStatus(error.message || "Could not analyze this job.", true);
   } finally {
     setBusy(false);
   }
+}
+
+async function saveLastResultForActivePage(payload) {
+  const pageKey = await getActivePageKey();
+
+  if (!pageKey) return;
+
+  const saved = await chrome.storage.local.get([LAST_REPORT_KEY]);
+  const reports = saved[LAST_REPORT_KEY] || {};
+  reports[pageKey] = {
+    ...payload,
+    savedAt: new Date().toISOString(),
+  };
+
+  const entries = Object.entries(reports).slice(-8);
+  await chrome.storage.local.set({ [LAST_REPORT_KEY]: Object.fromEntries(entries) });
+}
+
+async function getActivePageKey() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const url = tab?.url || "";
+
+  if (!url) return "";
+
+  return url.split("#")[0];
 }
 
 function renderResult(data) {
@@ -283,7 +330,7 @@ function setBusy(isBusy, message) {
   elements.uploadResume.disabled = isBusy;
   elements.saveResume.disabled = isBusy;
   elements.clearResume.disabled = isBusy;
-  elements.reviewResume.disabled = isBusy;
+  elements.deleteResume.disabled = isBusy;
   elements.extractJob.disabled = isBusy;
   elements.analyze.disabled = isBusy;
 

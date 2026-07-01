@@ -26,14 +26,16 @@ body {
 button,
 textarea,
 input {
-  font: inherit;
+  font-family: Arial, sans-serif;
 }
 
 button {
   border: 1px solid transparent;
   border-radius: 7px;
   cursor: pointer;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 
 button:disabled {
@@ -91,7 +93,7 @@ label {
   margin-bottom: 8px;
   color: var(--ink);
   font-size: 14px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .panelTitle {
@@ -107,6 +109,12 @@ label {
   line-height: 1.45;
 }
 
+.resumeActions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
 .uploadBox {
   display: grid;
   gap: 10px;
@@ -117,13 +125,7 @@ label {
 }
 
 .fileInput {
-  width: 100%;
-  min-height: 42px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: white;
-  color: var(--muted);
-  padding: 9px;
+  display: none;
 }
 
 .resumeEditor {
@@ -173,7 +175,8 @@ textarea:focus {
 
 .primary,
 .secondary,
-.ghost {
+.ghost,
+.danger {
   min-height: 44px;
   padding: 0 16px;
 }
@@ -200,6 +203,16 @@ textarea:focus {
   background: white;
   color: var(--blue);
   border-color: #9fc9ff;
+}
+
+.danger {
+  background: #fff5f5;
+  color: #b42318;
+  border-color: #f4b4ad;
+}
+
+.danger:hover {
+  background: #fee4e2;
 }
 
 .compact {
@@ -258,19 +271,28 @@ textarea:focus {
   border: 1px solid #9fc9ff;
   border-radius: 7px;
   padding: 12px;
+  background: #fbfdff;
 }
 
 .callout p:last-child {
   margin: 0;
-  font-weight: 800;
+  color: var(--ink);
+  font-weight: 600;
+  line-height: 1.45;
 }
 
 .split {
   align-items: flex-start;
+  gap: 8px;
 }
 
 .split > div {
   width: 50%;
+  min-height: 86px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbfdff;
+  padding: 10px;
 }
 
 .chips {
@@ -285,7 +307,7 @@ textarea:focus {
   background: var(--pale-blue);
   color: var(--blue);
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
   padding: 7px 10px;
 }
 
