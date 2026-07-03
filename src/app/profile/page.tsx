@@ -50,6 +50,7 @@ const matchHistoryStorageKey = "roleguage.match-history.v1";
 const candidateProfileStorageKey = "roleguage.candidate-profile.v1";
 const workRightsOptions = [
   "Australian citizen",
+  "485 visa",
   "Australian graduate temporary work visa",
   "Australian temporary visa with restrictions on work hours",
   "Australian temporary protection or safe haven enterprise work visa",
@@ -379,11 +380,11 @@ export default function ProfilePage() {
                 placeholder="Select licence or certification"
                 suggestions={licenceOptions}
               />
-              <MultiSelectField
+              <TokenField
                 label="Target roles"
                 value={candidateProfile.targetRoles ?? ""}
                 onChange={(value) => updateCandidateProfile("targetRoles", value)}
-                placeholder="Select target role"
+                placeholder="Type a role and press Enter"
                 suggestions={targetRoleOptions}
               />
             </div>
@@ -586,6 +587,8 @@ function SelectField({
   placeholder: string;
   suggestions: string[];
 }) {
+  const hasCustomValue = value && !suggestions.includes(value);
+
   return (
     <label className="grid gap-2">
       <span className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F5F6F]">{label}</span>
@@ -595,6 +598,7 @@ function SelectField({
         className="h-11 cursor-pointer rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15"
       >
         <option value="">{placeholder}</option>
+        {hasCustomValue ? <option value={value}>{value}</option> : null}
         {suggestions.map((suggestion) => (
           <option key={suggestion} value={suggestion}>
             {suggestion}
@@ -721,6 +725,7 @@ function TokenField({
     .filter((suggestion) => !tokens.some((token) => token.toLowerCase() === suggestion.toLowerCase()))
     .filter((suggestion) => !draft.trim() || suggestion.toLowerCase().includes(draft.trim().toLowerCase()))
     .slice(0, 5);
+  const showSuggestions = Boolean(draft.trim() && filteredSuggestions.length);
 
   function addToken(token: string) {
     const clean = token.trim();
@@ -770,7 +775,7 @@ function TokenField({
             />
           ) : null}
         </div>
-        {(!maxItems || tokens.length < maxItems) && filteredSuggestions.length ? (
+        {(!maxItems || tokens.length < maxItems) && showSuggestions ? (
           <div className="mt-2 flex flex-wrap gap-2 border-t border-[#DDE8F6] pt-2">
             {filteredSuggestions.map((suggestion) => (
               <button

@@ -639,7 +639,7 @@ function validateCoverLetterText(text: string, model: string) {
 }
 
 function cleanGeneratedText(text: string) {
-  return text
+  return text.replace(/^\s*(?:\d+[\).]|[-*])\s+/, "")
     .replace(/â|‑|–|—/g, "-")
     .replace(/â|’/g, "'")
     .replace(/â|“/g, '"')

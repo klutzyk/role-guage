@@ -542,7 +542,7 @@ function buildSummary(
   const warning = hardRequirements.find((finding) => finding.status !== "matched");
 
   if (blocker) {
-    return `This role is not a good fit because it asks for ${blocker.jobEvidence}. Your saved profile conflicts with that requirement, so confirm eligibility before applying.`;
+    return buildBlockerSummary(blocker);
   }
 
   if (warning) {
@@ -572,6 +572,40 @@ function buildSummary(
   }
 
   return `This is a stretch based on the current evidence. Build proof for ${gapList || "the missing requirements"} before investing serious time.`;
+}
+
+function buildBlockerSummary(blocker: ReturnType<typeof checkHardRequirements>["findings"][number]) {
+  const source = blocker.candidateEvidence ? "Your resume or profile" : "Your profile";
+
+  if (blocker.type === "work_rights") {
+    return `This role is not a good fit because it asks for ${blocker.jobEvidence}. ${source} conflicts with that requirement, so confirm eligibility before applying.`;
+  }
+
+  if (blocker.type === "sponsorship") {
+    return `This role is not a good fit because it appears to require existing work rights without sponsorship. ${source} does not clearly satisfy that requirement, so confirm eligibility before applying.`;
+  }
+
+  if (blocker.type === "licence" || blocker.type === "drivers_licence") {
+    return `This role is not a good fit yet because it asks for ${blocker.jobEvidence}. ${source} does not show that requirement clearly, so confirm it before applying.`;
+  }
+
+  if (blocker.type === "clearance") {
+    return `This role needs a security clearance check before applying. It asks for ${blocker.jobEvidence}, and your profile does not clearly show that clearance.`;
+  }
+
+  if (blocker.type === "location") {
+    return `This role has a location constraint that may not match your profile. Check ${blocker.jobEvidence} before spending time tailoring the application.`;
+  }
+
+  if (blocker.type === "experience") {
+    return `This role may be too senior based on the current profile. It asks for ${blocker.jobEvidence}, so check whether your resume proves that level clearly.`;
+  }
+
+  if (blocker.type === "salary") {
+    return `This role may not meet your saved salary target. Check the listed salary before spending time tailoring the application.`;
+  }
+
+  return `${blocker.label}: ${blocker.message}`;
 }
 
 function mostCommonCategory(skills: SkillDefinition[]) {
