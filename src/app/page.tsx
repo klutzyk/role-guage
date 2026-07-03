@@ -52,6 +52,30 @@ type AnalysisResult = {
   aiStatus?: "generated" | "fallback" | "disabled";
   fitReasoning?: string[];
   coverLetter?: string;
+  salary?: string | null;
+  hardRequirements?: RequirementFinding[];
+};
+
+type RequirementFinding = {
+  type: string;
+  severity: "hard" | "warning" | "info";
+  status: "blocked" | "unknown" | "matched" | "info";
+  label: string;
+  jobEvidence: string;
+  candidateEvidence?: string;
+  message: string;
+};
+
+type CandidateProfile = {
+  workRights?: string;
+  visaExpiry?: string;
+  location?: string;
+  workMode?: string;
+  driversLicence?: "yes" | "no" | "unknown" | "";
+  securityClearance?: string;
+  licences?: string;
+  minimumSalary?: string;
+  targetRoles?: string;
 };
 
 type ImportedJob = {
@@ -92,6 +116,7 @@ const emptyJobMeta: JobMeta = {
 const resumeProfileStorageKey = "roleguage.resume-profile.v1";
 const legacyResumeProfileStorageKey = "applypilot.resume-profile.v1";
 const matchHistoryStorageKey = "roleguage.match-history.v1";
+const candidateProfileStorageKey = "roleguage.candidate-profile.v1";
 
 const workflowSteps: Array<[string, string, LucideIcon]> = [
   ["Upload once", "Use a resume PDF or saved profile as the evidence base for the match.", Upload],
@@ -184,7 +209,7 @@ export default function Home() {
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resume: resumeText, job: jobText }),
+        body: JSON.stringify({ resume: resumeText, job: jobText, profile: readCandidateProfile() }),
       });
 
       if (!response.ok) throw new Error("Analysis failed");
@@ -211,7 +236,7 @@ export default function Home() {
       const response = await fetch("/api/enrich-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resume: resumeText, job: jobText }),
+        body: JSON.stringify({ resume: resumeText, job: jobText, profile: readCandidateProfile(), analysis: baseResult }),
       });
 
       if (!response.ok) throw new Error("Enrichment failed");
@@ -551,8 +576,10 @@ export default function Home() {
               </div>
 
               <p className="mt-6 text-sm leading-7 text-[#4F5F6F]">
-                {isPreparingReport ? "Preparing your personalized report..." : result.summary}
+                {isPreparingReport ? "Preparing your personalized report..." : <SummaryText text={result.summary} />}
               </p>
+
+              <RequirementAlert findings={result.hardRequirements ?? []} salary={result.salary ?? null} />
 
               <div className="mt-5 rounded-md border border-[#A7CEFC] bg-[#F8FBFF] p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#043873]">Next best action</p>
@@ -811,6 +838,89 @@ function MiniMetric({ label, value, detail }: { label: string; value: string; de
   );
 }
 
+function SummaryText({ text }: { text: string }) {
+  const parts = text.split(/(not a good fit|citizenship\/PR|citizenship or permanent residency)/gi);
+
+  return (
+    <>
+      {parts.map((part, index) => {
+        if (/not a good fit/i.test(part)) {
+          const [notWord, ...rest] = part.split(/\s+/);
+
+          return (
+            <span key={`${part}-${index}`}>
+              <strong className="text-[#B5121B]">{notWord}</strong>{" "}
+              <span>{rest.join(" ")}</span>
+            </span>
+          );
+        }
+
+        if (/citizenship\/PR|citizenship or permanent residency/i.test(part)) {
+          return (
+            <strong key={`${part}-${index}`} className="text-[#043873]">
+              {part}
+            </strong>
+          );
+        }
+
+        return <span key={`${part}-${index}`}>{part}</span>;
+      })}
+    </>
+  );
+}
+
+function RequirementAlert({
+  findings,
+  salary,
+}: {
+  findings: RequirementFinding[];
+  salary: string | null;
+}) {
+  const visibleFindings = findings.filter((finding) => finding.status !== "matched");
+  const primary = visibleFindings[0];
+
+  if (!primary && !salary) return null;
+
+  const isBlocker = primary?.status === "blocked";
+  const title = primary
+    ? isBlocker
+      ? "Likely blocker"
+      : primary.severity === "hard"
+        ? "Check before applying"
+        : "Requirement to check"
+    : "Salary listed";
+
+  return (
+    <div
+      className={`mt-5 rounded-md border p-4 ${
+        isBlocker ? "border-[#B5121B] bg-[#FFF1F2]" : "border-[#FFE492] bg-[#FFF8DD]"
+      }`}
+    >
+      <div className="grid gap-3">
+        {salary ? (
+          <div className="w-fit max-w-full rounded-md border border-[#DDE8F6] bg-white px-3 py-2 text-sm font-bold text-[#043873]">
+            Salary: {salary}
+          </div>
+        ) : null}
+        <div className="min-w-0">
+          <p className={`text-xs font-bold uppercase tracking-[0.16em] ${isBlocker ? "text-[#B5121B]" : "text-[#7A5900]"}`}>
+            {title}
+          </p>
+          {primary ? <p className="mt-2 text-sm font-bold leading-6 text-[#212529]">{primary.message}</p> : null}
+          {primary?.jobEvidence ? (
+            <p className="mt-2 text-xs leading-5 text-[#4F5F6F]">Job says: {primary.jobEvidence}</p>
+          ) : null}
+          {visibleFindings.length > 1 ? (
+            <p className="mt-2 text-xs font-semibold text-[#4F5F6F]">
+              {visibleFindings.length - 1} more requirement{visibleFindings.length > 2 ? "s" : ""} to check.
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DetailGroup({
   title,
   icon,
@@ -938,6 +1048,20 @@ function readMatchHistory() {
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
+  }
+}
+
+function readCandidateProfile(): CandidateProfile {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const raw = window.localStorage.getItem(candidateProfileStorageKey);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as CandidateProfile;
+
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
   }
 }
 

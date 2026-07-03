@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateFitEnrichment, getAiModel } from "@/lib/ai";
+import { CandidateProfile } from "@/lib/requirements";
 import { analyzeResumeAgainstJob } from "../analyze/route";
 
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as
-    | { resume?: string; job?: string }
+    | { resume?: string; job?: string; profile?: CandidateProfile; analysis?: ReturnType<typeof analyzeResumeAgainstJob> }
     | null;
 
   const resume = body?.resume?.trim() ?? "";
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const analysis = analyzeResumeAgainstJob(resume, job);
+  const analysis = body?.analysis ?? analyzeResumeAgainstJob(resume, job, body?.profile);
 
   try {
     const aiEnrichment = await generateFitEnrichment({ resume, job, analysis });

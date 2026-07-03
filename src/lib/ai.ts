@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { GoogleGenAI } from "@google/genai";
 import { buildRagCorpus, buildStructuredProfile, formatRetrievedContext, retrieveContext } from "./rag";
+import { RequirementFinding, formatRequirementFindingsForPrompt } from "./requirements";
 
 type AnalysisLike = {
   score: number;
@@ -11,6 +12,8 @@ type AnalysisLike = {
   missingSkills: string[];
   roleSignals: string[];
   summary: string;
+  hardRequirements?: RequirementFinding[];
+  salary?: string | null;
 };
 
 export type AiStatus = "generated" | "fallback" | "disabled";
@@ -143,6 +146,7 @@ function buildPromptContext(resume: string, job: string, analysis: AnalysisLike)
       `matched: ${analysis.matchedSkills.join(", ") || "None"}`,
       `missing: ${analysis.missingSkills.join(", ") || "None"}`,
       `signals: ${analysis.roleSignals.join(", ") || "None"}`,
+      formatRequirementFindingsForPrompt(analysis.hardRequirements ?? []),
       `base_summary: ${analysis.summary}`,
       `base_next_step: ${analysis.nextStep}`,
     ].join("\n"),
@@ -177,6 +181,7 @@ function buildCoverLetterPrompt(context: PromptContext) {
 
 Rules:
 - Use only the profile, evidence, and match result below.
+- Treat MATCH hard checks as authoritative. If a hard check is blocked or unknown, make it clear in summary and nextStep.
 - Do not invent tools, employers, certifications, achievements, locations, work rights, or degrees.
 - Do not invent numbers, percentages, revenue, latency, scale, or impact metrics. Only include metrics if they appear in evidence.
 - Natural Australian professional tone.
@@ -260,15 +265,31 @@ export async function generateFitEnrichment({
 
 function cleanEnrichmentPayload(payload: CombinedEnrichmentPayload, analysis: AnalysisLike, sourceText: string): CombinedEnrichmentPayload {
   const summary = cleanGeneratedText(payload.summary);
+  const fitReasoning = toTextArray(payload.fitReasoning).slice(0, 4);
+  const resumeBullets = toTextArray(payload.resumeBullets).slice(0, 3);
 
   return {
     ...payload,
     summary: looksLikeCoverLetter(summary) ? analysis.summary : summary,
     nextStep: cleanGeneratedText(payload.nextStep),
-    fitReasoning: payload.fitReasoning.map(cleanGeneratedText),
-    resumeBullets: payload.resumeBullets?.map((item) => removeUnsupportedMetrics(cleanGeneratedText(item), sourceText)),
+    fitReasoning: fitReasoning.length ? fitReasoning.map(cleanGeneratedText) : buildFallbackAiReport(analysis).fitReasoning,
+    resumeBullets: resumeBullets.length
+      ? resumeBullets.map((item) => removeUnsupportedMetrics(cleanGeneratedText(item), sourceText))
+      : buildFallbackAiReport(analysis).resumeBullets,
     coverLetter: cleanGeneratedText(payload.coverLetter ?? ""),
   };
+}
+
+function toTextArray(value: unknown) {
+  if (Array.isArray(value)) return value.map((item) => String(item)).filter(Boolean);
+  if (typeof value === "string") {
+    return value
+      .split(/\n+|(?:^|\s)\d+\.\s+|;\s+/)
+      .map((item) => item.replace(/^[-*]\s*/, "").trim())
+      .filter(Boolean);
+  }
+
+  return [];
 }
 
 function looksLikeCoverLetter(text: string) {

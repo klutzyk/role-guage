@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { CandidateProfile, checkHardRequirements } from "@/lib/requirements";
 
 type SkillDefinition = {
   name: string;
@@ -145,7 +146,7 @@ const roleFamilyChecks = [
 
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as
-    | { resume?: string; job?: string }
+    | { resume?: string; job?: string; profile?: CandidateProfile }
     | null;
 
   const resume = body?.resume?.trim() ?? "";
@@ -159,12 +160,12 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({
-    ...analyzeResumeAgainstJob(resume, job),
+    ...analyzeResumeAgainstJob(resume, job, body?.profile),
     aiStatus: "disabled",
   });
 }
 
-export function analyzeResumeAgainstJob(resume: string, job: string) {
+export function analyzeResumeAgainstJob(resume: string, job: string, profile: CandidateProfile = {}) {
   const resumeSkills = extractSkills(resume);
   const jobSkills = extractSkills(job);
   const mustHaveSkills = detectMustHaveSkills(job, jobSkills);
@@ -177,9 +178,17 @@ export function analyzeResumeAgainstJob(resume: string, job: string) {
   const mustHavePenalty = mustHaveMisses.length * 7;
   const evidenceBonus = Math.min(resumeSkills.length * 1.5, 12);
   const roleFit = assessRoleFit(resume, job, jobSkills);
-  const score = Math.max(25, Math.min(96, Math.round(coverage * 82 + evidenceBonus - mustHavePenalty - roleFit.penalty)));
-  const roleSignals = [...roleFit.signals, ...extractSignals(job)].slice(0, 6);
-  const recommendation = getRecommendation(score, mustHaveMisses.length, roleFit.penalty);
+  const requirementChecks = checkHardRequirements(resume, job, profile);
+  const rawScore = Math.max(
+    25,
+    Math.min(
+      96,
+      Math.round(coverage * 82 + evidenceBonus - mustHavePenalty - roleFit.penalty - requirementChecks.scorePenalty),
+    ),
+  );
+  const score = requirementChecks.scoreCap ? Math.min(rawScore, requirementChecks.scoreCap) : rawScore;
+  const roleSignals = [...requirementChecks.signals, ...roleFit.signals, ...extractSignals(job)].slice(0, 6);
+  const recommendation = getRecommendation(score, mustHaveMisses.length, roleFit.penalty, requirementChecks.findings);
 
   return {
     score,
@@ -191,6 +200,8 @@ export function analyzeResumeAgainstJob(resume: string, job: string) {
     matchedSkills: matchedSkills.map((skill) => skill.name).slice(0, 10),
     missingSkills: missingSkills.map((skill) => skill.name).slice(0, 10),
     roleSignals: roleSignals.length ? roleSignals : ["Role intent unclear"],
+    hardRequirements: requirementChecks.findings,
+    salary: requirementChecks.salary,
     scoreBreakdown: [
       {
         label: "Matched job skills",
@@ -211,8 +222,14 @@ export function analyzeResumeAgainstJob(resume: string, job: string) {
       },
       {
         label: "Role alignment",
-        value: roleFit.penalty ? `-${roleFit.penalty}` : "OK",
-        detail: roleFit.penalty
+        value: requirementChecks.scoreCap
+          ? `Cap ${requirementChecks.scoreCap}`
+          : roleFit.penalty
+            ? `-${roleFit.penalty}`
+            : "OK",
+        detail: requirementChecks.findings.some((finding) => finding.status !== "matched")
+          ? "Eligibility, logistics, or hard requirements need review"
+          : roleFit.penalty
           ? "Role family, seniority, or evidence level needs review"
           : "Role direction appears aligned",
       },
@@ -237,7 +254,7 @@ export function analyzeResumeAgainstJob(resume: string, job: string) {
     interviewPrep: buildInterviewPrep(matchedSkills, missingSkills, roleSignals),
     outreachMessage: buildOutreachMessage(matchedSkills, missingSkills),
     atsNotes: buildAtsNotes(job, jobSkills, missingSkills, mustHaveMisses),
-    summary: buildSummary(score, matchedSkills, missingSkills, mustHaveMisses, recommendation.action, roleFit),
+    summary: buildSummary(score, matchedSkills, missingSkills, mustHaveMisses, recommendation.action, roleFit, requirementChecks.findings),
   };
 }
 
@@ -339,7 +356,37 @@ function extractExperienceYears(normalizedText: string) {
   return years.length ? Math.max(...years) : 0;
 }
 
-function getRecommendation(score: number, mustHaveMisses: number, rolePenalty: number) {
+function getRecommendation(
+  score: number,
+  mustHaveMisses: number,
+  rolePenalty: number,
+  hardRequirements: ReturnType<typeof checkHardRequirements>["findings"] = [],
+) {
+  const blocker = hardRequirements.find((finding) => finding.status === "blocked" && finding.severity === "hard");
+  const unknownHardRequirement = hardRequirements.find((finding) => finding.status === "unknown" && finding.severity === "hard");
+
+  if (blocker) {
+    return {
+      level: "Likely blocker",
+      action: "check eligibility before applying",
+      decision: "Skip",
+      nextStep: blocker.message,
+      timeToApply: "Check first",
+      confidence: "Low",
+    } satisfies Recommendation;
+  }
+
+  if (unknownHardRequirement) {
+    return {
+      level: "Check first",
+      action: "confirm this hard requirement before applying",
+      decision: "Tailor",
+      nextStep: unknownHardRequirement.message,
+      timeToApply: "Check first",
+      confidence: "Medium",
+    } satisfies Recommendation;
+  }
+
   if (score >= 82 && mustHaveMisses === 0 && rolePenalty < 10) {
     return {
       level: "Apply now",
@@ -489,7 +536,19 @@ function buildSummary(
   mustHaveMisses: SkillDefinition[],
   action: string,
   roleFit: RoleFit,
+  hardRequirements: ReturnType<typeof checkHardRequirements>["findings"] = [],
 ) {
+  const blocker = hardRequirements.find((finding) => finding.status === "blocked" && finding.severity === "hard");
+  const warning = hardRequirements.find((finding) => finding.status !== "matched");
+
+  if (blocker) {
+    return `${blocker.label}: ${blocker.message} The technical match may still be useful, but do not treat this as a strong fit until this is resolved.`;
+  }
+
+  if (warning) {
+    return `${warning.label}: ${warning.message} If this checks out, use the strongest matched evidence before applying.`;
+  }
+
   const matchedList = matched.slice(0, 3).map((skill) => skill.name).join(", ") || "some transferable evidence";
   const gapList = (mustHaveMisses.length ? mustHaveMisses : missing)
     .slice(0, 2)

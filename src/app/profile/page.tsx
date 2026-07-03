@@ -31,13 +31,27 @@ type MatchHistoryItem = {
   result: AnalysisResult;
 };
 
+type CandidateProfile = {
+  workRights?: string;
+  visaExpiry?: string;
+  location?: string;
+  workMode?: string;
+  driversLicence?: "yes" | "no" | "unknown" | "";
+  securityClearance?: string;
+  licences?: string;
+  minimumSalary?: string;
+  targetRoles?: string;
+};
+
 const resumeProfileStorageKey = "roleguage.resume-profile.v1";
 const legacyResumeProfileStorageKey = "applypilot.resume-profile.v1";
 const matchHistoryStorageKey = "roleguage.match-history.v1";
+const candidateProfileStorageKey = "roleguage.candidate-profile.v1";
 
 export default function ProfilePage() {
   const [resume, setResume] = useState("");
   const [history, setHistory] = useState<MatchHistoryItem[]>([]);
+  const [candidateProfile, setCandidateProfile] = useState<CandidateProfile>({});
   const [selectedId, setSelectedId] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -52,9 +66,11 @@ export default function ProfilePage() {
       window.localStorage.getItem(legacyResumeProfileStorageKey) ??
       "";
     const savedHistory = readMatchHistory();
+    const savedCandidateProfile = readCandidateProfile();
 
     setResume(savedResume);
     setHistory(savedHistory);
+    setCandidateProfile(savedCandidateProfile);
     setSelectedId(savedHistory[0]?.id ?? "");
   }, []);
 
@@ -104,6 +120,25 @@ export default function ProfilePage() {
     window.localStorage.removeItem(legacyResumeProfileStorageKey);
     setResume("");
     setMessage("Resume profile deleted.");
+  }
+
+  function updateCandidateProfile(field: keyof CandidateProfile, value: string) {
+    setCandidateProfile((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function saveCandidateProfile() {
+    window.localStorage.setItem(candidateProfileStorageKey, JSON.stringify(candidateProfile));
+    setError("");
+    setMessage("Candidate details saved.");
+  }
+
+  function clearCandidateProfile() {
+    setCandidateProfile({});
+    window.localStorage.removeItem(candidateProfileStorageKey);
+    setMessage("Candidate details cleared.");
   }
 
   function deleteMatch(id: string) {
@@ -202,6 +237,95 @@ export default function ProfilePage() {
 
             {message ? <p className="mt-4 text-sm font-semibold text-[#007a52]">{message}</p> : null}
             {error ? <p className="mt-4 text-sm font-semibold text-[#b00000]">{error}</p> : null}
+          </section>
+
+          <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_16px_44px_rgba(4,56,115,0.08)] md:p-6 lg:col-start-1">
+            <div>
+              <p className="text-sm font-bold uppercase text-[#4F9CF9]">Candidate details</p>
+              <h2 className="mt-2 text-2xl font-extrabold text-[#212529]">Checks resumes usually miss</h2>
+              <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
+                These facts stay in this browser and are used only when a job asks for them.
+              </p>
+            </div>
+
+            <div className="mt-5 grid gap-4">
+              <ProfileField
+                label="Work rights"
+                value={candidateProfile.workRights ?? ""}
+                onChange={(value) => updateCandidateProfile("workRights", value)}
+                placeholder="Example: 485 visa, unrestricted work rights, expires Jul 2027"
+              />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <ProfileField
+                  label="Location"
+                  value={candidateProfile.location ?? ""}
+                  onChange={(value) => updateCandidateProfile("location", value)}
+                  placeholder="Melbourne, VIC"
+                />
+                <ProfileField
+                  label="Work mode"
+                  value={candidateProfile.workMode ?? ""}
+                  onChange={(value) => updateCandidateProfile("workMode", value)}
+                  placeholder="Hybrid, remote, on-site"
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="grid gap-2">
+                  <span className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F5F6F]">Driver licence</span>
+                  <select
+                    value={candidateProfile.driversLicence ?? ""}
+                    onChange={(event) => updateCandidateProfile("driversLicence", event.target.value)}
+                    className="h-11 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15"
+                  >
+                    <option value="">Not set</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                    <option value="unknown">Prefer to check manually</option>
+                  </select>
+                </label>
+                <ProfileField
+                  label="Minimum salary"
+                  value={candidateProfile.minimumSalary ?? ""}
+                  onChange={(value) => updateCandidateProfile("minimumSalary", value)}
+                  placeholder="90000"
+                />
+              </div>
+              <ProfileField
+                label="Security clearance"
+                value={candidateProfile.securityClearance ?? ""}
+                onChange={(value) => updateCandidateProfile("securityClearance", value)}
+                placeholder="None, Baseline, NV1, NV2"
+              />
+              <ProfileField
+                label="Licences and certifications"
+                value={candidateProfile.licences ?? ""}
+                onChange={(value) => updateCandidateProfile("licences", value)}
+                placeholder="CPA, Real Estate Licence, Working With Children Check, etc."
+              />
+              <ProfileField
+                label="Target roles"
+                value={candidateProfile.targetRoles ?? ""}
+                onChange={(value) => updateCandidateProfile("targetRoles", value)}
+                placeholder="Software engineer, data analyst, AI engineer"
+              />
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={saveCandidateProfile}
+                className="h-11 rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97]"
+              >
+                Save details
+              </button>
+              <button
+                type="button"
+                onClick={clearCandidateProfile}
+                className="h-11 rounded-md border border-[#FFE492] bg-white px-4 text-sm font-bold text-[#043873] transition hover:bg-[#FFE492]"
+              >
+                Clear details
+              </button>
+            </div>
           </section>
 
           <section className="grid gap-5">
@@ -342,6 +466,30 @@ function HistoryList({ title, items }: { title: string; items: string[] }) {
   );
 }
 
+function ProfileField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <label className="grid gap-2">
+      <span className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F5F6F]">{label}</span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15"
+        placeholder={placeholder}
+      />
+    </label>
+  );
+}
+
 function readMatchHistory() {
   try {
     const raw = window.localStorage.getItem(matchHistoryStorageKey) ?? "[]";
@@ -350,5 +498,17 @@ function readMatchHistory() {
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
+  }
+}
+
+function readCandidateProfile() {
+  try {
+    const raw = window.localStorage.getItem(candidateProfileStorageKey);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as CandidateProfile;
+
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
   }
 }
