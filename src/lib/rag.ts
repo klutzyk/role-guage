@@ -169,8 +169,19 @@ function extractCandidateName(resume: string) {
         !rejected.test(line) &&
         words.every((word) => /^[A-Z][A-Za-z.'-]+$/.test(word))
       );
-    }) ?? ""
+    }) ?? extractInlineCandidateName(resume)
   );
+}
+
+function extractInlineCandidateName(resume: string) {
+  const compact = resume.replace(/\s+/g, " ").trim().slice(0, 220);
+  const rejected = /resume|curriculum|vitae|email|phone|linkedin|github|portfolio|address|software|engineer|developer|analyst|scientist|data/i;
+  const roleBoundary = compact.search(/\b(?:software|data|machine learning|ai|full stack|frontend|backend|web)\b/i);
+  const nameArea = roleBoundary > 0 ? compact.slice(0, roleBoundary).trim() : compact;
+  const match = nameArea.match(/^([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){1,3})\b/);
+  const candidate = match?.[1]?.trim().replace(/[|,;-]+$/, "").trim() ?? "";
+
+  return candidate && !rejected.test(candidate) ? candidate : "";
 }
 
 function extractEducation(text: string) {

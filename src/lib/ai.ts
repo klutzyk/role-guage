@@ -131,11 +131,11 @@ function buildPromptContext(resume: string, job: string, analysis: AnalysisLike)
     job.slice(0, 360),
   ].join(" ");
   const profile = buildStructuredProfile(resume);
-  const evidence = formatRetrievedContext(retrieveContext(query, buildRagCorpus(resume, job), 4));
+  const evidence = formatRetrievedContext(retrieveContext(query, buildRagCorpus(resume, job), 3));
 
   return {
     profileBlock: toCompactProfile(profile),
-    evidenceBlock: evidence.slice(0, 2600),
+    evidenceBlock: evidence.slice(0, 1800),
     matchBlock: [
       `score: ${analysis.score}`,
       `decision: ${analysis.decision}`,
@@ -178,6 +178,7 @@ function buildCoverLetterPrompt(context: PromptContext) {
 Rules:
 - Use only the profile, evidence, and match result below.
 - Do not invent tools, employers, certifications, achievements, locations, work rights, or degrees.
+- Do not invent numbers, percentages, revenue, latency, scale, or impact metrics. Only include metrics if they appear in evidence.
 - Natural Australian professional tone.
 - coverLetter: 180-240 words.
 - No headings, no markdown, no placeholders, no bracketed text.
@@ -188,7 +189,7 @@ Rules:
 - If evidence is transferable but not direct, phrase it honestly.
 - Silently revise once for fake claims, generic filler, repeated wording, and AI cliches.
 - Return valid JSON only with these fields:
-  summary: one honest paragraph explaining the fit
+  summary: 1-2 sentences addressed to the user, not an employer. Summarize whether this job is worth applying to and what to fix. Do not write cover-letter prose.
   nextStep: one direct instruction under 24 words
   fitReasoning: 3 concise evidence-based reasons
   resumeBullets: 2 or 3 honest resume bullet ideas
@@ -244,11 +245,11 @@ export async function generateFitEnrichment({
     ].join("\n"),
     combinedEnrichmentSchema,
     buildCoverLetterPrompt(promptContext),
-    900,
+    1200,
   );
 
   validateCoverLetterText(cleanGeneratedText(enrichment.coverLetter ?? ""), getAiModelCandidates()[0]);
-  const cleanedEnrichment = cleanEnrichmentPayload(enrichment);
+  const cleanedEnrichment = cleanEnrichmentPayload(enrichment, analysis, `${resume}\n${job}`);
 
   return {
     ...cleanedEnrichment,
@@ -257,15 +258,35 @@ export async function generateFitEnrichment({
   };
 }
 
-function cleanEnrichmentPayload(payload: CombinedEnrichmentPayload): CombinedEnrichmentPayload {
+function cleanEnrichmentPayload(payload: CombinedEnrichmentPayload, analysis: AnalysisLike, sourceText: string): CombinedEnrichmentPayload {
+  const summary = cleanGeneratedText(payload.summary);
+
   return {
     ...payload,
-    summary: cleanGeneratedText(payload.summary),
+    summary: looksLikeCoverLetter(summary) ? analysis.summary : summary,
     nextStep: cleanGeneratedText(payload.nextStep),
     fitReasoning: payload.fitReasoning.map(cleanGeneratedText),
-    resumeBullets: payload.resumeBullets?.map(cleanGeneratedText),
+    resumeBullets: payload.resumeBullets?.map((item) => removeUnsupportedMetrics(cleanGeneratedText(item), sourceText)),
     coverLetter: cleanGeneratedText(payload.coverLetter ?? ""),
   };
+}
+
+function looksLikeCoverLetter(text: string) {
+  return /\b(i am writing|my background|i bring|i would welcome|thank you for|kind regards|dear |hi team)\b/i.test(text);
+}
+
+function removeUnsupportedMetrics(text: string, sourceText: string) {
+  const numbers = text.match(/\b\d+(?:\.\d+)?%?|\$\d[\d,]*(?:\.\d+)?\b/g) ?? [];
+  const unsupported = numbers.filter((number) => !sourceText.includes(number));
+
+  if (!unsupported.length) return text;
+
+  return text
+    .replace(/\b(?:improving|reducing|increasing|decreasing|boosting|cutting|raising|lowering)\b[^.]*\b(?:by|to)\s+\d+(?:\.\d+)?%?[^.]*\./gi, "")
+    .replace(/\b\d+(?:\.\d+)?%|\$\d[\d,]*(?:\.\d+)?\b/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+\./g, ".")
+    .trim();
 }
 
 function buildFallbackAiReport(analysis: AnalysisLike): Omit<AiFitEnrichmentPayload, "coverLetter"> {
@@ -587,7 +608,7 @@ async function generateGroqCompletion({
 function validateCoverLetterText(text: string, model: string) {
   const wordCount = text.split(/\s+/).filter(Boolean).length;
 
-  if (wordCount < 120) {
+  if (wordCount < 90) {
     throw new Error(`AI text response was too short for ${model}.`);
   }
 
