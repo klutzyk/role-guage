@@ -155,6 +155,7 @@ export default function Home() {
   const [isEnrichingReport, setIsEnrichingReport] = useState(false);
   const [isImportingJob, setIsImportingJob] = useState(false);
   const [isExtractingResume, setIsExtractingResume] = useState(false);
+  const [copiedCoverLetter, setCopiedCoverLetter] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const activeRequest = useRef(0);
@@ -349,7 +350,9 @@ export default function Home() {
   async function copyCoverLetter() {
     if (!coverLetter) return;
     await navigator.clipboard.writeText(coverLetter);
+    setCopiedCoverLetter(true);
     setMessage("Cover letter copied.");
+    window.setTimeout(() => setCopiedCoverLetter(false), 1800);
   }
 
   function downloadReport() {
@@ -393,7 +396,7 @@ export default function Home() {
         <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#A7CEFC]">
           Resume job match checker
         </p>
-        <h1 className="mx-auto mt-5 max-w-6xl text-5xl font-extrabold leading-tight md:text-7xl">
+        <h1 className="mx-auto mt-5 max-w-7xl whitespace-normal text-5xl font-extrabold leading-tight md:text-6xl xl:whitespace-nowrap xl:text-7xl">
           Tailor your resume to any job ad
         </h1>
         <p className="mx-auto mt-6 max-w-4xl text-base leading-8 text-white/86 md:text-lg">
@@ -645,9 +648,14 @@ export default function Home() {
                     type="button"
                     onClick={copyCoverLetter}
                     disabled={!coverLetter}
-                    className="h-10 rounded-md border border-[#A7CEFC] px-3 text-sm font-bold text-[#043873] transition hover:bg-[#A7CEFC]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    className={`inline-flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                      copiedCoverLetter
+                        ? "border-[#0F7A57] bg-[#0F7A57] text-white"
+                        : "border-[#A7CEFC] text-[#043873] hover:bg-[#A7CEFC]/20"
+                    }`}
                   >
-                    Copy
+                    {copiedCoverLetter ? <Check size={16} aria-hidden="true" /> : <Clipboard size={16} aria-hidden="true" />}
+                    {copiedCoverLetter ? "Copied" : "Copy"}
                   </button>
                 </div>
                 <div className="mt-4 whitespace-pre-line rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 text-[#4F5F6F]">

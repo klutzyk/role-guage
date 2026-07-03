@@ -34,16 +34,14 @@ export function buildRagCorpus(resume: string, job: string) {
 
 export function buildStructuredProfile(resume: string) {
   const normalized = resume.replace(/\s+/g, " ").trim();
+  const name = extractCandidateName(resume);
   const experienceYears = extractExperienceYears(normalized);
-  const education = findMatches(normalized, [
-    /master'?s? of [a-z ]+/gi,
-    /bachelor'?s? of [a-z ]+/gi,
-    /graduate diploma in [a-z ]+/gi,
-  ]);
+  const education = extractEducation(normalized);
   const skills = findKnownSkills(normalized);
   const projects = findProjectSignals(normalized);
 
   return {
+    name,
     experienceYears,
     education,
     skills,
@@ -122,6 +120,10 @@ function buildProfileChunks(resume: string) {
   const profile = buildStructuredProfile(resume);
   const chunks: RagChunk[] = [];
 
+  if (profile.name) {
+    chunks.push(makeChunk("profile", "Candidate name", profile.name, chunks.length));
+  }
+
   if (profile.experienceYears) {
     chunks.push(makeChunk("profile", "Experience length", `${profile.experienceYears} years of relevant experience are evidenced in the resume.`, chunks.length));
   }
@@ -147,6 +149,54 @@ function extractExperienceYears(text: string) {
     .filter(Number.isFinite);
 
   return years.length ? Math.max(...years) : 0;
+}
+
+function extractCandidateName(resume: string) {
+  const lines = resume
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+  const rejected = /resume|curriculum|vitae|email|phone|linkedin|github|portfolio|address|software|engineer|developer|analyst|scientist|data/i;
+
+  return (
+    lines.find((line) => {
+      const words = line.split(/\s+/);
+
+      return (
+        words.length >= 2 &&
+        words.length <= 4 &&
+        !rejected.test(line) &&
+        words.every((word) => /^[A-Z][A-Za-z.'-]+$/.test(word))
+      );
+    }) ?? ""
+  );
+}
+
+function extractEducation(text: string) {
+  const degreeMatches = findMatches(text, [
+    /master'?s? of [a-z ]{3,40}(?=\s+(?:at|from|with|,|\.|;)|$)/gi,
+    /bachelor'?s? of [a-z ]{3,40}(?=\s+(?:at|from|with|,|\.|;)|$)/gi,
+    /graduate diploma in [a-z ]{3,40}(?=\s+(?:at|from|with|,|\.|;)|$)/gi,
+  ]);
+  const universities = findMatches(text, [
+    /monash university/gi,
+    /university of [a-z ]{3,60}/gi,
+    /[a-z ]{3,60} university/gi,
+    /rmit/gi,
+    /deakin/gi,
+  ]);
+
+  if (!degreeMatches.length) return universities;
+
+  return degreeMatches.map((degree) => {
+    const nearbyUniversity = universities.find((university) =>
+      text.includes(`${degree.toLowerCase()} ${university.toLowerCase()}`) ||
+      text.includes(`${university.toLowerCase()} ${degree.toLowerCase()}`),
+    );
+
+    return nearbyUniversity ? `${degree}, ${nearbyUniversity}` : degree;
+  });
 }
 
 function findMatches(text: string, patterns: RegExp[]) {

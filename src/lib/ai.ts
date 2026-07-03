@@ -62,6 +62,8 @@ type PromptContext = {
   matchBlock: string;
 };
 
+type CombinedEnrichmentPayload = Omit<AiFitEnrichmentPayload, "interviewPrep" | "outreachMessage" | "atsNotes" | "gapRoadmap">;
+
 const aiCache = new Map<string, { expiresAt: number; value: unknown }>();
 const defaultGeminiModel = "gemini-2.5-flash";
 const defaultGroqModel = "openai/gpt-oss-20b";
@@ -171,19 +173,26 @@ ${context.evidenceBlock}`;
 }
 
 function buildCoverLetterPrompt(context: PromptContext) {
-  return `Write a cover letter for the jobseeker.
+  return `Generate job application guidance for the jobseeker.
 
 Rules:
 - Use only the profile, evidence, and match result below.
 - Do not invent tools, employers, certifications, achievements, locations, work rights, or degrees.
 - Natural Australian professional tone.
-- 180-240 words.
+- coverLetter: 180-240 words.
 - No headings, no markdown, no placeholders, no bracketed text.
 - If the hiring manager is unknown, start with "Hi team,".
-- End with "Kind regards" only. Do not add a name unless the profile clearly states one.
+- If the profile includes a candidate name, end with "Kind regards" and that name on the next line. Otherwise end with "Kind regards" only.
+- Use the exact university name if it appears in the profile. Do not replace it with generic wording like "an Australian university".
 - Avoid: "What attracted me", "What stood out", "I am passionate", "I thrive", "perfect fit", "I am excited to apply".
 - If evidence is transferable but not direct, phrase it honestly.
 - Silently revise once for fake claims, generic filler, repeated wording, and AI cliches.
+- Return valid JSON only with these fields:
+  summary: one honest paragraph explaining the fit
+  nextStep: one direct instruction under 24 words
+  fitReasoning: 3 concise evidence-based reasons
+  resumeBullets: 2 or 3 honest resume bullet ideas
+  coverLetter: the finished cover letter
 
 PROFILE
 ${context.profileBlock}
@@ -197,6 +206,7 @@ ${context.evidenceBlock}`;
 
 function toCompactProfile(profile: ReturnType<typeof buildStructuredProfile>) {
   return [
+    `name: ${profile.name || "not stated"}`,
     `years: ${profile.experienceYears || "not stated"}`,
     `education: ${profile.education.join(" | ") || "not stated"}`,
     `skills: ${profile.skills.join(", ") || "not stated"}`,
@@ -223,25 +233,38 @@ export async function generateFitEnrichment({
   if (!isAiConfigured()) return null;
 
   const promptContext = buildPromptContext(resume, job, analysis);
-  const enrichment = buildFallbackAiReport(analysis);
-  const coverLetter = await cachedTextWithLimit(
+  const enrichment = await cachedJsonWithLimit<CombinedEnrichmentPayload>(
     [
-      "cover-v3-one-call-validated",
+      "combined-v1-one-call-guidance-cover",
       getLlmProvider(),
       getAiModelCandidates().join(","),
       resume,
       job,
       JSON.stringify(analysis),
     ].join("\n"),
+    combinedEnrichmentSchema,
     buildCoverLetterPrompt(promptContext),
     900,
   );
 
+  validateCoverLetterText(cleanGeneratedText(enrichment.coverLetter ?? ""), getAiModelCandidates()[0]);
+  const cleanedEnrichment = cleanEnrichmentPayload(enrichment);
+
   return {
-    ...enrichment,
-    coverLetter,
+    ...cleanedEnrichment,
     aiStatus: "generated",
     aiModel: getAiModelCandidates()[0],
+  };
+}
+
+function cleanEnrichmentPayload(payload: CombinedEnrichmentPayload): CombinedEnrichmentPayload {
+  return {
+    ...payload,
+    summary: cleanGeneratedText(payload.summary),
+    nextStep: cleanGeneratedText(payload.nextStep),
+    fitReasoning: payload.fitReasoning.map(cleanGeneratedText),
+    resumeBullets: payload.resumeBullets?.map(cleanGeneratedText),
+    coverLetter: cleanGeneratedText(payload.coverLetter ?? ""),
   };
 }
 
@@ -650,6 +673,24 @@ const fitEnrichmentSchema = {
     "nextStep",
     "fitReasoning",
     "resumeBullets",
+  ],
+};
+
+const combinedEnrichmentSchema = {
+  type: "object",
+  properties: {
+    ...fitEnrichmentSchema.properties,
+    coverLetter: {
+      type: "string",
+      description: "A finished, truthful cover letter based only on supplied evidence.",
+    },
+  },
+  required: [
+    "summary",
+    "nextStep",
+    "fitReasoning",
+    "resumeBullets",
+    "coverLetter",
   ],
 };
 
