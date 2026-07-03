@@ -63,16 +63,34 @@ type PromptContext = {
 };
 
 const aiCache = new Map<string, { expiresAt: number; value: unknown }>();
-const defaultModel = "gemini-2.5-flash";
+const defaultGeminiModel = "gemini-2.5-flash";
+const defaultGroqModel = "openai/gpt-oss-20b";
 const aiTimeoutMs = getConfiguredTimeout();
 const cacheTtlMs = 1000 * 60 * 60 * 12;
 
 export function isAiConfigured() {
-  return Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+  return Boolean(
+    process.env.GROQ_API_KEY ||
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY,
+  );
 }
 
 export function getAiModel() {
-  return process.env.GEMINI_MODEL || defaultModel;
+  if (getLlmProvider() === "groq") {
+    return process.env.GROQ_MODEL || defaultGroqModel;
+  }
+
+  return process.env.GEMINI_MODEL || defaultGeminiModel;
+}
+
+function getLlmProvider() {
+  const configured = process.env.LLM_PROVIDER?.toLowerCase();
+
+  if (configured === "groq" || configured === "gemini") return configured;
+  if (process.env.GROQ_API_KEY) return "groq";
+
+  return "gemini";
 }
 
 function getConfiguredTimeout() {
@@ -84,6 +102,15 @@ function getConfiguredTimeout() {
 }
 
 function getAiModelCandidates() {
+  if (getLlmProvider() === "groq") {
+    return Array.from(
+      new Set([
+        process.env.GROQ_MODEL || defaultGroqModel,
+        process.env.GROQ_FALLBACK_MODEL || "llama-3.1-8b-instant",
+      ]),
+    );
+  }
+
   const configuredModel = getAiModel();
   const preferredModels = configuredModel.includes("flash-lite")
     ? ["gemini-2.5-flash"]
@@ -196,31 +223,23 @@ export async function generateFitEnrichment({
   if (!isAiConfigured()) return null;
 
   const promptContext = buildPromptContext(resume, job, analysis);
-  const [reportResult, coverLetterResult] = await Promise.allSettled([
-    cachedJsonWithLimit<Omit<AiFitEnrichmentPayload, "coverLetter">>(
-      ["fit-v5-compact-report", resume, job, JSON.stringify(analysis)].join("\n"),
-      fitEnrichmentSchema,
-      buildFitPrompt(promptContext),
-      650,
-    ),
-    cachedTextWithLimit(
-      ["cover-v2-validated-profile-evidence", resume, job, JSON.stringify(analysis)].join("\n"),
-      buildCoverLetterPrompt(promptContext),
-      1000,
-    ),
-  ]);
-  const enrichment =
-    reportResult.status === "fulfilled"
-      ? reportResult.value
-      : buildFallbackAiReport(analysis);
-
-  if (coverLetterResult.status === "rejected") {
-    throw coverLetterResult.reason;
-  }
+  const enrichment = buildFallbackAiReport(analysis);
+  const coverLetter = await cachedTextWithLimit(
+    [
+      "cover-v3-one-call-validated",
+      getLlmProvider(),
+      getAiModelCandidates().join(","),
+      resume,
+      job,
+      JSON.stringify(analysis),
+    ].join("\n"),
+    buildCoverLetterPrompt(promptContext),
+    900,
+  );
 
   return {
     ...enrichment,
-    coverLetter: coverLetterResult.value,
+    coverLetter,
     aiStatus: "generated",
     aiModel: getAiModelCandidates()[0],
   };
@@ -337,6 +356,10 @@ async function generateJsonWithLimit<T>(
   schema: Record<string, unknown>,
   maxOutputTokens: number,
 ) {
+  if (getLlmProvider() === "groq") {
+    return generateGroqJsonWithLimit<T>(prompt, maxOutputTokens);
+  }
+
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   const ai = new GoogleGenAI({ apiKey });
   let lastError: unknown;
@@ -377,6 +400,10 @@ async function generateJsonWithLimit<T>(
 }
 
 async function generateTextWithLimit(prompt: string, maxOutputTokens: number) {
+  if (getLlmProvider() === "groq") {
+    return generateGroqTextWithLimit(prompt, maxOutputTokens);
+  }
+
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   const ai = new GoogleGenAI({ apiKey });
   let lastError: unknown;
@@ -401,10 +428,11 @@ async function generateTextWithLimit(prompt: string, maxOutputTokens: number) {
         throw new Error(`AI text response was empty for ${model}.`);
       }
 
-      const cleaned = text
-        .replace(/^```(?:text)?\s*/i, "")
-        .replace(/\s*```$/i, "")
-        .trim();
+      const cleaned = cleanGeneratedText(
+        text
+          .replace(/^```(?:text)?\s*/i, "")
+          .replace(/\s*```$/i, ""),
+      );
 
       validateCoverLetterText(cleaned, model);
 
@@ -421,6 +449,118 @@ async function generateTextWithLimit(prompt: string, maxOutputTokens: number) {
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
+async function generateGroqJsonWithLimit<T>(prompt: string, maxOutputTokens: number) {
+  const text = await generateGroqCompletion({
+    prompt: `${prompt}\n\nReturn valid JSON only. Do not include markdown fences.`,
+    maxOutputTokens,
+    responseFormat: { type: "json_object" },
+    temperature: 0.2,
+  });
+
+  return parseJsonResponse<T>(text);
+}
+
+async function generateGroqTextWithLimit(prompt: string, maxOutputTokens: number) {
+  let lastError: unknown;
+
+  for (const model of getAiModelCandidates()) {
+    try {
+      const text = await generateGroqCompletion({
+        prompt,
+        maxOutputTokens,
+        temperature: 0.25,
+        model,
+      });
+      const cleaned = cleanGeneratedText(
+        text
+          .replace(/^```(?:text)?\s*/i, "")
+          .replace(/\s*```$/i, ""),
+      );
+
+      validateCoverLetterText(cleaned, model);
+
+      return cleaned;
+    } catch (error) {
+      lastError = error;
+
+      if (!isRetryableAiError(error) && !isRetryableTextError(error)) {
+        break;
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+async function generateGroqCompletion({
+  prompt,
+  maxOutputTokens,
+  responseFormat,
+  temperature,
+  model = getAiModelCandidates()[0],
+}: {
+  prompt: string;
+  maxOutputTokens: number;
+  responseFormat?: { type: "json_object" };
+  temperature: number;
+  model?: string;
+}) {
+  const apiKey = process.env.GROQ_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("GROQ_API_KEY is not configured.");
+  }
+
+  const response = await withTimeout(
+    fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You write truthful, specific job application material. Use only supplied evidence.",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        temperature,
+        max_completion_tokens: maxOutputTokens,
+        ...(model.startsWith("openai/gpt-oss")
+          ? { include_reasoning: false, reasoning_effort: "low" }
+          : {}),
+        ...(responseFormat ? { response_format: responseFormat } : {}),
+      }),
+    }),
+    aiTimeoutMs,
+  );
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => response.statusText);
+    const error = new Error(message || response.statusText) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  }
+
+  const data = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const text = data.choices?.[0]?.message?.content?.trim();
+
+  if (!text) {
+    throw new Error(`AI text response was empty for ${model}.`);
+  }
+
+  return text;
+}
+
 function validateCoverLetterText(text: string, model: string) {
   const wordCount = text.split(/\s+/).filter(Boolean).length;
 
@@ -431,6 +571,16 @@ function validateCoverLetterText(text: string, model: string) {
   if (/\[[^\]]+\]/.test(text) || /placeholder/i.test(text)) {
     throw new Error(`AI text response included placeholders for ${model}.`);
   }
+}
+
+function cleanGeneratedText(text: string) {
+  return text
+    .replace(/â|‑|–|—/g, "-")
+    .replace(/â|’/g, "'")
+    .replace(/â|“/g, '"')
+    .replace(/â|”/g, '"')
+    .replace(/\u00a0/g, " ")
+    .trim();
 }
 
 function isRetryableTextError(error: unknown) {
