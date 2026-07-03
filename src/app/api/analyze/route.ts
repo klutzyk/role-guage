@@ -542,7 +542,7 @@ function buildSummary(
   const warning = hardRequirements.find((finding) => finding.status !== "matched");
 
   if (blocker) {
-    return `${blocker.label}: ${blocker.message} The technical match may still be useful, but do not treat this as a strong fit until this is resolved.`;
+    return `This role is not a good fit because it asks for ${blocker.jobEvidence}. Your saved profile conflicts with that requirement, so confirm eligibility before applying.`;
   }
 
   if (warning) {

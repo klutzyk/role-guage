@@ -243,10 +243,13 @@ export default function Home() {
 
       const enrichment = (await response.json()) as Partial<AnalysisResult>;
       if (activeRequest.current !== requestId) return;
+      const shouldKeepLocalBlockerCopy = hasHardBlocker(baseResult);
 
       const enrichedResult = {
         ...baseResult,
         ...enrichment,
+        summary: shouldKeepLocalBlockerCopy ? baseResult.summary : enrichment.summary ?? baseResult.summary,
+        nextStep: shouldKeepLocalBlockerCopy ? baseResult.nextStep : enrichment.nextStep ?? baseResult.nextStep,
         coverLetter: enrichment.coverLetter?.trim() ?? "",
       };
       setResult(enrichedResult);
@@ -568,18 +571,22 @@ export default function Home() {
                 <div>
                   <p className="text-sm font-bold text-[#4F9CF9]">Recommended move</p>
                   <h2 className="mt-2 text-4xl font-extrabold text-[#043873]">{result.decision}</h2>
-                  <p className="mt-1 text-sm font-semibold text-[#4F5F6F]">{result.level}</p>
+              <p className="mt-1 text-sm font-semibold text-[#4F5F6F]">{result.level}</p>
                 </div>
                 <div className="grid size-24 place-items-center rounded-md bg-[#FFE492] text-4xl font-extrabold text-[#043873]">
                   {result.score}
                 </div>
               </div>
 
+              <div className="mt-5 w-fit max-w-full rounded-md border border-[#DDE8F6] bg-white px-3 py-2 text-sm font-bold text-[#043873]">
+                Salary: {result.salary || "Not available"}
+              </div>
+
               <p className="mt-6 text-sm leading-7 text-[#4F5F6F]">
                 {isPreparingReport ? "Preparing your personalized report..." : <SummaryText text={result.summary} />}
               </p>
 
-              <RequirementAlert findings={result.hardRequirements ?? []} salary={result.salary ?? null} />
+              <RequirementAlert findings={result.hardRequirements ?? []} />
 
               <div className="mt-5 rounded-md border border-[#A7CEFC] bg-[#F8FBFF] p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#043873]">Next best action</p>
@@ -839,7 +846,7 @@ function MiniMetric({ label, value, detail }: { label: string; value: string; de
 }
 
 function SummaryText({ text }: { text: string }) {
-  const parts = text.split(/(not a good fit|citizenship\/PR|citizenship or permanent residency)/gi);
+  const parts = text.split(/(not a good fit|Australian or New Zealand citizenship or permanent residency|Australian or New Zealand Citizen, or Australian Permanent Resident|Australian citizenship or permanent residency|citizenship\/PR|citizenship or permanent residency)/gi);
 
   return (
     <>
@@ -852,6 +859,14 @@ function SummaryText({ text }: { text: string }) {
               <strong className="text-[#B5121B]">{notWord}</strong>{" "}
               <span>{rest.join(" ")}</span>
             </span>
+          );
+        }
+
+        if (/Australian or New Zealand citizenship or permanent residency|Australian or New Zealand Citizen, or Australian Permanent Resident|Australian citizenship or permanent residency/i.test(part)) {
+          return (
+            <strong key={`${part}-${index}`} className="text-[#B5121B]">
+              {part}
+            </strong>
           );
         }
 
@@ -871,15 +886,13 @@ function SummaryText({ text }: { text: string }) {
 
 function RequirementAlert({
   findings,
-  salary,
 }: {
   findings: RequirementFinding[];
-  salary: string | null;
 }) {
   const visibleFindings = findings.filter((finding) => finding.status !== "matched");
   const primary = visibleFindings[0];
 
-  if (!primary && !salary) return null;
+  if (!primary) return null;
 
   const isBlocker = primary?.status === "blocked";
   const title = primary
@@ -897,11 +910,6 @@ function RequirementAlert({
       }`}
     >
       <div className="grid gap-3">
-        {salary ? (
-          <div className="w-fit max-w-full rounded-md border border-[#DDE8F6] bg-white px-3 py-2 text-sm font-bold text-[#043873]">
-            Salary: {salary}
-          </div>
-        ) : null}
         <div className="min-w-0">
           <p className={`text-xs font-bold uppercase tracking-[0.16em] ${isBlocker ? "text-[#B5121B]" : "text-[#7A5900]"}`}>
             {title}
@@ -1063,6 +1071,12 @@ function readCandidateProfile(): CandidateProfile {
   } catch {
     return {};
   }
+}
+
+function hasHardBlocker(result: AnalysisResult) {
+  return Boolean(
+    result.hardRequirements?.some((finding) => finding.status === "blocked" && finding.severity === "hard"),
+  );
 }
 
 function inferJobMeta(jobText: string, current: JobMeta): JobMeta {

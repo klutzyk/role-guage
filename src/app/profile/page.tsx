@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, CheckCircle2, FileText, Radar, Trash2, Upload } from "lucide-react";
+import { CheckCircle2, FileText, Radar, Trash2, Upload, X } from "lucide-react";
 import Link from "next/link";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 
@@ -44,15 +44,54 @@ type CandidateProfile = {
 };
 
 const resumeProfileStorageKey = "roleguage.resume-profile.v1";
+const resumeProfileNameStorageKey = "roleguage.resume-profile-name.v1";
 const legacyResumeProfileStorageKey = "applypilot.resume-profile.v1";
 const matchHistoryStorageKey = "roleguage.match-history.v1";
 const candidateProfileStorageKey = "roleguage.candidate-profile.v1";
+const workRightsOptions = [
+  "Australian citizen",
+  "Australian graduate temporary work visa",
+  "Australian temporary visa with restrictions on work hours",
+  "Australian temporary protection or safe haven enterprise work visa",
+  "Require sponsorship to work for a new employer in Australia",
+  "Australian family/partner visa with no restrictions",
+  "Australian permanent resident and/or New Zealand citizen",
+  "Australian holiday temporary work visa",
+  "Australian temporary visa with no restrictions",
+  "Australian temporary visa with restrictions on work location",
+  "Australian temporary visa with restrictions on industry",
+];
+const locationOptions = [
+  "Noble Park, Melbourne VIC, Australia",
+  "Melbourne, VIC, Australia",
+  "Sydney, NSW, Australia",
+  "Brisbane, QLD, Australia",
+  "Perth, WA, Australia",
+  "Adelaide, SA, Australia",
+  "Canberra, ACT, Australia",
+  "Remote, Australia",
+  "Auckland, New Zealand",
+  "Wellington, New Zealand",
+  "Colombo, Sri Lanka",
+  "Singapore",
+  "London, United Kingdom",
+  "Toronto, Canada",
+  "Vancouver, Canada",
+  "New York, United States",
+  "San Francisco, United States",
+];
+const workModeOptions = ["Remote", "Hybrid", "On-site", "Relocation open", "Melbourne only", "Sydney only"];
+const clearanceOptions = ["None", "Baseline", "NV1", "NV2", "AGSVA eligible"];
+const licenceOptions = ["Driver licence", "Working With Children Check", "Police check", "CPA", "CA", "PMP", "Real Estate Licence"];
+const targetRoleOptions = ["Software Engineer", "Backend Engineer", "Full Stack Developer", "Data Analyst", "Data Scientist", "Machine Learning Engineer", "AI Engineer", "Analytics Engineer"];
 
 export default function ProfilePage() {
   const [resume, setResume] = useState("");
+  const [resumeFileName, setResumeFileName] = useState("");
   const [history, setHistory] = useState<MatchHistoryItem[]>([]);
   const [candidateProfile, setCandidateProfile] = useState<CandidateProfile>({});
   const [selectedId, setSelectedId] = useState("");
+  const [activePanel, setActivePanel] = useState<"details" | "history">("details");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const selectedMatch = useMemo(
@@ -67,8 +106,10 @@ export default function ProfilePage() {
       "";
     const savedHistory = readMatchHistory();
     const savedCandidateProfile = readCandidateProfile();
+    const savedResumeFileName = window.localStorage.getItem(resumeProfileNameStorageKey) ?? "";
 
     setResume(savedResume);
+    setResumeFileName(savedResumeFileName);
     setHistory(savedHistory);
     setCandidateProfile(savedCandidateProfile);
     setSelectedId(savedHistory[0]?.id ?? "");
@@ -98,6 +139,8 @@ export default function ProfilePage() {
 
       setResume(data.text);
       window.localStorage.setItem(resumeProfileStorageKey, data.text);
+      window.localStorage.setItem(resumeProfileNameStorageKey, data.filename ?? file.name);
+      setResumeFileName(data.filename ?? file.name);
       setMessage(`Resume saved from ${data.filename ?? file.name}.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Could not read this PDF.");
@@ -111,14 +154,20 @@ export default function ProfilePage() {
     }
 
     window.localStorage.setItem(resumeProfileStorageKey, resume);
+    if (!resumeFileName) {
+      window.localStorage.setItem(resumeProfileNameStorageKey, "Saved resume text");
+      setResumeFileName("Saved resume text");
+    }
     setError("");
     setMessage("Resume profile saved.");
   }
 
   function deleteResume() {
     window.localStorage.removeItem(resumeProfileStorageKey);
+    window.localStorage.removeItem(resumeProfileNameStorageKey);
     window.localStorage.removeItem(legacyResumeProfileStorageKey);
     setResume("");
+    setResumeFileName("");
     setMessage("Resume profile deleted.");
   }
 
@@ -165,11 +214,17 @@ export default function ProfilePage() {
             </span>
             <span className="text-xl">RoleGuage</span>
           </Link>
+          <nav className="hidden items-center gap-6 text-sm font-semibold text-[#4F5F6F] md:flex">
+            <Link href="/#matcher" className="hover:text-[#043873]">Matcher</Link>
+            <Link href="/#workflow" className="hover:text-[#043873]">How it works</Link>
+            <Link href="/#pricing" className="hover:text-[#043873]">Pricing</Link>
+            <Link href="/#questions" className="hover:text-[#043873]">Questions</Link>
+            <Link href="/profile" className="text-[#043873]">Profile</Link>
+          </nav>
           <Link
-            href="/"
-            className="inline-flex h-10 items-center gap-2 rounded-md border border-[#A7CEFC] bg-white px-4 text-sm font-bold text-[#043873] transition hover:bg-[#A7CEFC]/20"
+            href="/#matcher"
+            className="inline-flex h-10 items-center rounded-md bg-[#4F9CF9] px-4 text-sm font-bold text-white transition hover:bg-[#3b8dea]"
           >
-            <ArrowLeft size={16} aria-hidden="true" />
             Matcher
           </Link>
         </div>
@@ -189,8 +244,31 @@ export default function ProfilePage() {
       </section>
 
       <section className="px-5 py-8 md:px-8 lg:px-10">
-        <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[0.8fr_1.2fr]">
-          <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_16px_44px_rgba(4,56,115,0.08)] md:p-6">
+        <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[240px_1fr]">
+          <aside className="h-fit rounded-md border border-[#DDE8F6] bg-white p-3 shadow-[0_16px_44px_rgba(4,56,115,0.08)]">
+            <button
+              type="button"
+              onClick={() => setActivePanel("details")}
+              className={`w-full rounded-md px-4 py-3 text-left text-sm font-bold transition ${
+                activePanel === "details" ? "bg-[#043873] text-white" : "text-[#4F5F6F] hover:bg-[#F8FBFF] hover:text-[#043873]"
+              }`}
+            >
+              Basic details
+            </button>
+            <button
+              type="button"
+              onClick={() => setActivePanel("history")}
+              className={`mt-1 w-full rounded-md px-4 py-3 text-left text-sm font-bold transition ${
+                activePanel === "history" ? "bg-[#043873] text-white" : "text-[#4F5F6F] hover:bg-[#F8FBFF] hover:text-[#043873]"
+              }`}
+            >
+              Match history
+            </button>
+          </aside>
+
+          {activePanel === "details" ? (
+            <section className="grid gap-6">
+              <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_16px_44px_rgba(4,56,115,0.08)] md:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-bold uppercase text-[#4F9CF9]">Resume profile</p>
@@ -199,77 +277,74 @@ export default function ProfilePage() {
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
                   {resume.trim().length >= 80
-                    ? `${resume.length.toLocaleString()} characters saved locally.`
+                    ? `${resumeFileName || "Saved resume profile"} - ${resume.length.toLocaleString()} characters saved locally.`
                     : "Upload a PDF or paste resume text to create your local profile."}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={deleteResume}
-                className="inline-flex h-10 items-center gap-2 rounded-md border border-[#d21414] bg-[#ed1515] px-3 text-sm font-bold text-white shadow-[4px_5px_0_#262626] transition hover:bg-[#c50f0f]"
+                className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-[#B5121B] bg-[#B5121B] px-3 text-sm font-bold text-white transition hover:bg-[#8F0E15]"
               >
                 <Trash2 size={16} aria-hidden="true" />
                 Delete
               </button>
             </div>
 
-            <div className="mt-5 flex flex-wrap gap-2 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
+            <div className="mt-5 flex flex-col gap-4 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-extrabold text-[#043873]">
+                  {resume.trim().length >= 80 ? resumeFileName || "Saved resume profile" : "No resume uploaded"}
+                </p>
+                <p className="mt-1 text-xs font-semibold text-[#4F5F6F]">
+                  {resume.trim().length >= 80 ? "Stored locally in this browser" : "Upload a text-based PDF to create your profile"}
+                </p>
+              </div>
               <label className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97]">
                 <Upload size={16} aria-hidden="true" />
-                Upload resume PDF
+                {resume.trim().length >= 80 ? "Replace resume PDF" : "Upload resume PDF"}
                 <input className="hidden" type="file" accept="application/pdf" onChange={extractResumeFromPdf} />
               </label>
-              <button
-                type="button"
-                onClick={saveResume}
-                className="h-11 rounded-md border border-[#FFE492] bg-white px-4 text-sm font-bold text-[#043873] transition hover:bg-[#FFE492]"
-              >
-                Save text
-              </button>
             </div>
-
-            <textarea
-              value={resume}
-              onChange={(event) => setResume(event.target.value)}
-              className="mt-5 min-h-80 w-full resize-y rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15"
-              placeholder="Paste resume text here."
-            />
 
             {message ? <p className="mt-4 text-sm font-semibold text-[#007a52]">{message}</p> : null}
             {error ? <p className="mt-4 text-sm font-semibold text-[#b00000]">{error}</p> : null}
-          </section>
+              </section>
 
-          <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_16px_44px_rgba(4,56,115,0.08)] md:p-6 lg:col-start-1">
+              <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_16px_44px_rgba(4,56,115,0.08)] md:p-6">
             <div>
               <p className="text-sm font-bold uppercase text-[#4F9CF9]">Candidate details</p>
-              <h2 className="mt-2 text-2xl font-extrabold text-[#212529]">Checks resumes usually miss</h2>
+              <h2 className="mt-2 text-2xl font-extrabold text-[#212529]">Application checks</h2>
               <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
                 These facts stay in this browser and are used only when a job asks for them.
               </p>
             </div>
 
-            <div className="mt-5 grid gap-4">
-              <ProfileField
+            <div className="mt-5 grid gap-3">
+              <SelectField
                 label="Work rights"
                 value={candidateProfile.workRights ?? ""}
                 onChange={(value) => updateCandidateProfile("workRights", value)}
-                placeholder="Example: 485 visa, unrestricted work rights, expires Jul 2027"
+                placeholder="Select right to work"
+                suggestions={workRightsOptions}
               />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <ProfileField
+              <div className="grid items-start gap-3 sm:grid-cols-2">
+                <LocationField
                   label="Location"
                   value={candidateProfile.location ?? ""}
                   onChange={(value) => updateCandidateProfile("location", value)}
-                  placeholder="Melbourne, VIC"
+                  placeholder="Type your suburb, city, or country"
+                  suggestions={locationOptions}
                 />
-                <ProfileField
+                <MultiSelectField
                   label="Work mode"
                   value={candidateProfile.workMode ?? ""}
                   onChange={(value) => updateCandidateProfile("workMode", value)}
-                  placeholder="Hybrid, remote, on-site"
+                  placeholder="Select work mode"
+                  suggestions={workModeOptions}
                 />
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid items-start gap-3 sm:grid-cols-2">
                 <label className="grid gap-2">
                   <span className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F5F6F]">Driver licence</span>
                   <select
@@ -290,23 +365,26 @@ export default function ProfilePage() {
                   placeholder="90000"
                 />
               </div>
-              <ProfileField
+              <SelectField
                 label="Security clearance"
                 value={candidateProfile.securityClearance ?? ""}
                 onChange={(value) => updateCandidateProfile("securityClearance", value)}
-                placeholder="None, Baseline, NV1, NV2"
+                placeholder="Select clearance status"
+                suggestions={clearanceOptions}
               />
-              <ProfileField
+              <MultiSelectField
                 label="Licences and certifications"
                 value={candidateProfile.licences ?? ""}
                 onChange={(value) => updateCandidateProfile("licences", value)}
-                placeholder="CPA, Real Estate Licence, Working With Children Check, etc."
+                placeholder="Select licence or certification"
+                suggestions={licenceOptions}
               />
-              <ProfileField
+              <MultiSelectField
                 label="Target roles"
                 value={candidateProfile.targetRoles ?? ""}
                 onChange={(value) => updateCandidateProfile("targetRoles", value)}
-                placeholder="Software engineer, data analyst, AI engineer"
+                placeholder="Select target role"
+                suggestions={targetRoleOptions}
               />
             </div>
 
@@ -314,7 +392,7 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={saveCandidateProfile}
-                className="h-11 rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97]"
+                className="h-11 cursor-pointer rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97]"
               >
                 Save details
               </button>
@@ -323,12 +401,16 @@ export default function ProfilePage() {
                 onClick={clearCandidateProfile}
                 className="h-11 rounded-md border border-[#FFE492] bg-white px-4 text-sm font-bold text-[#043873] transition hover:bg-[#FFE492]"
               >
-                Clear details
+              Clear details
               </button>
             </div>
-          </section>
+            {message ? <p className="mt-3 text-sm font-semibold text-[#007a52]">{message}</p> : null}
+              </section>
+            </section>
+          ) : null}
 
-          <section className="grid gap-5">
+          {activePanel === "history" ? (
+            <section className="grid gap-5">
             <div className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_16px_44px_rgba(4,56,115,0.08)] md:p-6">
               <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                 <div>
@@ -341,7 +423,7 @@ export default function ProfilePage() {
                   type="button"
                   onClick={clearHistory}
                   disabled={!history.length}
-                  className="h-10 rounded-md border border-[#d21414] bg-[#ed1515] px-3 text-sm font-bold text-white shadow-[4px_5px_0_#262626] transition hover:bg-[#c50f0f] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="h-10 cursor-pointer rounded-md border border-[#B5121B] bg-[#B5121B] px-3 text-sm font-bold text-white transition hover:bg-[#8F0E15] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Clear history
                 </button>
@@ -400,7 +482,7 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     onClick={() => deleteMatch(selectedMatch.id)}
-                    className="inline-flex h-10 items-center gap-2 rounded-md border border-[#d21414] bg-[#ed1515] px-3 text-sm font-bold text-white shadow-[4px_5px_0_#262626] transition hover:bg-[#c50f0f]"
+                    className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-[#B5121B] bg-[#B5121B] px-3 text-sm font-bold text-white transition hover:bg-[#8F0E15]"
                   >
                     <Trash2 size={16} aria-hidden="true" />
                     Delete
@@ -430,7 +512,8 @@ export default function ProfilePage() {
                 </div>
               </section>
             ) : null}
-          </section>
+            </section>
+          ) : null}
         </div>
       </section>
     </main>
@@ -488,6 +571,229 @@ function ProfileField({
       />
     </label>
   );
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  suggestions,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  suggestions: string[];
+}) {
+  return (
+    <label className="grid gap-2">
+      <span className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F5F6F]">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 cursor-pointer rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15"
+      >
+        <option value="">{placeholder}</option>
+        {suggestions.map((suggestion) => (
+          <option key={suggestion} value={suggestion}>
+            {suggestion}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function LocationField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  suggestions,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  suggestions: string[];
+}) {
+  return (
+    <label className="grid gap-2">
+      <span className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F5F6F]">{label}</span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        list="roleguage-location-options"
+        className="h-11 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15"
+        placeholder={placeholder}
+      />
+      <datalist id="roleguage-location-options">
+        {suggestions.map((suggestion) => (
+          <option key={suggestion} value={suggestion} />
+        ))}
+      </datalist>
+    </label>
+  );
+}
+
+function MultiSelectField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  suggestions,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  suggestions: string[];
+}) {
+  const tokens = splitTokens(value);
+  const available = suggestions.filter(
+    (suggestion) => !tokens.some((token) => token.toLowerCase() === suggestion.toLowerCase()),
+  );
+
+  function addToken(token: string) {
+    if (!token) return;
+    onChange([...tokens, token].join(", "));
+  }
+
+  function removeToken(token: string) {
+    onChange(tokens.filter((item) => item !== token).join(", "));
+  }
+
+  return (
+    <div className="grid gap-2">
+      <span className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F5F6F]">{label}</span>
+      <select
+        value=""
+        onChange={(event) => addToken(event.target.value)}
+        className="h-11 cursor-pointer rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 text-sm outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15"
+      >
+        <option value="">{placeholder}</option>
+        {available.map((suggestion) => (
+          <option key={suggestion} value={suggestion}>
+            {suggestion}
+          </option>
+        ))}
+      </select>
+      {tokens.length ? (
+        <div className="flex flex-wrap gap-2">
+          {tokens.map((token) => (
+            <span key={token} className="inline-flex h-8 items-center gap-2 rounded-md border border-[#A7CEFC] bg-white px-2 text-sm font-bold text-[#043873]">
+              {token}
+              <button
+                type="button"
+                onClick={() => removeToken(token)}
+                className="grid size-5 place-items-center rounded text-[#4F5F6F] transition hover:bg-[#F8FBFF] hover:text-[#B5121B]"
+                aria-label={`Remove ${token}`}
+              >
+                <X size={13} aria-hidden="true" />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TokenField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  suggestions,
+  maxItems,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  suggestions: string[];
+  maxItems?: number;
+}) {
+  const [draft, setDraft] = useState("");
+  const tokens = splitTokens(value);
+  const filteredSuggestions = suggestions
+    .filter((suggestion) => !tokens.some((token) => token.toLowerCase() === suggestion.toLowerCase()))
+    .filter((suggestion) => !draft.trim() || suggestion.toLowerCase().includes(draft.trim().toLowerCase()))
+    .slice(0, 5);
+
+  function addToken(token: string) {
+    const clean = token.trim();
+    if (!clean) return;
+
+    const nextTokens = maxItems === 1 ? [clean] : [...tokens, clean];
+    const unique = Array.from(new Map(nextTokens.map((item) => [item.toLowerCase(), item])).values());
+
+    onChange(unique.slice(0, maxItems ?? unique.length).join(", "));
+    setDraft("");
+  }
+
+  function removeToken(token: string) {
+    onChange(tokens.filter((item) => item !== token).join(", "));
+  }
+
+  return (
+    <label className="grid gap-2">
+      <span className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F5F6F]">{label}</span>
+      <div className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-2 transition focus-within:border-[#4F9CF9] focus-within:bg-white focus-within:ring-4 focus-within:ring-[#4F9CF9]/15">
+        <div className="flex min-h-9 flex-wrap items-center gap-2">
+          {tokens.map((token) => (
+            <span key={token} className="inline-flex items-center gap-2 rounded-md border border-[#A7CEFC] bg-white px-2 py-1 text-sm font-bold text-[#043873]">
+              {token}
+              <button
+                type="button"
+                onClick={() => removeToken(token)}
+                className="grid size-5 place-items-center rounded text-[#4F5F6F] transition hover:bg-[#F8FBFF] hover:text-[#B5121B]"
+                aria-label={`Remove ${token}`}
+              >
+                <X size={13} aria-hidden="true" />
+              </button>
+            </span>
+          ))}
+          {(!maxItems || tokens.length < maxItems) ? (
+            <input
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === ",") {
+                  event.preventDefault();
+                  addToken(draft || filteredSuggestions[0] || "");
+                }
+              }}
+              className="min-w-40 flex-1 bg-transparent px-1 py-2 text-sm outline-none"
+              placeholder={tokens.length ? "" : placeholder}
+            />
+          ) : null}
+        </div>
+        {(!maxItems || tokens.length < maxItems) && filteredSuggestions.length ? (
+          <div className="mt-2 flex flex-wrap gap-2 border-t border-[#DDE8F6] pt-2">
+            {filteredSuggestions.map((suggestion) => (
+              <button
+                key={suggestion}
+                type="button"
+                onClick={() => addToken(suggestion)}
+                className="rounded-md border border-[#DDE8F6] bg-white px-2 py-1 text-xs font-bold text-[#4F5F6F] transition hover:border-[#A7CEFC] hover:text-[#043873]"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </label>
+  );
+}
+
+function splitTokens(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function readMatchHistory() {
