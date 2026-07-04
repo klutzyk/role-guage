@@ -410,31 +410,31 @@ export default function Home() {
           </a>
           <nav className="hidden items-center gap-6 text-sm font-semibold text-[#4F5F6F] md:flex">
             <a href="#matcher" className="hover:text-[#043873]">Matcher</a>
-            <a href="/#workflow" className="hover:text-[#043873]">How it works</a>
+            <a href="/#how-it-works" className="hover:text-[#043873]">How it works</a>
             <a href="/pricing" className="hover:text-[#043873]">Pricing</a>
-            <a href="/#questions" className="hover:text-[#043873]">Questions</a>
+            <a href="/#faq" className="hover:text-[#043873]">Questions</a>
             <a href="/profile" className="hover:text-[#043873]">Profile</a>
           </nav>
           <a href="#matcher" className="inline-flex h-10 items-center rounded-md bg-[#4F9CF9] px-4 text-sm font-bold text-white transition hover:bg-[#3b8dea]">
-            Start analyzing
+            Matcher
           </a>
         </div>
       </header>
 
-      <section className="bg-[#043873] px-5 pb-28 pt-10 text-center text-white md:px-8 md:pb-32 md:pt-14 lg:px-10">
-        <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#A7CEFC]">
-          Resume job match checker
-        </p>
-        <h1 className="mx-auto mt-5 max-w-7xl whitespace-normal text-5xl font-extrabold leading-tight md:text-6xl xl:whitespace-nowrap xl:text-7xl">
-          Tailor your resume to any job ad
-        </h1>
-        <p className="mx-auto mt-6 max-w-4xl text-base leading-8 text-white/86 md:text-lg">
-          Upload your resume, import a job ad, and get a clear fit decision, evidence gaps,
-          cover letter draft, and application notes before you apply.
-        </p>
+      <section className="bg-[#043873] px-5 py-10 text-white md:px-8 md:py-14 lg:px-10">
+        <div className="mx-auto max-w-7xl">
+          <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#A7CEFC]">Matcher</p>
+          <h1 className="mt-4 max-w-5xl text-4xl font-extrabold leading-tight md:text-6xl">
+            Check one role before you spend time applying.
+          </h1>
+          <p className="mt-5 max-w-3xl text-base leading-8 text-white/82">
+            Reuse your resume, add the job ad, and get the fit score, blockers, cover letter draft,
+            and next steps for this specific application.
+          </p>
+        </div>
       </section>
 
-      <section id="matcher" className="-mt-20 px-5 md:px-8 lg:px-10">
+      <section id="matcher" className="px-5 py-8 md:px-8 lg:px-10">
         <div className="mx-auto max-w-4xl rounded-md bg-white p-5 shadow-[0_24px_70px_rgba(4,56,115,0.16)] md:p-7">
           <form onSubmit={analyzeRole}>
             <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
@@ -707,6 +707,7 @@ export default function Home() {
         </section>
       ) : null}
 
+      <div className="h-12 bg-[#F8FBFF]" />
       <SharedFooter />
     </main>
   );

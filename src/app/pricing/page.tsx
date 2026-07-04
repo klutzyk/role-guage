@@ -27,16 +27,16 @@ const plans = [
 
 export default function PricingPage() {
   return (
-    <main className="min-h-screen bg-[#F0F4FF] text-[#212529]">
-      <header className="border-b border-[#DDE8F6] bg-white/86 backdrop-blur">
+    <main className="min-h-screen bg-[#F8FBFF] text-[#212529]">
+      <header className="border-b border-[#DDE8F6] bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4 md:px-8 lg:px-10">
           <a href="/" className="flex items-center gap-2 font-bold text-[#043873]">
             <span className="grid size-8 place-items-center rounded-md bg-[#043873] text-white">
               <Radar size={20} aria-hidden="true" />
             </span>
-            <span className="text-lg">RoleGuage</span>
+            <span className="text-xl">RoleGuage</span>
           </a>
-          <nav className="hidden items-center gap-8 text-sm font-semibold text-[#536C99] md:flex">
+          <nav className="hidden items-center gap-6 text-sm font-semibold text-[#4F5F6F] md:flex">
             <a href="/#features" className="hover:text-[#043873]">Features</a>
             <a href="/#how-it-works" className="hover:text-[#043873]">How it works</a>
             <a href="/pricing" className="text-[#043873]">Pricing</a>
@@ -48,7 +48,7 @@ export default function PricingPage() {
             </a>
             <a
               href="/matcher#matcher"
-              className="inline-flex h-11 items-center rounded-md bg-[#245FEA] px-5 text-sm font-extrabold text-white shadow-[0_12px_24px_rgba(36,95,234,0.2)] transition hover:bg-[#1D4ED8]"
+              className="inline-flex h-10 items-center rounded-md bg-[#4F9CF9] px-4 text-sm font-bold text-white transition hover:bg-[#3b8dea]"
             >
               Try Now
             </a>
@@ -56,16 +56,21 @@ export default function PricingPage() {
         </div>
       </header>
 
-      <section className="px-5 py-18 md:px-8 md:py-24 lg:px-10">
+      <section className="bg-[#043873] px-5 py-10 text-white md:px-8 md:py-14 lg:px-10">
         <div className="mx-auto max-w-7xl">
-          <div className="text-center">
-            <p className="text-sm font-extrabold uppercase tracking-[0.16em] text-[#4F9CF9]">Pricing</p>
-            <h1 className="mt-4 text-5xl font-extrabold leading-tight text-[#0F1C35] md:text-7xl">Choose your plan</h1>
-            <p className="mx-auto mt-5 max-w-3xl text-base leading-8 text-[#536C99] md:text-lg">
-              Start with fit checks, then upgrade when you want saved reports, profile reuse, and a cleaner application workflow.
-            </p>
-          </div>
+          <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#A7CEFC]">Pricing</p>
+          <h1 className="mt-4 max-w-4xl text-4xl font-extrabold leading-tight md:text-6xl">
+            Choose the workflow that fits your job search.
+          </h1>
+          <p className="mt-5 max-w-3xl text-base leading-8 text-white/82">
+            Start with fit checks, then upgrade when you want saved reports, profile reuse,
+            and a cleaner application workflow.
+          </p>
+        </div>
+      </section>
 
+      <section className="px-5 py-10 md:px-8 md:py-14 lg:px-10">
+        <div className="mx-auto max-w-7xl">
           <div className="mt-12 grid gap-6 md:grid-cols-3">
             {plans.map((plan) => (
               <PricingCard key={plan.name} {...plan} />

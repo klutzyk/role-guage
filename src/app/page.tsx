@@ -79,7 +79,7 @@ export default function Home() {
             </a>
             <a
               href="/matcher#matcher"
-              className="inline-flex h-11 items-center rounded-md bg-[#245FEA] px-5 text-sm font-extrabold text-white shadow-[0_12px_24px_rgba(36,95,234,0.2)] transition hover:bg-[#1D4ED8]"
+              className="inline-flex h-11 items-center rounded-md bg-[#043873] px-5 text-sm font-extrabold text-white shadow-[0_12px_24px_rgba(4,56,115,0.2)] transition hover:bg-[#0b4c97]"
             >
               Try Now
             </a>
@@ -87,9 +87,9 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="relative z-10 px-5 pb-14 pt-18 text-center md:px-8 md:pb-18 md:pt-24 lg:px-10">
+      <section className="relative z-20 px-5 pb-12 pt-16 text-center md:px-8 md:pb-16 md:pt-20 lg:px-10">
         <div className="mx-auto max-w-6xl">
-          <h1 className="mx-auto max-w-5xl text-5xl font-extrabold leading-[1.05] tracking-normal md:text-6xl lg:text-[4.6rem]">
+          <h1 className="mx-auto max-w-5xl text-5xl font-extrabold leading-[1.05] tracking-normal md:text-[3.8rem] lg:text-[4.25rem]">
             Tailor your resume
             <br />
             <span className="bg-gradient-to-r from-[#2563EB] to-[#6366F1] bg-clip-text text-transparent">
@@ -103,7 +103,7 @@ export default function Home() {
           <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <a
               href="/matcher#matcher"
-              className="inline-flex h-14 items-center justify-center gap-2 rounded-md bg-[#245FEA] px-8 text-base font-extrabold text-white shadow-[0_18px_34px_rgba(36,95,234,0.26)] transition hover:bg-[#1D4ED8]"
+              className="inline-flex h-14 items-center justify-center gap-2 rounded-md bg-[#043873] px-8 text-base font-extrabold text-white shadow-[0_18px_34px_rgba(4,56,115,0.26)] transition hover:bg-[#0b4c97]"
             >
               Try Now - it&apos;s free
               <ArrowRight size={18} aria-hidden="true" />
@@ -116,7 +116,7 @@ export default function Home() {
               Get the Extension
             </a>
           </div>
-          <p className="mt-5 text-sm font-semibold text-[#9AAED2]">
+          <p className="mt-5 text-xs font-medium text-[#8BA1C8]/75">
             No sign-up required to try &middot; Works with LinkedIn, Indeed, Greenhouse &amp; more
           </p>
         </div>
@@ -146,7 +146,7 @@ export default function Home() {
           <div className="mt-12 grid gap-5 md:grid-cols-3">
             {steps.map(([number, title, copy]) => (
               <article key={number} className="rounded-2xl border border-[#A7CEFC] bg-white/68 p-7 shadow-[0_14px_36px_rgba(36,95,234,0.06)] backdrop-blur transition hover:-translate-y-1 hover:border-[#4F9CF9] hover:bg-white hover:shadow-[0_22px_50px_rgba(36,95,234,0.14)]">
-                <p className="text-5xl font-black leading-none text-[#BFD4FF]">{number}</p>
+                <p className="text-6xl font-black leading-none text-[#8FB6FF]">{number}</p>
                 <h3 className="mt-5 text-lg font-extrabold text-[#0F1C35]">{title}</h3>
                 <p className="mt-2 text-sm leading-7 text-[#536C99]">{copy}</p>
               </article>
@@ -189,7 +189,7 @@ export default function Home() {
           <div className="mt-8 flex flex-col justify-center gap-4 sm:flex-row">
             <a
               href="/matcher#matcher"
-              className="inline-flex h-14 items-center justify-center gap-2 rounded-md bg-[#245FEA] px-8 text-base font-extrabold text-white shadow-[0_18px_34px_rgba(36,95,234,0.24)] transition hover:bg-[#1D4ED8]"
+              className="inline-flex h-14 items-center justify-center gap-2 rounded-md bg-[#043873] px-8 text-base font-extrabold text-white shadow-[0_18px_34px_rgba(4,56,115,0.24)] transition hover:bg-[#0b4c97]"
             >
               Try Now - Free
               <ArrowRight size={18} aria-hidden="true" />
