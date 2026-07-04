@@ -40,7 +40,7 @@ async function init() {
   const saved = await chrome.storage.local.get(RESUME_KEYS);
   elements.resume.value = saved.resume || "";
   updateResumeUi(saved);
-  await restoreLastResultForActivePage();
+  const restored = await restoreLastResultForActivePage();
 
   elements.uploadResume.addEventListener("click", uploadResumePdf);
   elements.resumeFile.addEventListener("change", uploadResumePdf);
@@ -52,6 +52,10 @@ async function init() {
   elements.copyResult.addEventListener("click", copyReport);
   elements.copyCoverLetter.addEventListener("click", copyCoverLetter);
   elements.openApp.addEventListener("click", openApp);
+
+  if (!restored) {
+    await autoExtractCurrentPage();
+  }
 }
 
 async function uploadResumePdf() {
@@ -151,12 +155,12 @@ function updateResumeUi(saved) {
 async function restoreLastResultForActivePage() {
   const pageKey = await getActivePageKey();
 
-  if (!pageKey) return;
+  if (!pageKey) return false;
 
   const saved = await chrome.storage.local.get([LAST_REPORT_KEY]);
   const cached = saved[LAST_REPORT_KEY]?.[pageKey];
 
-  if (!cached?.report) return;
+  if (!cached?.report) return false;
 
   lastReport = cached.report;
   elements.jobText.value = cached.jobText || "";
@@ -164,6 +168,16 @@ async function restoreLastResultForActivePage() {
   elements.jobText.dataset.pageUrl = cached.pageUrl || "";
   renderResult(cached.report);
   setStatus("Restored the last report for this page.");
+  return true;
+}
+
+async function autoExtractCurrentPage() {
+  try {
+    const payload = await extractJobFromActiveTab({ quiet: true });
+    setStatus(`Extracted ${payload.jobText.length.toLocaleString()} characters. Review, then analyze.`);
+  } catch {
+    setStatus("Open a job ad, then extract or paste the job text.");
+  }
 }
 
 async function extractJobFromActiveTab(options = {}) {
@@ -296,7 +310,6 @@ function renderResult(data) {
 
   elements.result.classList.remove("hidden");
   elements.decision.textContent = analysis.decision;
-  elements.level.textContent = analysis.level;
   elements.score.textContent = analysis.score;
   elements.summary.textContent = summary;
   elements.nextStep.textContent = nextStep;
@@ -336,10 +349,12 @@ async function copyCoverLetter() {
   if (!coverLetter) return;
 
   await navigator.clipboard.writeText(coverLetter);
-  elements.copyCoverLetter.textContent = "Copied";
+  elements.copyCoverLetter.textContent = "✓ Copied";
+  elements.copyCoverLetter.classList.add("success");
   setStatus("Cover letter copied.");
   window.setTimeout(() => {
     elements.copyCoverLetter.textContent = "Copy";
+    elements.copyCoverLetter.classList.remove("success");
   }, 1500);
 }
 

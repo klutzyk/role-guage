@@ -3,6 +3,9 @@
   --blue-2: #4f9cf9;
   --pale-blue: #e9f3ff;
   --yellow: #ffe492;
+  --yellow-soft: #fff4bf;
+  --red: #b5121b;
+  --red-soft: #fff1f2;
   --ink: #212529;
   --muted: #53657a;
   --line: #cfe1f5;
@@ -20,13 +23,13 @@ body {
   margin: 0;
   background: #eef5fd;
   color: var(--ink);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-family: "IBM Plex Sans", "Segoe UI", Arial, sans-serif;
 }
 
 button,
 textarea,
 input {
-  font-family: Arial, sans-serif;
+  font-family: "IBM Plex Sans", "Segoe UI", Arial, sans-serif;
 }
 
 button {
@@ -203,9 +206,9 @@ textarea:focus {
 }
 
 .secondary {
-  background: var(--yellow);
-  color: var(--blue);
-  border-color: #f6ca53;
+  background: var(--blue);
+  border-color: var(--blue);
+  color: white;
 }
 
 .ghost {
@@ -220,14 +223,20 @@ textarea:focus {
   border-color: var(--blue);
 }
 
+.ghost.success {
+  background: #0f7a57;
+  color: white;
+  border-color: #0f7a57;
+}
+
 .danger {
-  background: #fff5f5;
-  color: #b42318;
-  border-color: #f4b4ad;
+  background: var(--red);
+  color: white;
+  border-color: var(--red);
 }
 
 .danger:hover {
-  background: #fee4e2;
+  background: #8f0e15;
 }
 
 .compact {
@@ -267,7 +276,7 @@ textarea:focus {
   height: 72px;
   place-items: center;
   border-radius: 7px;
-  background: var(--yellow);
+  background: var(--yellow-soft);
   color: var(--blue);
   font-size: 28px;
   font-weight: 900;
@@ -279,17 +288,7 @@ textarea:focus {
 }
 
 #level {
-  display: inline-flex;
-  width: fit-content;
-  margin-top: 8px;
-  border: 1px solid #9fc9ff;
-  border-radius: 7px;
-  background: var(--pale-blue);
-  color: var(--blue);
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1.2;
-  padding: 6px 9px;
+  display: none;
 }
 
 .summary {
@@ -346,8 +345,8 @@ textarea:focus {
 }
 
 .warning .chip {
-  border-color: #f6ca53;
-  background: var(--yellow);
+  border-color: #f1cf68;
+  background: var(--yellow-soft);
 }
 
 ul {
