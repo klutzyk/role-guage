@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { ChangeEvent, FormEvent, useMemo, useRef, useState } from "react";
+import { SharedFooter } from "../shared-footer";
 
 type AnalysisResult = {
   score: number;
@@ -706,30 +707,7 @@ export default function Home() {
         </section>
       ) : null}
 
-      <footer className="bg-[#043873] px-5 py-14 text-white md:px-8 md:py-20 lg:px-10">
-        <div className="mx-auto max-w-7xl text-center">
-          <h2 className="text-4xl font-extrabold">Try RoleGuage today</h2>
-          <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-white/82">
-            Compare your resume against a real job ad, see the evidence gaps, and leave with a clearer plan for your next application.
-          </p>
-          <a
-            href="#matcher"
-            className="mt-8 inline-flex items-center gap-2 rounded-md bg-[#4F9CF9] px-6 py-4 text-sm font-bold text-white transition hover:bg-[#3b8dea]"
-          >
-            Start analyzing
-            <ArrowRight size={18} aria-hidden="true" />
-          </a>
-          <div className="mt-14 flex flex-col items-center justify-between gap-5 border-t border-white/16 pt-8 text-sm text-white/74 md:flex-row">
-            <a href="#" className="flex items-center gap-2 font-bold text-white">
-              <span className="grid size-8 place-items-center rounded-md bg-white text-[#043873]">
-                <Radar size={18} aria-hidden="true" />
-              </span>
-              RoleGuage
-            </a>
-            <p>Resume fit scoring, evidence-gap analysis, cover letters, and targeted application support.</p>
-          </div>
-        </div>
-      </footer>
+      <SharedFooter />
     </main>
   );
 }

@@ -1,4 +1,5 @@
-import { ArrowLeft, Check, Radar } from "lucide-react";
+import { Check, Radar } from "lucide-react";
+import { SharedFooter } from "../shared-footer";
 
 const plans = [
   {
@@ -35,22 +36,32 @@ export default function PricingPage() {
             </span>
             <span className="text-lg">RoleGuage</span>
           </a>
-          <a
-            href="/"
-            className="inline-flex h-10 items-center gap-2 rounded-md border border-[#A7CEFC] bg-white px-4 text-sm font-bold text-[#043873] transition hover:bg-[#EAF4FF]"
-          >
-            <ArrowLeft size={16} aria-hidden="true" />
-            Home
-          </a>
+          <nav className="hidden items-center gap-8 text-sm font-semibold text-[#536C99] md:flex">
+            <a href="/#features" className="hover:text-[#043873]">Features</a>
+            <a href="/#how-it-works" className="hover:text-[#043873]">How it works</a>
+            <a href="/pricing" className="text-[#043873]">Pricing</a>
+            <a href="/#faq" className="hover:text-[#043873]">FAQ</a>
+          </nav>
+          <div className="flex items-center gap-3">
+            <a href="/profile" className="hidden text-sm font-bold text-[#536C99] hover:text-[#043873] sm:inline">
+              Profile
+            </a>
+            <a
+              href="/matcher#matcher"
+              className="inline-flex h-11 items-center rounded-md bg-[#245FEA] px-5 text-sm font-extrabold text-white shadow-[0_12px_24px_rgba(36,95,234,0.2)] transition hover:bg-[#1D4ED8]"
+            >
+              Try Now
+            </a>
+          </div>
         </div>
       </header>
 
-      <section className="px-5 py-16 md:px-8 md:py-22 lg:px-10">
+      <section className="px-5 py-18 md:px-8 md:py-24 lg:px-10">
         <div className="mx-auto max-w-7xl">
           <div className="text-center">
             <p className="text-sm font-extrabold uppercase tracking-[0.16em] text-[#4F9CF9]">Pricing</p>
-            <h1 className="mt-4 text-4xl font-extrabold text-[#0F1C35] md:text-6xl">Choose your plan</h1>
-            <p className="mx-auto mt-5 max-w-3xl text-sm leading-7 text-[#536C99] md:text-base">
+            <h1 className="mt-4 text-5xl font-extrabold leading-tight text-[#0F1C35] md:text-7xl">Choose your plan</h1>
+            <p className="mx-auto mt-5 max-w-3xl text-base leading-8 text-[#536C99] md:text-lg">
               Start with fit checks, then upgrade when you want saved reports, profile reuse, and a cleaner application workflow.
             </p>
           </div>
@@ -62,6 +73,8 @@ export default function PricingPage() {
           </div>
         </div>
       </section>
+
+      <SharedFooter />
     </main>
   );
 }

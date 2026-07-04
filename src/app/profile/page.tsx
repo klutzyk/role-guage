@@ -3,6 +3,7 @@
 import { CheckCircle2, FileText, Radar, Trash2, Upload, X } from "lucide-react";
 import Link from "next/link";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { SharedFooter } from "../shared-footer";
 
 type AnalysisResult = {
   score: number;
@@ -517,6 +518,7 @@ export default function ProfilePage() {
           ) : null}
         </div>
       </section>
+      <SharedFooter />
     </main>
   );
 }

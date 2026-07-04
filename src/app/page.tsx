@@ -13,6 +13,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { SharedFooter } from "./shared-footer";
 
 const features: Array<{ title: string; copy: string; icon: LucideIcon }> = [
   {
@@ -86,20 +87,20 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="relative z-10 px-5 pb-16 pt-20 text-center md:px-8 md:pb-20 md:pt-28 lg:px-10">
+      <section className="relative z-10 px-5 pb-14 pt-18 text-center md:px-8 md:pb-18 md:pt-24 lg:px-10">
         <div className="mx-auto max-w-6xl">
-          <h1 className="mx-auto max-w-5xl text-5xl font-extrabold leading-[1.03] tracking-normal md:text-7xl lg:text-8xl">
+          <h1 className="mx-auto max-w-5xl text-5xl font-extrabold leading-[1.05] tracking-normal md:text-6xl lg:text-[4.6rem]">
             Tailor your resume
             <br />
             <span className="bg-gradient-to-r from-[#2563EB] to-[#6366F1] bg-clip-text text-transparent">
               to any job ad
             </span>
           </h1>
-          <p className="mx-auto mt-7 max-w-3xl text-base leading-8 text-[#536C99] md:text-xl">
+          <p className="mx-auto mt-6 max-w-3xl text-base leading-8 text-[#536C99] md:text-lg">
             Upload your resume, paste a job description, and get a clear fit score,
             evidence gaps, cover letter draft, and application notes before you hit apply.
           </p>
-          <div className="mt-9 flex flex-col items-center justify-center gap-4 sm:flex-row">
+          <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <a
               href="/matcher#matcher"
               className="inline-flex h-14 items-center justify-center gap-2 rounded-md bg-[#245FEA] px-8 text-base font-extrabold text-white shadow-[0_18px_34px_rgba(36,95,234,0.26)] transition hover:bg-[#1D4ED8]"
@@ -115,13 +116,13 @@ export default function Home() {
               Get the Extension
             </a>
           </div>
-          <p className="mt-5 text-sm font-semibold text-[#8BA1C8]">
-            No sign-up required to try. Works with pasted job ads, public URLs, and extension-based extraction.
+          <p className="mt-5 text-sm font-semibold text-[#9AAED2]">
+            No sign-up required to try &middot; Works with LinkedIn, Indeed, Greenhouse &amp; more
           </p>
         </div>
       </section>
 
-      <section id="demo" className="relative z-10 px-5 pb-20 md:px-8 md:pb-28 lg:px-10">
+      <section id="demo" className="relative z-10 px-5 pb-18 md:px-8 md:pb-24 lg:px-10">
         <div className="mx-auto max-w-6xl">
           <div className="relative rounded-[1.55rem] border border-[#BFD6FF] bg-white/70 p-3 shadow-[0_30px_90px_rgba(36,95,234,0.16)] backdrop-blur">
             <img
@@ -134,11 +135,31 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="features" className="relative z-10 px-5 py-16 md:px-8 md:py-22 lg:px-10">
+      <section id="how-it-works" className="relative z-10 px-5 py-16 md:px-8 md:py-20 lg:px-10">
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center">
+            <p className="text-sm font-extrabold uppercase tracking-[0.16em] text-[#4F9CF9]">How it works</p>
+            <h2 className="mt-4 text-3xl font-extrabold text-[#0F1C35] md:text-4xl">
+              Three steps. One cleaner application.
+            </h2>
+          </div>
+          <div className="mt-12 grid gap-5 md:grid-cols-3">
+            {steps.map(([number, title, copy]) => (
+              <article key={number} className="rounded-2xl border border-[#A7CEFC] bg-white/68 p-7 shadow-[0_14px_36px_rgba(36,95,234,0.06)] backdrop-blur transition hover:-translate-y-1 hover:border-[#4F9CF9] hover:bg-white hover:shadow-[0_22px_50px_rgba(36,95,234,0.14)]">
+                <p className="text-5xl font-black leading-none text-[#BFD4FF]">{number}</p>
+                <h3 className="mt-5 text-lg font-extrabold text-[#0F1C35]">{title}</h3>
+                <p className="mt-2 text-sm leading-7 text-[#536C99]">{copy}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="features" className="relative z-10 px-5 py-16 md:px-8 md:py-20 lg:px-10">
         <div className="mx-auto max-w-7xl">
           <div className="text-center">
             <p className="text-sm font-extrabold uppercase tracking-[0.16em] text-[#4F9CF9]">Features</p>
-            <h2 className="mt-4 text-4xl font-extrabold leading-tight text-[#0F1C35] md:text-5xl">
+            <h2 className="mt-4 text-3xl font-extrabold leading-tight text-[#0F1C35] md:text-4xl">
               Everything you need to land the role
             </h2>
           </div>
@@ -146,7 +167,7 @@ export default function Home() {
             {features.map((feature) => (
               <article
                 key={feature.title}
-                className="rounded-2xl border border-[#DDE8F6] bg-white/56 p-7 backdrop-blur transition hover:border-[#A7CEFC] hover:bg-white"
+                className="rounded-2xl border border-[#A7CEFC] bg-white/62 p-7 shadow-[0_14px_36px_rgba(36,95,234,0.06)] backdrop-blur transition hover:-translate-y-1 hover:border-[#4F9CF9] hover:bg-white hover:shadow-[0_22px_50px_rgba(36,95,234,0.14)]"
               >
                 <div className="grid size-11 place-items-center rounded-xl bg-[#EAF4FF] text-[#4F9CF9]">
                   <feature.icon size={22} aria-hidden="true" />
@@ -159,28 +180,8 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="how-it-works" className="relative z-10 px-5 py-16 md:px-8 md:py-22 lg:px-10">
-        <div className="mx-auto max-w-6xl">
-          <div className="text-center">
-            <p className="text-sm font-extrabold uppercase tracking-[0.16em] text-[#4F9CF9]">How it works</p>
-            <h2 className="mt-4 text-4xl font-extrabold text-[#0F1C35] md:text-5xl">
-              Three steps. One cleaner application.
-            </h2>
-          </div>
-          <div className="mt-12 grid gap-5 md:grid-cols-3">
-            {steps.map(([number, title, copy]) => (
-              <article key={number} className="rounded-2xl border border-[#DDE8F6] bg-white/62 p-7 backdrop-blur">
-                <p className="text-5xl font-black leading-none text-[#2563EB]/18">{number}</p>
-                <h3 className="mt-5 text-lg font-extrabold text-[#0F1C35]">{title}</h3>
-                <p className="mt-2 text-sm leading-7 text-[#536C99]">{copy}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
       <section className="relative z-10 px-5 py-20 md:px-8 lg:px-10">
-        <div className="mx-auto max-w-4xl rounded-[1.6rem] border border-[#BFD6FF] bg-[#EAF1FF]/78 p-8 text-center backdrop-blur md:p-12">
+        <div className="mx-auto max-w-4xl rounded-[1.6rem] border border-[#BFD6FF] bg-[#DCE9FF]/82 p-8 text-center backdrop-blur md:p-12">
           <h2 className="text-4xl font-extrabold text-[#0F1C35] md:text-5xl">Ready to match smarter?</h2>
           <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-[#536C99] md:text-base">
             Start analyzing your resume against any job in seconds. Or use the extension workflow and do it right from the job board.
@@ -233,23 +234,7 @@ export default function Home() {
         </div>
       </section>
 
-      <footer className="relative z-10 border-t border-[#DDE8F6] bg-white/76 px-5 py-10 backdrop-blur md:px-8 lg:px-10">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 text-sm text-[#8BA1C8] md:flex-row">
-          <a href="/" className="flex items-center gap-2 font-extrabold text-[#043873]">
-            <span className="grid size-7 place-items-center rounded-md bg-[#043873] text-white">
-              <Radar size={16} aria-hidden="true" />
-            </span>
-            RoleGuage
-          </a>
-          <div className="flex flex-wrap justify-center gap-6">
-            <a href="#" className="hover:text-[#043873]">Privacy</a>
-            <a href="#" className="hover:text-[#043873]">Terms</a>
-            <a href="#" className="hover:text-[#043873]">Contact</a>
-            <a href="#" className="hover:text-[#043873]">Blog</a>
-          </div>
-          <p>© 2026 RoleGuage. All rights reserved.</p>
-        </div>
-      </footer>
+      <SharedFooter />
     </main>
   );
 }
