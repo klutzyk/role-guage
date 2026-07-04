@@ -554,10 +554,9 @@ export default function Home() {
             <button
               type="submit"
               disabled={!canAnalyze || isLoading}
-              className="mt-6 inline-flex h-14 w-full items-center justify-center gap-2 rounded-md bg-[#4F9CF9] px-5 text-base font-extrabold text-white transition hover:bg-[#3b8dea] disabled:cursor-not-allowed disabled:bg-[#A7CEFC]"
+              className="mt-6 inline-flex h-14 w-full cursor-pointer items-center justify-center rounded-md bg-[#043873] px-5 text-base font-extrabold text-white transition hover:bg-[#0b4c97] disabled:cursor-not-allowed disabled:bg-[#A7CEFC]"
             >
-              {isLoading ? <Loader2 className="animate-spin" size={18} aria-hidden="true" /> : <Gauge size={18} aria-hidden="true" />}
-              {isLoading ? "Generating fit report" : "Generate fit report"}
+              {isLoading ? "Generating Fit Report" : "Generate Fit Report"}
             </button>
           </form>
         </div>
@@ -566,7 +565,7 @@ export default function Home() {
       {result ? (
         <section id="report" className="px-5 py-10 md:px-8 md:py-14 lg:px-10">
           <div className="mx-auto grid max-w-7xl gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-            <section className="rounded-md bg-white p-5 shadow-[0_18px_60px_rgba(4,56,115,0.1)] md:p-6">
+            <section className="flex flex-col rounded-md bg-white p-5 shadow-[0_18px_60px_rgba(4,56,115,0.1)] md:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-sm font-bold text-[#4F9CF9]">Recommended move</p>
@@ -601,11 +600,11 @@ export default function Home() {
                 <MiniMetric label="Headline" value={result.keywordPlan.headline || "Role fit"} />
               </div>
 
-              <div className="mt-5 flex flex-wrap gap-2">
+              <div className="mt-auto flex flex-wrap gap-2 pt-5">
                 <button
                   type="button"
                   onClick={copyReport}
-                  className="inline-flex h-11 grow items-center justify-center gap-2 rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97]"
+                  className="inline-flex h-11 grow cursor-pointer items-center justify-center gap-2 rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97]"
                 >
                   <Clipboard size={16} aria-hidden="true" />
                   Copy report
@@ -613,7 +612,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={downloadReport}
-                  className="inline-flex h-11 grow items-center justify-center gap-2 rounded-md border border-[#FFE492] bg-white px-4 text-sm font-bold text-[#043873] transition hover:bg-[#FFE492]"
+                  className="inline-flex h-11 grow cursor-pointer items-center justify-center gap-2 rounded-md border border-[#FFE492] bg-white px-4 text-sm font-bold text-[#043873] transition hover:bg-[#FFE492]"
                 >
                   <Download size={16} aria-hidden="true" />
                   Export
@@ -828,7 +827,7 @@ function InputPanel({
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={`${compact ? "min-h-44 md:min-h-52" : "min-h-64 md:min-h-80"} resize-y rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15`}
+        className={`${compact ? "min-h-44 md:min-h-52" : "min-h-64 md:min-h-80"} resize-y rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 outline-none transition placeholder:text-[#7A8795] focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15`}
         placeholder={placeholder}
       />
     </label>
@@ -997,6 +996,8 @@ function PricingCard({
   items: string[];
   featured: boolean;
 }) {
+  const isPaid = price !== "$0";
+
   return (
     <article
       className={`rounded-md border p-7 shadow-[0_14px_40px_rgba(4,56,115,0.08)] ${
@@ -1016,16 +1017,24 @@ function PricingCard({
           </li>
         ))}
       </ul>
-      <a
-        href="#matcher"
-        className={`mt-9 inline-flex h-12 items-center justify-center rounded-md px-5 text-sm font-bold transition ${
-          featured
-            ? "bg-[#4F9CF9] text-white hover:bg-[#3b8dea]"
-            : "border border-[#FFE492] bg-white text-[#043873] hover:bg-[#FFE492]"
-        }`}
-      >
-        Get started
-      </a>
+      {isPaid ? (
+        <button
+          type="button"
+          disabled
+          className={`mt-9 inline-flex h-12 cursor-not-allowed items-center justify-center rounded-md px-5 text-sm font-bold ${
+            featured ? "bg-white/18 text-white/70" : "border border-[#DDE8F6] bg-[#F1F5FA] text-[#6B7886]"
+          }`}
+        >
+          Coming soon
+        </button>
+      ) : (
+        <a
+          href="#matcher"
+          className="mt-9 inline-flex h-12 cursor-pointer items-center justify-center rounded-md border border-[#FFE492] bg-white px-5 text-sm font-bold text-[#043873] transition hover:bg-[#FFE492]"
+        >
+          Get started
+        </a>
+      )}
     </article>
   );
 }
