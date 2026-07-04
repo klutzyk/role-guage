@@ -25,6 +25,9 @@ const elements = {
   matchedSkills: document.querySelector("#matchedSkills"),
   missingSkills: document.querySelector("#missingSkills"),
   resumeBullets: document.querySelector("#resumeBullets"),
+  coverLetterBlock: document.querySelector("#coverLetterBlock"),
+  coverLetter: document.querySelector("#coverLetter"),
+  copyCoverLetter: document.querySelector("#copyCoverLetter"),
   copyResult: document.querySelector("#copyResult"),
   openApp: document.querySelector("#openApp"),
 };
@@ -47,6 +50,7 @@ async function init() {
   elements.extractJob.addEventListener("click", extractJobFromActiveTab);
   elements.analyze.addEventListener("click", analyzeFit);
   elements.copyResult.addEventListener("click", copyReport);
+  elements.copyCoverLetter.addEventListener("click", copyCoverLetter);
   elements.openApp.addEventListener("click", openApp);
 }
 
@@ -288,6 +292,7 @@ function renderResult(data) {
   const summary = enrichment.summary || analysis.summary;
   const nextStep = enrichment.nextStep || analysis.nextStep;
   const bullets = enrichment.resumeBullets?.length ? enrichment.resumeBullets : analysis.resumeBullets || [];
+  const coverLetter = (enrichment.coverLetter || "").trim();
 
   elements.result.classList.remove("hidden");
   elements.decision.textContent = analysis.decision;
@@ -298,6 +303,8 @@ function renderResult(data) {
   renderChips(elements.matchedSkills, analysis.matchedSkills);
   renderChips(elements.missingSkills, analysis.missingSkills.length ? analysis.missingSkills : ["None"]);
   elements.resumeBullets.innerHTML = bullets.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  elements.coverLetterBlock.classList.toggle("hidden", !coverLetter);
+  elements.coverLetter.textContent = coverLetter;
 }
 
 function renderChips(container, items) {
@@ -316,10 +323,24 @@ async function copyReport() {
     `Next step: ${enrichment.nextStep || analysis.nextStep}`,
     `Matched: ${analysis.matchedSkills.join(", ") || "None"}`,
     `Gaps: ${analysis.missingSkills.join(", ") || "None"}`,
+    enrichment.coverLetter ? `Cover letter:\n${enrichment.coverLetter}` : "",
   ];
 
-  await navigator.clipboard.writeText(lines.join("\n"));
+  await navigator.clipboard.writeText(lines.filter(Boolean).join("\n"));
   setStatus("Report copied.");
+}
+
+async function copyCoverLetter() {
+  const coverLetter = (lastReport?.enrichment?.coverLetter || "").trim();
+
+  if (!coverLetter) return;
+
+  await navigator.clipboard.writeText(coverLetter);
+  elements.copyCoverLetter.textContent = "Copied";
+  setStatus("Cover letter copied.");
+  window.setTimeout(() => {
+    elements.copyCoverLetter.textContent = "Copy";
+  }, 1500);
 }
 
 async function openApp() {

@@ -423,7 +423,7 @@ export default function Home() {
 
       <section className="bg-[#043873] px-5 py-10 text-white md:px-8 md:py-14 lg:px-10">
         <div className="mx-auto max-w-7xl">
-          <h1 className="text-4xl font-extrabold leading-tight md:text-6xl">Matcher</h1>
+          <h1 className="text-4xl font-extrabold leading-tight text-[#A7CEFC] md:text-6xl">Matcher</h1>
           <p className="mt-4 max-w-5xl text-2xl font-extrabold leading-tight text-white md:text-4xl">
             Check one role before you spend time applying.
           </p>

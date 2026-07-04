@@ -15,7 +15,7 @@
 }
 
 body {
-  width: 420px;
+  width: 430px;
   min-height: 560px;
   margin: 0;
   background: #eef5fd;
@@ -45,7 +45,7 @@ button:disabled {
 
 .shell {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   padding: 14px;
 }
 
@@ -90,7 +90,7 @@ button:disabled {
 
 .result {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
 label {
@@ -257,14 +257,14 @@ textarea:focus {
 .scoreRow h2 {
   margin: 0;
   color: var(--blue);
-  font-size: 32px;
+  font-size: 34px;
   line-height: 1;
 }
 
 .score {
   display: grid;
-  width: 74px;
-  height: 74px;
+  width: 72px;
+  height: 72px;
   place-items: center;
   border-radius: 7px;
   background: var(--yellow);
@@ -278,7 +278,22 @@ textarea:focus {
   color: var(--muted);
 }
 
+#level {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 8px;
+  border: 1px solid #9fc9ff;
+  border-radius: 7px;
+  background: var(--pale-blue);
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+  padding: 6px 9px;
+}
+
 .summary {
+  font-size: 14px;
   line-height: 1.55;
   margin: 0;
 }
@@ -286,7 +301,7 @@ textarea:focus {
 .callout {
   border: 1px solid #9fc9ff;
   border-radius: 7px;
-  padding: 12px;
+  padding: 11px 12px;
   background: #fbfdff;
 }
 
@@ -294,6 +309,7 @@ textarea:focus {
   margin: 0;
   color: var(--ink);
   font-weight: 600;
+  font-size: 14px;
   line-height: 1.45;
 }
 
@@ -305,11 +321,11 @@ textarea:focus {
 
 .split > div {
   width: 50%;
-  min-height: 86px;
+  min-height: 82px;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: #fbfdff;
-  padding: 10px;
+  padding: 10px 11px;
 }
 
 .chips {
@@ -325,7 +341,8 @@ textarea:focus {
   color: var(--blue);
   font-size: 12px;
   font-weight: 700;
-  padding: 7px 10px;
+  line-height: 1.25;
+  padding: 7px 9px;
 }
 
 .warning .chip {
@@ -337,5 +354,30 @@ ul {
   margin: 0;
   padding-left: 18px;
   color: var(--muted);
-  line-height: 1.55;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.coverLetterBlock {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbfdff;
+  padding: 11px;
+}
+
+.compactHead {
+  margin-bottom: 8px;
+}
+
+.coverLetter {
+  max-height: 190px;
+  overflow: auto;
+  white-space: pre-line;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: white;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 10px;
 }
