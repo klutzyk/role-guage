@@ -12,16 +12,14 @@ import {
   ListChecks,
   Loader2,
   Plus,
-  Radar,
   SearchCheck,
-  ShieldCheck,
   Target,
   Upload,
-  Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { ChangeEvent, FormEvent, useMemo, useRef, useState } from "react";
 import { SharedFooter } from "../shared-footer";
+import { SharedHeader } from "../shared-header";
 
 type AnalysisResult = {
   score: number;
@@ -153,7 +151,7 @@ const plans = [
 const faqs: Array<[string, string]> = [
   [
     "Is this just ChatGPT with a nicer screen?",
-    "No. RoleGuage is built around a repeatable workflow: import a role, score fit, expose evidence gaps, generate application notes, and save the result to your profile.",
+    "No. RoleGuage gives you a structured report for each role: fit score, evidence gaps, hard requirements, cover letter draft, and next steps.",
   ],
   [
     "Does it rewrite my resume with fake skills?",
@@ -165,7 +163,7 @@ const faqs: Array<[string, string]> = [
   ],
   [
     "Where is my resume stored?",
-    "In this MVP, saved profiles and match history stay in your browser localStorage. A production version should add accounts, encrypted storage, and delete controls.",
+    "Saved profiles and match history stay in your browser, and you can delete them from your profile page.",
   ],
 ];
 
@@ -400,26 +398,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#F8FBFF] text-[#212529]">
-      <header className="border-b border-[#DDE8F6] bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4 md:px-8 lg:px-10">
-          <a href="/" className="flex items-center gap-2 font-bold text-[#043873]">
-            <span className="grid size-8 place-items-center rounded-md bg-[#043873] text-white">
-              <Radar size={20} aria-hidden="true" />
-            </span>
-            <span className="text-xl">RoleGuage</span>
-          </a>
-          <nav className="hidden items-center gap-6 text-sm font-semibold text-[#4F5F6F] md:flex">
-            <a href="#matcher" className="hover:text-[#043873]">Matcher</a>
-            <a href="/#how-it-works" className="hover:text-[#043873]">How it works</a>
-            <a href="/pricing" className="hover:text-[#043873]">Pricing</a>
-            <a href="/#faq" className="hover:text-[#043873]">Questions</a>
-            <a href="/profile" className="hover:text-[#043873]">Profile</a>
-          </nav>
-          <a href="#matcher" className="inline-flex h-10 items-center rounded-md bg-[#4F9CF9] px-4 text-sm font-bold text-white transition hover:bg-[#3b8dea]">
-            Matcher
-          </a>
-        </div>
-      </header>
+      <SharedHeader active="matcher" />
 
       <section className="bg-[#043873] px-5 py-10 text-white md:px-8 md:py-14 lg:px-10">
         <div className="mx-auto max-w-7xl">

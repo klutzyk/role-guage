@@ -1,9 +1,10 @@
 "use client";
 
-import { CheckCircle2, FileText, Radar, Trash2, Upload, X } from "lucide-react";
+import { CheckCircle2, FileText, Trash2, Upload, X } from "lucide-react";
 import Link from "next/link";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { SharedFooter } from "../shared-footer";
+import { SharedHeader } from "../shared-header";
 
 type AnalysisResult = {
   score: number;
@@ -208,29 +209,7 @@ export default function ProfilePage() {
 
   return (
     <main className="min-h-screen bg-[#F8FBFF] text-[#212529]">
-      <header className="border-b border-[#DDE8F6] bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4 md:px-8 lg:px-10">
-          <Link href="/" className="flex items-center gap-2 font-bold text-[#043873]">
-            <span className="grid size-8 place-items-center rounded-md bg-[#043873] text-white">
-              <Radar size={20} aria-hidden="true" />
-            </span>
-            <span className="text-xl">RoleGuage</span>
-          </Link>
-          <nav className="hidden items-center gap-6 text-sm font-semibold text-[#4F5F6F] md:flex">
-            <Link href="/matcher#matcher" className="hover:text-[#043873]">Matcher</Link>
-            <Link href="/#workflow" className="hover:text-[#043873]">How it works</Link>
-            <Link href="/pricing" className="hover:text-[#043873]">Pricing</Link>
-            <Link href="/#questions" className="hover:text-[#043873]">Questions</Link>
-            <Link href="/profile" className="text-[#043873]">Profile</Link>
-          </nav>
-          <Link
-            href="/matcher#matcher"
-            className="inline-flex h-10 items-center rounded-md bg-[#4F9CF9] px-4 text-sm font-bold text-white transition hover:bg-[#3b8dea]"
-          >
-            Matcher
-          </Link>
-        </div>
-      </header>
+      <SharedHeader active="profile" />
 
       <section className="bg-[#043873] px-5 py-10 text-white md:px-8 md:py-14 lg:px-10">
         <div className="mx-auto max-w-7xl">
@@ -239,8 +218,7 @@ export default function ProfilePage() {
             Manage your saved resume and past job matches.
           </p>
           <p className="mt-5 max-w-3xl text-sm leading-7 text-white/82 md:text-base">
-            This MVP stores your resume and reports in this browser so you can revisit fit scores,
-            suggestions, and cover letter drafts.
+            Keep your resume, application details, match reports, and cover letter drafts in one place.
           </p>
         </div>
       </section>

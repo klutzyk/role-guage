@@ -5,15 +5,14 @@ import {
   ClipboardCheck,
   FileText,
   Globe,
-  Radar,
   Shield,
   Sparkles,
   Target,
-  Upload,
   Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { SharedFooter } from "./shared-footer";
+import { SharedHeader } from "./shared-header";
 
 const features: Array<{ title: string; copy: string; icon: LucideIcon }> = [
   {
@@ -59,33 +58,7 @@ export default function Home() {
     <main className="min-h-screen overflow-hidden bg-[#F0F4FF] text-[#0F1C35]">
       <BackgroundSketches />
 
-      <header className="relative z-20 border-b border-[#DDE8F6] bg-white/86 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4 md:px-8 lg:px-10">
-          <a href="/" className="flex items-center gap-2 font-bold text-[#043873]">
-            <span className="grid size-8 place-items-center rounded-md bg-[#043873] text-white">
-              <Radar size={20} aria-hidden="true" />
-            </span>
-            <span className="text-lg">RoleGuage</span>
-          </a>
-          <nav className="hidden items-center gap-8 text-sm font-semibold text-[#536C99] md:flex">
-            <a href="#features" className="hover:text-[#043873]">Features</a>
-            <a href="#how-it-works" className="hover:text-[#043873]">How it works</a>
-            <a href="/pricing" className="hover:text-[#043873]">Pricing</a>
-            <a href="#faq" className="hover:text-[#043873]">FAQ</a>
-          </nav>
-          <div className="flex items-center gap-3">
-            <a href="/profile" className="hidden text-sm font-bold text-[#536C99] hover:text-[#043873] sm:inline">
-              Profile
-            </a>
-            <a
-              href="/matcher#matcher"
-              className="inline-flex h-11 items-center rounded-md bg-[#043873] px-5 text-sm font-extrabold text-white shadow-[0_12px_24px_rgba(4,56,115,0.2)] transition hover:bg-[#0b4c97]"
-            >
-              Try Now
-            </a>
-          </div>
-        </div>
-      </header>
+      <SharedHeader active="home" />
 
       <section className="relative z-20 px-5 pb-10 pt-12 text-center md:px-8 md:pb-12 md:pt-16 lg:px-10">
         <div className="mx-auto max-w-5xl">
@@ -223,7 +196,7 @@ export default function Home() {
             {[
               ["Does it invent experience?", "No. RoleGuage separates supported evidence from gaps and flags places where you need real proof."],
               ["Can I use a job board page?", "Yes. Use URL import where possible, copy text when a site blocks extraction, or use the extension workflow."],
-              ["Where is my resume stored?", "Saved profile data currently stays in your browser. Production accounts should add encrypted storage and delete controls."],
+              ["Where is my resume stored?", "Saved profile data stays in your browser, and you can remove it from your profile page when needed."],
             ].map(([question, answer]) => (
               <article key={question} className="rounded-2xl border border-[#DDE8F6] bg-white/62 p-5 backdrop-blur">
                 <h3 className="text-base font-extrabold text-[#0F1C35]">{question}</h3>
