@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "RoleGuage Job Matcher",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Analyze the current job page or selected job text against your resume.",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": ["https://roleguage.com/*"],
