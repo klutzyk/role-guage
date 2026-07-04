@@ -5,7 +5,7 @@ type HeaderSection = "home" | "matcher" | "pricing" | "profile" | "privacy";
 
 export function SharedHeader({ active = "home" }: { active?: HeaderSection }) {
   const navClass = (section: HeaderSection) =>
-    active === section ? "text-[#043873]" : "text-[#536C99] hover:text-[#043873]";
+    active !== "home" && active === section ? "text-[#043873]" : "text-[#536C99] hover:text-[#043873]";
 
   return (
     <header className="relative z-20 border-b border-[#DDE8F6] bg-white/90 backdrop-blur">
@@ -25,12 +25,16 @@ export function SharedHeader({ active = "home" }: { active?: HeaderSection }) {
           <Link href="/profile" className={navClass("profile")}>Profile</Link>
         </nav>
 
-        <Link
-          href="/matcher#matcher"
-          className="inline-flex h-11 items-center rounded-md bg-[#043873] px-5 text-sm font-extrabold text-white shadow-[0_12px_24px_rgba(4,56,115,0.2)] transition hover:bg-[#0b4c97]"
-        >
-          {active === "matcher" ? "Matcher" : "Try Now"}
-        </Link>
+        {active === "matcher" ? (
+          <span className="hidden h-11 w-[92px] md:block" aria-hidden="true" />
+        ) : (
+          <Link
+            href="/matcher"
+            className="inline-flex h-11 items-center rounded-md bg-[#043873] px-5 text-sm font-extrabold text-white shadow-[0_12px_24px_rgba(4,56,115,0.2)] transition hover:bg-[#0b4c97]"
+          >
+            Try Now
+          </Link>
+        )}
       </div>
     </header>
   );

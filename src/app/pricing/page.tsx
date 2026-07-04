@@ -105,7 +105,7 @@ function PricingCard({
         </button>
       ) : (
         <a
-          href="/matcher#matcher"
+          href="/matcher"
           className="mt-9 inline-flex h-12 cursor-pointer items-center justify-center rounded-md border border-[#FFE492] bg-white px-5 text-sm font-bold text-[#043873] transition hover:bg-[#FFE492]"
         >
           Get started

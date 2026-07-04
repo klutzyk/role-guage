@@ -75,7 +75,7 @@ export default function Home() {
           </p>
           <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <a
-              href="/matcher#matcher"
+              href="/matcher"
               className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#043873] px-6 text-sm font-extrabold text-white shadow-[0_14px_28px_rgba(4,56,115,0.24)] transition hover:bg-[#0b4c97]"
             >
               Try Now - it&apos;s free
@@ -161,7 +161,7 @@ export default function Home() {
           </p>
           <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
             <a
-              href="/matcher#matcher"
+              href="/matcher"
               className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#043873] px-6 text-sm font-extrabold text-white shadow-[0_14px_28px_rgba(4,56,115,0.22)] transition hover:bg-[#0b4c97]"
             >
               Try Now - Free
