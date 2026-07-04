@@ -216,14 +216,14 @@ export default function ProfilePage() {
             <span className="text-xl">RoleGuage</span>
           </Link>
           <nav className="hidden items-center gap-6 text-sm font-semibold text-[#4F5F6F] md:flex">
-            <Link href="/#matcher" className="hover:text-[#043873]">Matcher</Link>
+            <Link href="/matcher#matcher" className="hover:text-[#043873]">Matcher</Link>
             <Link href="/#workflow" className="hover:text-[#043873]">How it works</Link>
-            <Link href="/#pricing" className="hover:text-[#043873]">Pricing</Link>
+            <Link href="/pricing" className="hover:text-[#043873]">Pricing</Link>
             <Link href="/#questions" className="hover:text-[#043873]">Questions</Link>
             <Link href="/profile" className="text-[#043873]">Profile</Link>
           </nav>
           <Link
-            href="/#matcher"
+            href="/matcher#matcher"
             className="inline-flex h-10 items-center rounded-md bg-[#4F9CF9] px-4 text-sm font-bold text-white transition hover:bg-[#3b8dea]"
           >
             Matcher
