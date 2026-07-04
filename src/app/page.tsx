@@ -87,30 +87,30 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="relative z-20 px-5 pb-12 pt-16 text-center md:px-8 md:pb-16 md:pt-20 lg:px-10">
-        <div className="mx-auto max-w-6xl">
-          <h1 className="mx-auto max-w-5xl text-5xl font-extrabold leading-[1.05] tracking-normal md:text-[3.8rem] lg:text-[4.25rem]">
+      <section className="relative z-20 px-5 pb-10 pt-12 text-center md:px-8 md:pb-12 md:pt-16 lg:px-10">
+        <div className="mx-auto max-w-5xl">
+          <h1 className="mx-auto max-w-4xl text-4xl font-extrabold leading-[1.05] tracking-normal md:text-[3.25rem] lg:text-[3.65rem]">
             Tailor your resume
             <br />
             <span className="bg-gradient-to-r from-[#2563EB] to-[#6366F1] bg-clip-text text-transparent">
               to any job ad
             </span>
           </h1>
-          <p className="mx-auto mt-6 max-w-3xl text-base leading-8 text-[#536C99] md:text-lg">
+          <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-[#536C99] md:text-base">
             Upload your resume, paste a job description, and get a clear fit score,
             evidence gaps, cover letter draft, and application notes before you hit apply.
           </p>
-          <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
+          <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <a
               href="/matcher#matcher"
-              className="inline-flex h-14 items-center justify-center gap-2 rounded-md bg-[#043873] px-8 text-base font-extrabold text-white shadow-[0_18px_34px_rgba(4,56,115,0.26)] transition hover:bg-[#0b4c97]"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#043873] px-6 text-sm font-extrabold text-white shadow-[0_14px_28px_rgba(4,56,115,0.24)] transition hover:bg-[#0b4c97]"
             >
               Try Now - it&apos;s free
               <ArrowRight size={18} aria-hidden="true" />
             </a>
             <a
               href="#demo"
-              className="inline-flex h-14 items-center justify-center gap-2 rounded-md border border-[#A7CEFC] bg-white/54 px-8 text-base font-extrabold text-[#245FEA] transition hover:bg-white"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-[#A7CEFC] bg-white/54 px-6 text-sm font-extrabold text-[#245FEA] transition hover:bg-white"
             >
               <Globe size={18} aria-hidden="true" />
               Get the Extension
@@ -122,81 +122,81 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="demo" className="relative z-10 px-5 pb-18 md:px-8 md:pb-24 lg:px-10">
-        <div className="mx-auto max-w-6xl">
-          <div className="relative rounded-[1.55rem] border border-[#BFD6FF] bg-white/70 p-3 shadow-[0_30px_90px_rgba(36,95,234,0.16)] backdrop-blur">
+      <section id="demo" className="relative z-10 px-5 pb-14 md:px-8 md:pb-18 lg:px-10">
+        <div className="mx-auto max-w-4xl">
+          <div className="relative rounded-[1.25rem] border border-[#BFD6FF] bg-white/70 p-2 shadow-[0_22px_70px_rgba(36,95,234,0.14)] backdrop-blur">
             <img
               src="/landing-demo.png"
               alt="RoleGuage matcher interface preview"
-              className="h-auto w-full rounded-[1.1rem] object-cover"
+              className="h-auto w-full rounded-[0.95rem] object-cover"
             />
             <div className="pointer-events-none absolute inset-x-4 bottom-4 h-24 rounded-b-[1.1rem] bg-gradient-to-t from-[#F0F4FF]/80 to-transparent" />
           </div>
         </div>
       </section>
 
-      <section id="how-it-works" className="relative z-10 px-5 py-16 md:px-8 md:py-20 lg:px-10">
-        <div className="mx-auto max-w-6xl">
+      <section id="how-it-works" className="relative z-10 px-5 py-12 md:px-8 md:py-16 lg:px-10">
+        <div className="mx-auto max-w-5xl">
           <div className="text-center">
             <p className="text-sm font-extrabold uppercase tracking-[0.16em] text-[#4F9CF9]">How it works</p>
-            <h2 className="mt-4 text-3xl font-extrabold text-[#0F1C35] md:text-4xl">
+            <h2 className="mt-3 text-3xl font-extrabold text-[#0F1C35] md:text-[2.15rem]">
               Three steps. One cleaner application.
             </h2>
           </div>
-          <div className="mt-12 grid gap-5 md:grid-cols-3">
+          <div className="mt-9 grid gap-4 md:grid-cols-3">
             {steps.map(([number, title, copy]) => (
-              <article key={number} className="rounded-2xl border border-[#A7CEFC] bg-white/68 p-7 shadow-[0_14px_36px_rgba(36,95,234,0.06)] backdrop-blur transition hover:-translate-y-1 hover:border-[#4F9CF9] hover:bg-white hover:shadow-[0_22px_50px_rgba(36,95,234,0.14)]">
-                <p className="text-6xl font-black leading-none text-[#8FB6FF]">{number}</p>
-                <h3 className="mt-5 text-lg font-extrabold text-[#0F1C35]">{title}</h3>
-                <p className="mt-2 text-sm leading-7 text-[#536C99]">{copy}</p>
+              <article key={number} className="rounded-2xl border border-[#A7CEFC] bg-white/68 p-6 shadow-[0_12px_30px_rgba(36,95,234,0.06)] backdrop-blur transition hover:-translate-y-1 hover:border-[#4F9CF9] hover:bg-white hover:shadow-[0_18px_44px_rgba(36,95,234,0.14)]">
+                <p className="text-5xl font-black leading-none text-[#8FB6FF]">{number}</p>
+                <h3 className="mt-4 text-base font-extrabold text-[#0F1C35]">{title}</h3>
+                <p className="mt-2 text-sm leading-6 text-[#536C99]">{copy}</p>
               </article>
             ))}
           </div>
         </div>
       </section>
 
-      <section id="features" className="relative z-10 px-5 py-16 md:px-8 md:py-20 lg:px-10">
-        <div className="mx-auto max-w-7xl">
+      <section id="features" className="relative z-10 px-5 py-12 md:px-8 md:py-16 lg:px-10">
+        <div className="mx-auto max-w-6xl">
           <div className="text-center">
             <p className="text-sm font-extrabold uppercase tracking-[0.16em] text-[#4F9CF9]">Features</p>
-            <h2 className="mt-4 text-3xl font-extrabold leading-tight text-[#0F1C35] md:text-4xl">
+            <h2 className="mt-3 text-3xl font-extrabold leading-tight text-[#0F1C35] md:text-[2.15rem]">
               Everything you need to land the role
             </h2>
           </div>
-          <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-9 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {features.map((feature) => (
               <article
                 key={feature.title}
-                className="rounded-2xl border border-[#A7CEFC] bg-white/62 p-7 shadow-[0_14px_36px_rgba(36,95,234,0.06)] backdrop-blur transition hover:-translate-y-1 hover:border-[#4F9CF9] hover:bg-white hover:shadow-[0_22px_50px_rgba(36,95,234,0.14)]"
+                className="rounded-2xl border border-[#A7CEFC] bg-white/62 p-6 shadow-[0_12px_30px_rgba(36,95,234,0.06)] backdrop-blur transition hover:-translate-y-1 hover:border-[#4F9CF9] hover:bg-white hover:shadow-[0_18px_44px_rgba(36,95,234,0.14)]"
               >
                 <div className="grid size-11 place-items-center rounded-xl bg-[#EAF4FF] text-[#4F9CF9]">
                   <feature.icon size={22} aria-hidden="true" />
                 </div>
-                <h3 className="mt-5 text-lg font-extrabold text-[#0F1C35]">{feature.title}</h3>
-                <p className="mt-2 text-sm leading-7 text-[#536C99]">{feature.copy}</p>
+                <h3 className="mt-4 text-base font-extrabold text-[#0F1C35]">{feature.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-[#536C99]">{feature.copy}</p>
               </article>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="relative z-10 px-5 py-20 md:px-8 lg:px-10">
-        <div className="mx-auto max-w-4xl rounded-[1.6rem] border border-[#BFD6FF] bg-[#DCE9FF]/82 p-8 text-center backdrop-blur md:p-12">
-          <h2 className="text-4xl font-extrabold text-[#0F1C35] md:text-5xl">Ready to match smarter?</h2>
-          <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-[#536C99] md:text-base">
+      <section className="relative z-10 px-5 py-16 md:px-8 lg:px-10">
+        <div className="mx-auto max-w-3xl rounded-[1.35rem] border border-[#BFD6FF] bg-[#DCE9FF]/82 p-7 text-center backdrop-blur md:p-10">
+          <h2 className="text-3xl font-extrabold text-[#0F1C35] md:text-4xl">Ready to match smarter?</h2>
+          <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-[#536C99]">
             Start analyzing your resume against any job in seconds. Or use the extension workflow and do it right from the job board.
           </p>
-          <div className="mt-8 flex flex-col justify-center gap-4 sm:flex-row">
+          <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
             <a
               href="/matcher#matcher"
-              className="inline-flex h-14 items-center justify-center gap-2 rounded-md bg-[#043873] px-8 text-base font-extrabold text-white shadow-[0_18px_34px_rgba(4,56,115,0.24)] transition hover:bg-[#0b4c97]"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#043873] px-6 text-sm font-extrabold text-white shadow-[0_14px_28px_rgba(4,56,115,0.22)] transition hover:bg-[#0b4c97]"
             >
               Try Now - Free
               <ArrowRight size={18} aria-hidden="true" />
             </a>
             <a
               href="#demo"
-              className="inline-flex h-14 items-center justify-center gap-2 rounded-md border border-[#A7CEFC] bg-white/48 px-8 text-base font-extrabold text-[#245FEA] transition hover:bg-white"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-[#A7CEFC] bg-white/48 px-6 text-sm font-extrabold text-[#245FEA] transition hover:bg-white"
             >
               <Globe size={18} aria-hidden="true" />
               Get the Extension
@@ -213,11 +213,11 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="faq" className="relative z-10 px-5 py-16 md:px-8 md:py-20 lg:px-10">
-        <div className="mx-auto max-w-5xl">
+      <section id="faq" className="relative z-10 px-5 py-12 md:px-8 md:py-16 lg:px-10">
+        <div className="mx-auto max-w-4xl">
           <div className="text-center">
             <p className="text-sm font-extrabold uppercase tracking-[0.16em] text-[#4F9CF9]">FAQ</p>
-            <h2 className="mt-4 text-4xl font-extrabold text-[#0F1C35] md:text-5xl">Questions jobseekers ask first</h2>
+            <h2 className="mt-3 text-3xl font-extrabold text-[#0F1C35] md:text-4xl">Questions jobseekers ask first</h2>
           </div>
           <div className="mt-10 grid gap-4">
             {[
@@ -225,8 +225,8 @@ export default function Home() {
               ["Can I use a job board page?", "Yes. Use URL import where possible, copy text when a site blocks extraction, or use the extension workflow."],
               ["Where is my resume stored?", "Saved profile data currently stays in your browser. Production accounts should add encrypted storage and delete controls."],
             ].map(([question, answer]) => (
-              <article key={question} className="rounded-2xl border border-[#DDE8F6] bg-white/62 p-6 backdrop-blur">
-                <h3 className="text-lg font-extrabold text-[#0F1C35]">{question}</h3>
+              <article key={question} className="rounded-2xl border border-[#DDE8F6] bg-white/62 p-5 backdrop-blur">
+                <h3 className="text-base font-extrabold text-[#0F1C35]">{question}</h3>
                 <p className="mt-3 text-sm leading-7 text-[#536C99]">{answer}</p>
               </article>
             ))}

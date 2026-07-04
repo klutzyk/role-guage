@@ -58,11 +58,11 @@ export default function PricingPage() {
 
       <section className="bg-[#043873] px-5 py-10 text-white md:px-8 md:py-14 lg:px-10">
         <div className="mx-auto max-w-7xl">
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#A7CEFC]">Pricing</p>
-          <h1 className="mt-4 max-w-4xl text-4xl font-extrabold leading-tight md:text-6xl">
+          <h1 className="text-4xl font-extrabold leading-tight md:text-6xl">Pricing</h1>
+          <p className="mt-4 max-w-4xl text-2xl font-extrabold leading-tight text-white md:text-4xl">
             Choose the workflow that fits your job search.
-          </h1>
-          <p className="mt-5 max-w-3xl text-base leading-8 text-white/82">
+          </p>
+          <p className="mt-5 max-w-3xl text-sm leading-7 text-white/82 md:text-base">
             Start with fit checks, then upgrade when you want saved reports, profile reuse,
             and a cleaner application workflow.
           </p>
