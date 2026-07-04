@@ -11,7 +11,7 @@ export function SharedFooter() {
           RoleGuage
         </a>
         <div className="flex flex-wrap justify-center gap-6">
-          <a href="#" className="hover:text-[#043873]">Privacy</a>
+          <a href="/privacy" className="hover:text-[#043873]">Privacy</a>
           <a href="#" className="hover:text-[#043873]">Terms</a>
           <a href="#" className="hover:text-[#043873]">Contact</a>
           <a href="#" className="hover:text-[#043873]">Blog</a>
