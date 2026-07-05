@@ -11,7 +11,6 @@ import {
   Link,
   ListChecks,
   Loader2,
-  Plus,
   SearchCheck,
   Target,
   Upload,
@@ -106,8 +105,6 @@ type MatchHistoryItem = {
   result: AnalysisResult;
 };
 
-type InputMode = "import" | "paste";
-
 const sampleResume = `Software Engineer with 4 years of experience building web applications, REST APIs, dashboards, and data pipelines. Skilled in Python, TypeScript, React, PostgreSQL, machine learning, data analysis, cloud deployment, and stakeholder communication. Completed a Master of Data Science in Australia with projects in NLP, predictive modelling, and business analytics.`;
 
 const sampleJob = `We are hiring a Data Analyst / AI Product Engineer in Sydney. The role requires Python, SQL, dashboards, machine learning, stakeholder communication, experimentation, API integration, and experience turning messy business data into actionable insights. Knowledge of React, cloud platforms, and LLM tools is a strong advantage.`;
@@ -181,7 +178,6 @@ export default function Home() {
   const [job, setJob] = useState(sampleJob);
   const [jobUrl, setJobUrl] = useState("");
   const [jobMeta, setJobMeta] = useState<JobMeta>(emptyJobMeta);
-  const [inputMode, setInputMode] = useState<InputMode>("import");
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [resumeFileName, setResumeFileName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -379,34 +375,6 @@ export default function Home() {
     }
   }
 
-  function saveResumeProfile() {
-    if (resume.trim().length < 80) {
-      setError("Add your resume details before saving a profile.");
-      return;
-    }
-
-    window.localStorage.setItem(resumeProfileStorageKey, resume);
-    window.localStorage.setItem(resumeProfileNameStorageKey, resumeFileName || "Saved resume profile");
-    setError("");
-    setMessage("Resume profile saved for this browser.");
-  }
-
-  function useSavedResumeProfile() {
-    const savedResume =
-      window.localStorage.getItem(resumeProfileStorageKey) ??
-      window.localStorage.getItem(legacyResumeProfileStorageKey);
-
-    if (!savedResume) {
-      setError("No saved resume profile found in this browser yet.");
-      return;
-    }
-
-    setResume(savedResume);
-    setResumeFileName(window.localStorage.getItem(resumeProfileNameStorageKey) ?? "Saved resume profile");
-    setError("");
-    setMessage("Loaded your saved resume profile.");
-  }
-
   async function copyReport() {
     if (!result) return;
     await navigator.clipboard.writeText(buildReportText(result, inferJobMeta(job, jobMeta)));
@@ -455,117 +423,62 @@ export default function Home() {
       <section id="matcher" className="px-5 py-8 md:px-8 lg:px-10">
         <div className="mx-auto max-w-4xl rounded-md bg-white p-5 shadow-[0_24px_70px_rgba(4,56,115,0.16)] md:p-7">
           <form onSubmit={analyzeRole}>
-            <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
+            <div>
               <div>
-                <h2 className="text-2xl font-extrabold text-[#212529]">Check your resume against a Job Ad</h2>
+                <h2 className="text-2xl font-extrabold text-[#212529]">Upload your resume</h2>
                 <p className="mt-3 text-sm leading-6 text-[#4F5F6F]">
-                  Start with the sample, upload your resume, or paste your own job ad.
+                  Upload your resume, import a job URL when available, or paste the job description directly below if the page blocks extraction.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={useSavedResumeProfile}
-                  className="h-10 rounded-md border border-[#A7CEFC] bg-white px-3 text-sm font-bold text-[#043873] transition hover:bg-[#A7CEFC]/20"
-                >
-                  Use profile
-                </button>
-                <button
-                  type="button"
-                  onClick={saveResumeProfile}
-                  className="h-10 rounded-md border border-[#FFE492] bg-white px-3 text-sm font-bold text-[#043873] transition hover:bg-[#FFE492]"
-                >
-                  Save profile
-                </button>
-                <a
-                  href="/profile"
-                  className="grid size-10 place-items-center rounded-md border border-[#DDE8F6] bg-white text-[#043873] transition hover:border-[#A7CEFC] hover:bg-[#F8FBFF]"
-                  aria-label="Open profile"
-                >
-                  <Plus size={20} aria-hidden="true" />
-                </a>
-              </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-2 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-1">
-              <button
-                type="button"
-                onClick={() => setInputMode("import")}
-                className={`inline-flex h-12 items-center justify-center gap-2 rounded-md text-sm font-extrabold transition ${
-                  inputMode === "import" ? "bg-[#043873] text-white" : "text-[#043873] hover:bg-white"
-                }`}
-              >
-                <Upload size={17} aria-hidden="true" />
-                PDF + URL
-              </button>
-              <button
-                type="button"
-                onClick={() => setInputMode("paste")}
-                className={`inline-flex h-12 items-center justify-center gap-2 rounded-md text-sm font-extrabold transition ${
-                  inputMode === "paste" ? "bg-[#043873] text-white" : "text-[#043873] hover:bg-white"
-                }`}
-              >
-                <FileText size={17} aria-hidden="true" />
-                Copy text
-              </button>
-            </div>
-
-            {inputMode === "import" ? (
-              <div className="mt-6 grid gap-5">
-                <div className={`rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5 ${resumeFileName ? "grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center" : "text-center"}`}>
-                  {resumeFileName ? (
-                    <div className="min-w-0 text-left">
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F9CF9]">Resume uploaded</p>
-                      <p className="mt-1 truncate text-sm font-extrabold text-[#043873]">{resumeFileName}</p>
-                    </div>
-                  ) : null}
-                  <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-md bg-[#043873] px-5 text-sm font-extrabold text-white transition hover:bg-[#0b4c97]">
-                    {isExtractingResume ? <Loader2 size={17} className="animate-spin" aria-hidden="true" /> : <Upload size={17} aria-hidden="true" />}
-                    {isExtractingResume ? "Reading resume" : resumeFileName ? "Replace Resume PDF" : "Upload Resume PDF"}
-                    <input className="hidden" type="file" accept="application/pdf" onChange={extractResumeFromPdf} />
-                  </label>
-                </div>
-
-                <div className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5">
-                  <p className="flex items-center gap-2 text-sm font-extrabold text-[#212529]">
-                    <Link size={17} className="text-[#4F9CF9]" aria-hidden="true" />
-                    Paste the URL of the job ad
-                  </p>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
-                    <input
-                      value={jobUrl}
-                      onChange={(event) => setJobUrl(event.target.value)}
-                      className="h-12 min-w-0 rounded-md border border-[#DDE8F6] bg-white px-4 text-sm outline-none transition focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
-                      placeholder="https://company.com/careers/job-posting"
-                    />
-                    <button
-                      type="button"
-                      onClick={importJobFromUrl}
-                      disabled={isImportingJob}
-                      className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#043873] px-5 text-sm font-extrabold text-white transition hover:bg-[#0b4c97] disabled:cursor-not-allowed disabled:bg-[#A7CEFC]"
-                    >
-                      {isImportingJob ? <Loader2 size={17} className="animate-spin" aria-hidden="true" /> : <Link size={17} aria-hidden="true" />}
-                      Import job
-                    </button>
+            <div className="mt-6 grid gap-5">
+              <div className={`rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5 ${resumeFileName ? "grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center" : "text-center"}`}>
+                {resumeFileName ? (
+                  <div className="min-w-0 text-left">
+                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F9CF9]">Resume uploaded</p>
+                    <p className="mt-1 truncate text-sm font-extrabold text-[#043873]">{resumeFileName}</p>
                   </div>
-                  <p className="mt-4 text-sm leading-6 text-[#4F5F6F]">
-                    Works best on company career pages and public ATS pages. If a job board blocks extraction, use the copy text tab.
-                  </p>
-                </div>
+                ) : null}
+                <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-md bg-[#043873] px-5 text-sm font-extrabold text-white transition hover:bg-[#0b4c97]">
+                  {isExtractingResume ? <Loader2 size={17} className="animate-spin" aria-hidden="true" /> : <Upload size={17} aria-hidden="true" />}
+                  {isExtractingResume ? "Reading resume" : resumeFileName ? "Replace Resume PDF" : "Upload Resume PDF"}
+                  <input className="hidden" type="file" accept="application/pdf" onChange={extractResumeFromPdf} />
+                </label>
               </div>
-            ) : (
-              <div className="mt-6 grid gap-4 md:grid-cols-2">
-                <InputPanel icon={FileText} label="Resume text" value={resume} onChange={setResume} placeholder="Paste your resume text." compact />
-                <InputPanel icon={FileText} label="Job description" value={job} onChange={setJob} placeholder="Paste the job description." compact />
-              </div>
-            )}
 
-            {inputMode === "import" && (
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <InputPanel icon={FileText} label="Extracted resume text" value={resume} onChange={setResume} placeholder="Resume text appears here." compact />
-                <InputPanel icon={FileText} label="Imported job description" value={job} onChange={setJob} placeholder="Job description appears here." compact />
+              <div className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5">
+                <p className="flex items-center gap-2 text-sm font-extrabold text-[#212529]">
+                  <Link size={17} className="text-[#4F9CF9]" aria-hidden="true" />
+                  Paste the URL of the job ad
+                </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+                  <input
+                    value={jobUrl}
+                    onChange={(event) => setJobUrl(event.target.value)}
+                    className="h-12 min-w-0 rounded-md border border-[#DDE8F6] bg-white px-4 text-sm outline-none transition focus:border-[#4F9CF9] focus:ring-4 focus:ring-[#4F9CF9]/15"
+                    placeholder="https://company.com/careers/job-posting"
+                  />
+                  <button
+                    type="button"
+                    onClick={importJobFromUrl}
+                    disabled={isImportingJob}
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#043873] px-5 text-sm font-extrabold text-white transition hover:bg-[#0b4c97] disabled:cursor-not-allowed disabled:bg-[#A7CEFC]"
+                  >
+                    {isImportingJob ? <Loader2 size={17} className="animate-spin" aria-hidden="true" /> : <Link size={17} aria-hidden="true" />}
+                    Import job
+                  </button>
+                </div>
+                <p className="mt-4 text-sm leading-6 text-[#4F5F6F]">
+                  URL import works best on company career pages and public ATS pages. If a job board blocks extraction, copy the job description from the page and paste it into the job description box below.
+                </p>
               </div>
-            )}
+            </div>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <InputPanel icon={FileText} label="Resume text" value={resume} onChange={setResume} placeholder="Resume text appears here after upload. You can also paste it manually." compact />
+              <InputPanel icon={FileText} label="Job description" value={job} onChange={setJob} placeholder="Import a job URL above, or paste the job description here." compact />
+            </div>
 
             {message ? <p className="mt-4 text-sm font-semibold text-[#007a52]">{message}</p> : null}
             {error ? <p className="mt-4 text-sm font-semibold text-[#b00000]">{error}</p> : null}

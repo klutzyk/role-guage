@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "This job board blocks automated extraction. Paste the job description manually instead.",
+          "This job board blocks automated extraction. Copy the job description from the page and paste it into the job description box below.",
       },
       { status: 422 },
     );
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             error:
-              "This job board blocked the server import request. Use the browser extension or copy the job description into the text tab.",
+              "This job board blocked the server import request. Copy the job description from the page and paste it into the job description box below.",
           },
           { status: 422 },
         );
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "Could not find enough job description text on this page. Paste the job description manually.",
+            "Could not find enough job description text on this page. Copy the job description from the page and paste it into the job description box below.",
         },
         { status: 422 },
       );
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Could not import this job URL. Some job boards block automated extraction, so paste the description manually.",
+          "Could not import this job URL. Some job boards block automated extraction, so paste the job description into the box below.",
       },
       { status: 422 },
     );
