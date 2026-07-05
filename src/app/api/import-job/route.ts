@@ -30,15 +30,30 @@ export async function POST(request: NextRequest) {
   try {
     const response = await fetch(parsedUrl, {
       headers: {
-        Accept: "text/html,application/xhtml+xml",
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-AU,en;q=0.9",
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+        Referer: `${parsedUrl.origin}/`,
         "User-Agent":
-          "Mozilla/5.0 (compatible; RoleGuageJobImporter/0.1; +https://roleguage.local)",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
       redirect: "follow",
       signal: AbortSignal.timeout(10000),
     });
 
     if (!response.ok) {
+      if (response.status === 403) {
+        return NextResponse.json(
+          {
+            error:
+              "This job board blocked the server import request. Use the browser extension or copy the job description into the text tab.",
+          },
+          { status: 422 },
+        );
+      }
+
       return NextResponse.json(
         { error: `Could not fetch this job page. Status: ${response.status}.` },
         { status: 422 },
