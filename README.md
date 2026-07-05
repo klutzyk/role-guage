@@ -1,62 +1,61 @@
-# Role Guage
+# RoleGuage
 
-Role Guage is a job-search workspace for jobseekers who want to apply with better focus. It compares a resume against a real job ad, scores fit, identifies evidence gaps, and turns the result into practical application notes.
+RoleGuage helps jobseekers compare a resume against a real job description before spending time applying. It highlights fit, evidence gaps, hard requirements, salary signals, resume suggestions, and a tailored cover letter draft.
+
+The product is focused on application preparation. It does not auto-apply to jobs, submit applications, bypass job-board restrictions, or scrape private job-board data.
 
 ## Product
 
-This version includes:
+Current features:
 
-- Apply Agent command center for application batching and assisted submission planning
-- Resume and job description matching workflow
-- Chrome extension MVP for manually analyzing the current job page or selected job text
-- Deterministic fit scoring API at `src/app/api/analyze/route.ts`
-- Extension analysis API at `src/app/api/extension/analyze/route.ts`
-- Job URL import API at `src/app/api/import-job/route.ts`
-- Job discovery API at `src/app/api/discover-jobs/route.ts`
-- Resume PDF extraction API at `src/app/api/extract-resume/route.ts`
-- Weighted skill taxonomy with aliases
-- Matched skill extraction
-- Missing evidence detection
-- Must-have requirement detection
-- Role signal extraction
-- Apply / tailor / build-evidence / skip recommendation
-- Next-best-action and time-to-apply estimate
-- Score explanation with matched job skills, resume matches, and required gaps
-- Keyword plan with keep/add priorities
-- Resume bullet guidance
-- Interview prep prompts
-- Outreach note draft
-- ATS sanity checks
-- Job metadata capture for title, company, location, and source URL
-- Browser-saved resume profile
-- Best-fit job recommendations from company career pages and public ATS feeds
-- Optional Gemini AI/RAG enrichment for job briefs and fit reports
-- Local retrieval context selection before generation to reduce token usage
-- Structured JSON AI outputs with deterministic fallbacks
-- AI-generated fit reasoning, resume guidance, interview prep, outreach, ATS notes, and skill-gap roadmaps
-- Local application tracker with status and notes
-- Copy/download fit report export
-- Clean utility-first product site with workflow, trust, pricing, and FAQ sections
+- Resume-to-job fit scoring
+- Job URL import for public pages and manual job-description paste fallback
+- PDF resume extraction
+- Saved browser profile for reusable resume text and candidate details
+- Hard requirement checks for work rights, location, licences, clearance, salary, and other must-have constraints
+- Salary extraction when the job ad includes a salary range
+- Matched skill and evidence-gap detection
+- Apply / Tailor / Build / Skip recommendation
+- Next-best-action guidance
+- Evidence-based fit reasoning
+- Resume bullet suggestions
+- Cover letter generation with saved writing style preferences and example letters
+- Match history saved locally in the browser
+- Chrome extension for analyzing the job page the user is viewing
+- Privacy policy page for the web app and extension listing
 
-Saved applications and the saved resume profile are stored in browser `localStorage` for this local-first version. A production version should add account auth, encrypted database storage, payments, analytics, user-controlled deletion, and optional AI writing assistance.
+Saved resumes, candidate details, writing preferences, example letters, and match history are stored in the user's browser for this local-first version. The app sends resume/job context to the configured LLM provider only when the user generates AI-assisted guidance or a cover letter.
 
-Job URL import works best with company career pages and public ATS pages. Some large job boards block automated extraction, so the app keeps manual paste as the fallback.
+## AI Architecture
 
-Job discovery uses a local ingestion layer for public company career pages and ATS feeds. The first implementation supports Greenhouse and SmartRecruiters sources with a curated seed list and optional `ROLEGUAGE_JOB_SOURCES_JSON` configuration. Results are normalized, deduplicated, cached in memory, and scored against the active resume. RapidAPI providers are disabled by default and must be explicitly enabled with `RAPIDAPI_JOBS_ENABLED=true` to avoid burning small free-tier quotas.
+RoleGuage uses a rules-first, AI-assisted workflow:
 
-SEEK, Indeed, and LinkedIn direct coverage should still be handled through approved APIs, licensed providers, or explicit crawling permission rather than brittle scraping.
+- Deterministic matching handles fast fit scoring, skill overlap, hard blockers, and salary signals.
+- Local profile extraction and retrieval select compact resume/job context before generation.
+- The AI step enriches the report with user-facing recommendations and cover letter drafts.
+- Cover letter generation is split into a narrative step and a writer step so the writer sees compact verified context instead of the full raw resume.
+- User writing preferences and example letters guide the cover letter style.
+- Model calls use structured JSON outputs, timeout protection, in-memory caching, fallback models, and deterministic fallback content.
+- Prompts require truthful, evidence-based output and reject invented experience.
+
+Supported LLM providers:
+
+- Groq, preferred for fast and low-cost local testing.
+- Gemini, optional fallback or alternative provider.
 
 ## Chrome Extension
 
-The `extension/` folder contains an unpacked Chrome extension MVP. It is intentionally user-triggered:
+The `extension/` folder contains the Chrome extension source.
 
-- The user opens a job page.
-- The user clicks the RoleGuage extension.
-- The extension reads selected text first, or extracts visible page text after the click.
-- The extension sends the resume and job text to the local RoleGuage API.
-- The popup returns a fit score, matched skills, gaps, next action, and resume bullet guidance.
+The extension workflow:
 
-This avoids server-side job-board crawling and keeps the product focused on application help, not mass scraping. For the safest workflow on restricted sites, highlight the job description yourself and click `Extract page` so RoleGuage analyzes user-selected text.
+1. The user opens a job page.
+2. The user opens the RoleGuage extension.
+3. The extension extracts visible job-page text after the user's action.
+4. The extension sends the saved resume and extracted job text to the RoleGuage API.
+5. The popup returns the recommendation, fit score, matched evidence, gaps, resume bullets, and cover letter draft.
+
+This is user-triggered page analysis, not background crawling or automated application submission.
 
 Install locally:
 
@@ -66,72 +65,40 @@ Install locally:
 4. Click `Load unpacked`.
 5. Select the `extension/` folder.
 
-The local extension expects the app to run on `http://localhost:3000`. For production, update `extension/manifest.json` and `extension/popup.js` to use the deployed RoleGuage domain, then add a privacy policy before publishing.
+For production, update the extension API base URL to `https://roleguage.com`, rebuild the extension package, and submit the zipped extension folder through the Chrome Web Store dashboard.
 
-## Apply Agent Direction
+## Environment Variables
 
-RoleGuage is moving toward a job application agent, not just a fit checker. The current implementation adds the product surface for batching applications, setting fit thresholds, estimating run time, and separating safe automation modes:
-
-- Assisted fill: prepare answers/materials and keep final submission user-controlled.
-- Review then submit: allow faster batches after the user has approved generated content.
-- Allowed sites only: reserve full automation for company career pages or ATS flows that permit it.
-
-The architecture should avoid credential collection, CAPTCHA bypassing, account evasion, or hidden mass submission. LinkedIn and Indeed both restrict unauthorized bots/automation, so the practical path is a browser extension or local companion that helps the user fill forms, preserves an audit log, and only submits where the user has approved the action and the target site permits it.
-
-Future implementation layers:
-
-- Browser extension for detecting form fields and filling reusable profile answers.
-- Local Playwright/native companion for user-owned browser sessions on allowed sites.
-- Application queue with dedupe, rate limits, quality gates, and per-site rules.
-- Answer bank for common screener questions.
-- Tailored resume/cover snippets generated from truthful resume evidence.
-- Submission audit log with URL, timestamp, materials used, and final status.
-
-## AI/RAG Architecture
-
-RoleGuage uses a rules-first, AI-second architecture:
-
-- Deterministic matching scores many jobs quickly and cheaply.
-- Local RAG chunking retrieves only the most relevant resume and job snippets before generation.
-- Gemini structured JSON output enriches selected reports and visible job summaries when `GEMINI_API_KEY` is configured.
-- AI calls have timeout protection, in-memory caching, and deterministic fallbacks.
-- The app never asks AI to invent experience; prompts require evidence-based, truthful guidance only.
-
-Configure AI locally:
+Create a local environment file:
 
 ```bash
 copy .env.example .env.local
 ```
 
-Then add:
+Required for AI generation with Groq:
 
 ```bash
-GEMINI_API_KEY=your_key_here
-GEMINI_MODEL=gemini-2.5-flash-lite
-GEMINI_TIMEOUT_MS=12000
-ROLEGUAGE_JOB_SOURCE_LIMIT=6
-ROLEGUAGE_MAX_INGESTED_JOBS=80
-ROLEGUAGE_JOB_SOURCE_TIMEOUT_MS=14000
-ROLEGUAGE_SMARTRECRUITERS_LIST_LIMIT=100
-ROLEGUAGE_SMARTRECRUITERS_DETAIL_LIMIT=30
-ROLEGUAGE_JOB_SOURCES_JSON=
-RAPIDAPI_KEY=your_rapidapi_key
-RAPIDAPI_JOBS_ENABLED=false
-RAPIDAPI_JOBS_PROVIDER=linkedin
-RAPIDAPI_LINKEDIN_JOBS_HOST=linkedin-job-search-api.p.rapidapi.com
-RAPIDAPI_LINKEDIN_JOBS_ENDPOINT=active-jb-7d
-RAPIDAPI_LINKEDIN_JOBS_FALLBACK_ENDPOINT=active-jb-6m
-RAPIDAPI_LINKEDIN_AUTO_BROADEN=false
-RAPIDAPI_LINKEDIN_JOBS_TIMEOUT_MS=18000
-RAPIDAPI_JSEARCH_HOST=jsearch.p.rapidapi.com
-RAPIDAPI_JSEARCH_TIMEOUT_MS=22000
+LLM_PROVIDER=groq
+GROQ_API_KEY=your_groq_key_here
+GROQ_MODEL=openai/gpt-oss-20b
+GROQ_FALLBACK_MODELS=openai/gpt-oss-120b,llama-3.3-70b-versatile,meta-llama/llama-4-scout-17b-16e-instruct
 ```
 
-Custom ATS sources can be added without code changes:
+Optional Gemini configuration:
 
 ```bash
-ROLEGUAGE_JOB_SOURCES_JSON=[{"kind":"smartrecruiters","name":"Canva","slug":"canva"},{"kind":"greenhouse","name":"Culture Amp","slug":"cultureamp"}]
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your_gemini_key_here
+GEMINI_MODEL=gemini-2.5-flash
 ```
+
+Optional timeout override:
+
+```bash
+GEMINI_TIMEOUT_MS=18000
+```
+
+No RapidAPI, LinkedIn, Indeed, SEEK, JSearch, Adzuna, or job-discovery API keys are required for the current product direction.
 
 ## Tech Stack
 
@@ -140,17 +107,10 @@ ROLEGUAGE_JOB_SOURCES_JSON=[{"kind":"smartrecruiters","name":"Canva","slug":"can
 - TypeScript
 - Tailwind CSS
 - lucide-react icons
-- @google/genai
+- Groq OpenAI-compatible chat completions
+- Gemini API support
 - cheerio
 - pdfjs-dist
-
-Planned additions:
-
-- PostgreSQL
-- Prisma
-- Auth
-- Optional AI writing assistant
-- Job discovery from saved resume profiles
 
 ## Getting Started
 
@@ -175,3 +135,15 @@ npm run dev
 npm run build
 npm run lint
 ```
+
+## Production Notes
+
+Before handling real users at scale, add:
+
+- Authentication for cloud-saved profiles
+- Rate limiting for AI endpoints
+- Abuse protection and request quotas
+- User-controlled export and deletion
+- Stronger privacy logging controls
+- Security headers and monitoring
+- Legal review of the privacy policy and extension disclosures
