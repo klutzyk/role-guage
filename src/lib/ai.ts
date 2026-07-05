@@ -1112,6 +1112,10 @@ function validateCoverLetterText(text: string, model: string) {
 
 function sanitizeCoverLetterStyle(text: string) {
   return text
+    .replace(/\bDear\s+\[[^\]]+\]\s*,?/gi, "Hi team,")
+    .replace(/\bHi\s+\[[^\]]+\]\s*,?/gi, "Hi team,")
+    .replace(/\[[^\]]+\]/g, "")
+    .replace(/\bplaceholder\b/gi, "")
     .replace(/\bI look forward to (?:discussing|speaking|hearing|the opportunity to discuss)[^.]*\.\s*/gi, "")
     .replace(/\bI am excited to\b/gi, "I am applying to")
     .replace(/\bI'm excited to\b/gi, "I am applying to")
@@ -1234,7 +1238,7 @@ function cleanGeneratedText(text: string) {
 function isRetryableTextError(error: unknown) {
   if (!(error instanceof Error)) return false;
 
-  return /too short|included placeholders|style guard/i.test(error.message);
+  return /too short/i.test(error.message);
 }
 
 function parseJsonResponse<T>(text: string) {
