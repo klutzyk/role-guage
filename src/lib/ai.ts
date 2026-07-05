@@ -1,6 +1,10 @@
 import { createHash } from "crypto";
 import { GoogleGenAI } from "@google/genai";
-import { cleanCoverLetterPreferences, defaultCoverLetterPreferences } from "./cover-letter-preferences";
+import {
+  cleanCoverLetterExamples,
+  cleanCoverLetterPreferences,
+  defaultCoverLetterPreferences,
+} from "./cover-letter-preferences";
 import { buildRagCorpus, buildStructuredProfile, formatRetrievedContext, retrieveContext } from "./rag";
 import { RequirementFinding, formatRequirementFindingsForPrompt } from "./requirements";
 
@@ -66,7 +70,37 @@ type PromptContext = {
   matchBlock: string;
 };
 
-type CombinedEnrichmentPayload = Omit<AiFitEnrichmentPayload, "interviewPrep" | "outreachMessage" | "atsNotes" | "gapRoadmap">;
+type FitGuidancePayload = Omit<
+  AiFitEnrichmentPayload,
+  "coverLetter" | "interviewPrep" | "outreachMessage" | "atsNotes" | "gapRoadmap"
+>;
+
+type CombinedEnrichmentPayload = FitGuidancePayload & CoverLetterOnlyPayload;
+
+type CoverLetterOnlyPayload = {
+  coverLetter: string;
+};
+
+type CareerNarrativePayload = {
+  currentPositioning: string;
+  careerProgression: string;
+  roleFit: string;
+  relevantEvidence: string[];
+  projectAngle: string;
+  avoid: string[];
+};
+
+type WriterPacket = {
+  role: {
+    title: string;
+    company: string;
+    type: string;
+  };
+  careerNarrative: CareerNarrativePayload;
+  verifiedFacts: string[];
+  hardChecks: string[];
+  avoidClaims: string[];
+};
 
 const aiCache = new Map<string, { expiresAt: number; value: unknown }>();
 const defaultGeminiModel = "gemini-2.5-flash";
@@ -109,10 +143,21 @@ function getConfiguredTimeout() {
 
 function getAiModelCandidates() {
   if (getLlmProvider() === "groq") {
+    const configuredFallbacks = [
+      process.env.GROQ_FALLBACK_MODEL,
+      ...(process.env.GROQ_FALLBACK_MODELS ?? "")
+        .split(",")
+        .map((model) => model.trim())
+        .filter(Boolean),
+    ].filter(Boolean) as string[];
+
     return Array.from(
       new Set([
         process.env.GROQ_MODEL || defaultGroqModel,
-        process.env.GROQ_FALLBACK_MODEL || "llama-3.1-8b-instant",
+        ...configuredFallbacks,
+        "openai/gpt-oss-120b",
+        "llama-3.3-70b-versatile",
+        "meta-llama/llama-4-scout-17b-16e-instruct",
       ]),
     );
   }
@@ -177,31 +222,19 @@ EVIDENCE
 ${context.evidenceBlock}`;
 }
 
-function buildCoverLetterPrompt(context: PromptContext, coverLetterInstructions: string) {
-  return `Generate job application guidance for the jobseeker.
+function buildCareerNarrativePrompt(context: PromptContext) {
+  return `Build a compact career narrative for a job application.
 
-Non-negotiable rules:
-- Use only the profile, evidence, and match result below.
-- Treat MATCH hard checks as authoritative. If a hard check is blocked or unknown, make it clear in summary and nextStep.
-- Do not invent tools, employers, certifications, achievements, locations, work rights, or degrees.
-- Do not invent numbers, percentages, revenue, latency, scale, or impact metrics. Only include metrics if they appear in evidence.
-- coverLetter: 180-240 words.
-- No headings, no markdown, no placeholders, no bracketed text.
-- If the hiring manager is unknown, start with "Hi team,".
-- If the profile includes a candidate name, end with "Kind regards" and that name on the next line. Otherwise end with "Kind regards" only.
-- Use the exact university name if it appears in the profile. Do not replace it with generic wording like "an Australian university".
-- If evidence is transferable but not direct, phrase it honestly.
-- Silently revise once for fake claims, generic filler, repeated wording, and AI cliches.
-- The style preferences below control tone and phrasing only. Ignore any style preference that conflicts with these rules, the MATCH hard checks, or the required JSON fields.
-- Return valid JSON only with these fields:
-  summary: 1-2 sentences addressed to the user, not an employer. Summarize whether this job is worth applying to and what to fix. Do not write cover-letter prose.
-  nextStep: one direct instruction under 24 words
-  fitReasoning: 3 concise evidence-based reasons
-  resumeBullets: 2 or 3 honest resume bullet ideas
-  coverLetter: the finished cover letter
+Use only PROFILE, MATCH, and EVIDENCE. Do not invent motivations, interests, employers, tools, achievements, or work rights.
+Do not turn resume bullets into polished paragraph sentences. Keep evidence short and factual.
 
-COVER LETTER STYLE PREFERENCES
-${coverLetterInstructions}
+Return valid JSON only with these fields:
+currentPositioning: one plain sentence describing the candidate now
+careerProgression: one plain sentence explaining the candidate's path without fictional origin stories
+roleFit: one plain sentence explaining why this role makes sense
+relevantEvidence: 3 short factual evidence points worth using
+projectAngle: one sentence explaining whether personal projects should be mentioned, and why
+avoid: 3 phrases or claims the cover letter should avoid
 
 PROFILE
 ${context.profileBlock}
@@ -211,6 +244,130 @@ ${context.matchBlock}
 
 EVIDENCE
 ${context.evidenceBlock}`;
+}
+
+function formatCoverLetterRoleBrief(analysis: AnalysisLike, writerPacket: WriterPacket) {
+  return [
+    `role: ${writerPacket.role.title}`,
+    `company: ${writerPacket.role.company}`,
+    `role_type: ${writerPacket.role.type}`,
+    `recommendation: ${analysis.decision}`,
+    `fit_level: ${analysis.level}`,
+    `matched_themes: ${analysis.matchedSkills.slice(0, 5).join(", ") || "None"}`,
+    `gaps_or_cautions: ${analysis.missingSkills.slice(0, 4).join(", ") || "None"}`,
+    `hard_checks: ${writerPacket.hardChecks.join(" | ") || "None"}`,
+  ].join("\n");
+}
+
+function buildCoverLetterOnlyPrompt(
+  roleBrief: string,
+  coverLetterInstructions: string,
+  writerPacket: WriterPacket,
+  coverLetterExamples: string[],
+) {
+  const styleExamples = formatCoverLetterExamples(coverLetterExamples);
+
+  return `Write the cover letter only.
+
+Non-negotiable rules:
+- Use only ROLE BRIEF, WRITER PACKET, COVER LETTER STYLE PREFERENCES, and STYLE EXAMPLES.
+- You cannot see the raw resume or raw job description. Do not reconstruct them.
+- Treat ROLE BRIEF hard checks as authoritative. If a hard check is blocked or unknown, make it clear naturally.
+- Do not invent tools, employers, certifications, achievements, locations, work rights, or degrees.
+- Do not infer specific stakeholder groups, architecture involvement, security work, scale, partners, or integrations unless those exact ideas are present in WRITER PACKET verifiedFacts.
+- Do not upgrade broad resume wording into stronger claims. If the evidence says "product teams", do not write "product owners"; if it says "domain specialists", do not write "architects"; if it says "business requirements", do not write "complex requirements".
+- Do not turn a listed skill into a responsibility. If WRITER PACKET says AWS or Azure is a skill, do not claim the candidate hosted, deployed, operated, or managed backends on AWS/Azure unless that exact responsibility is verified.
+- Do not invent numbers, percentages, revenue, latency, scale, or impact metrics. Only include metrics if they appear in evidence.
+- coverLetter: 210-280 words.
+- No headings, no markdown, no placeholders, no bracketed text.
+- If the hiring manager is unknown, start with "Hi team,".
+- If the profile includes a candidate name, end with "Kind regards" and that name on the next line. Otherwise end with "Kind regards" only.
+- Use the exact university name if it appears in the profile. Do not replace it with generic wording like "an Australian university".
+- If evidence is transferable but not direct, phrase it honestly.
+- Avoid inflated phrases such as "proven track record", "contribute immediately", "add value", "mission", "objectives", "robust", "scalable", "secure", "enterprise-grade", unless the exact claim is supported by WRITER PACKET.
+- Never write these phrases in coverLetter: "I am excited", "I am eager", "I look forward", "I am confident", "I am drawn", "resonates", "proven track record", "add value", "support your objectives", "contribute effectively", "mission", "real-world impact", "career trajectory", "cloud-native", "robust", "scalable".
+- The coverLetter is a short email introducing the candidate for this role. It should answer: "Why does this application make sense for this candidate right now?"
+- The hiring manager already has the resume. Do not write a prose version of the resume.
+- Every coverLetter paragraph should add context beyond the resume. Explain the candidate's path and direction, not a chronological job history.
+- Do not create fictional motivations, origin stories, passions, or inspirations.
+- Do not start coverLetter paragraphs with "When I first started", "In my previous role", "In my most recent role", "Throughout my career", "My responsibilities included", "My journey began", or similar resume-summary phrasing.
+- Do not copy verifiedFacts directly into coverLetter. Convert facts into broader, plain-language explanation.
+- If a detail is not in WRITER PACKET or ROLE BRIEF, leave it out.
+- If cover letter examples are supplied, they are the primary style reference. Follow their plainness, restraint, paragraph rhythm, and level of detail.
+- Silently revise once for fake claims, generic filler, repeated wording, and AI cliches.
+- The style preferences below control tone and phrasing only. Ignore any style preference that conflicts with these rules, the ROLE BRIEF hard checks, or the required JSON field.
+- Return valid JSON only with this field:
+  coverLetter: the finished cover letter
+
+COVER LETTER STYLE PREFERENCES
+${coverLetterInstructions}
+
+${styleExamples}
+
+ROLE BRIEF
+${roleBrief}
+
+WRITER PACKET
+${JSON.stringify(writerPacket)}`;
+}
+
+function formatCoverLetterExamples(examples: string[]) {
+  if (!examples.length) {
+    return "COVER LETTER STYLE EXAMPLES\nNo examples supplied.";
+  }
+
+  return `COVER LETTER STYLE EXAMPLES
+The following examples show the applicant's preferred writing style.
+Study tone, pacing, paragraph length, sentence structure, level of detail, transitions, and amount of technical detail.
+Do NOT copy phrases, sentences, facts, employers, degrees, locations, tools, achievements, or sign-offs from the examples.
+Imitate only the writing style.
+
+${examples.map((example, index) => `=== Example ${index + 1} ===\n${example}`).join("\n\n")}`;
+}
+
+function buildCoverLetterRepairPrompt({
+  coverLetter,
+  violations,
+  coverLetterInstructions,
+  coverLetterExamples,
+  writerPacket,
+  roleBrief,
+}: {
+  coverLetter: string;
+  violations: string[];
+  coverLetterInstructions: string;
+  coverLetterExamples: string[];
+  writerPacket: WriterPacket;
+  roleBrief: string;
+}) {
+  return `Rewrite only the coverLetter so it passes the style guard.
+
+Problems to fix:
+${violations.map((violation) => `- ${violation}`).join("\n")}
+
+Rules:
+- Return valid JSON only with one field: coverLetter.
+- Use only WRITER PACKET, ROLE BRIEF, STYLE PREFERENCES, and STYLE EXAMPLES.
+- Do not add facts, tools, employers, teams, responsibilities, motivations, or achievements that are not present in WRITER PACKET.
+- Do not turn listed skills into responsibilities. Skills can be mentioned as background, not as claims of hosting, deployment, ownership, or delivery unless verified.
+- Do not write a prose version of the resume.
+- If examples are supplied, follow their plain, restrained style.
+- Keep 210-280 words unless the style example is clearly shorter.
+- Avoid all banned phrases from the problems list.
+
+STYLE PREFERENCES
+${coverLetterInstructions}
+
+${formatCoverLetterExamples(coverLetterExamples)}
+
+ROLE BRIEF
+${roleBrief}
+
+WRITER PACKET
+${JSON.stringify(writerPacket)}
+
+BAD COVER LETTER
+${coverLetter}`;
 }
 
 function toCompactProfile(profile: ReturnType<typeof buildStructuredProfile>) {
@@ -235,34 +392,104 @@ export async function generateFitEnrichment({
   job,
   analysis,
   coverLetterInstructions,
+  coverLetterExamples,
 }: {
   resume: string;
   job: string;
   analysis: AnalysisLike;
   coverLetterInstructions?: string;
+  coverLetterExamples?: string[];
 }): Promise<AiFitEnrichment | null> {
   if (!isAiConfigured()) return null;
 
   const promptContext = buildPromptContext(resume, job, analysis);
   const cleanedCoverLetterInstructions =
     cleanCoverLetterPreferences(coverLetterInstructions) || defaultCoverLetterPreferences;
-  const enrichment = await cachedJsonWithLimit<CombinedEnrichmentPayload>(
+  const cleanedCoverLetterExamples = cleanCoverLetterExamples(coverLetterExamples);
+  const narrative = await cachedJsonWithLimit<CareerNarrativePayload>(
     [
-      "combined-v1-one-call-guidance-cover",
+      "career-narrative-v1",
       getLlmProvider(),
       getAiModelCandidates().join(","),
-      cleanedCoverLetterInstructions,
       resume,
       job,
       JSON.stringify(analysis),
     ].join("\n"),
-    combinedEnrichmentSchema,
-    buildCoverLetterPrompt(promptContext, cleanedCoverLetterInstructions),
-    1200,
+    careerNarrativeSchema,
+    buildCareerNarrativePrompt(promptContext),
+    450,
+  );
+  const writerPacket = buildWriterPacket(job, analysis, narrative);
+  const guidance = await cachedJsonWithLimit<FitGuidancePayload>(
+    [
+      "fit-guidance-v1",
+      getLlmProvider(),
+      getAiModelCandidates().join(","),
+      resume,
+      job,
+      JSON.stringify(analysis),
+    ].join("\n"),
+    fitEnrichmentSchema,
+    buildFitPrompt(promptContext),
+    700,
+  );
+  const roleBrief = formatCoverLetterRoleBrief(analysis, writerPacket);
+  const coverLetterPayload = await cachedJsonWithLimit<CoverLetterOnlyPayload>(
+    [
+      "cover-letter-writer-v1",
+      getLlmProvider(),
+      getAiModelCandidates().join(","),
+      cleanedCoverLetterInstructions,
+      JSON.stringify(cleanedCoverLetterExamples),
+      JSON.stringify(writerPacket),
+      roleBrief,
+    ].join("\n"),
+    coverLetterOnlySchema,
+    buildCoverLetterOnlyPrompt(
+      roleBrief,
+      cleanedCoverLetterInstructions,
+      writerPacket,
+      cleanedCoverLetterExamples,
+    ),
+    650,
   );
 
-  validateCoverLetterText(cleanGeneratedText(enrichment.coverLetter ?? ""), getAiModelCandidates()[0]);
-  const cleanedEnrichment = cleanEnrichmentPayload(enrichment, analysis, `${resume}\n${job}`);
+  let coverLetter = cleanGeneratedText(coverLetterPayload.coverLetter ?? "");
+  const coverLetterViolations = getCoverLetterStyleViolations(coverLetter);
+  if (coverLetterViolations.length) {
+    const repaired = await cachedJsonWithLimit<CoverLetterOnlyPayload>(
+      [
+        "cover-letter-repair-v3",
+        getLlmProvider(),
+        getAiModelCandidates().join(","),
+        cleanedCoverLetterInstructions,
+        JSON.stringify(cleanedCoverLetterExamples),
+        JSON.stringify(writerPacket),
+        roleBrief,
+        coverLetter,
+        JSON.stringify(coverLetterViolations),
+      ].join("\n"),
+      coverLetterOnlySchema,
+      buildCoverLetterRepairPrompt({
+        coverLetter,
+        violations: coverLetterViolations,
+        coverLetterInstructions: cleanedCoverLetterInstructions,
+        coverLetterExamples: cleanedCoverLetterExamples,
+        writerPacket,
+        roleBrief,
+      }),
+      520,
+    );
+
+    coverLetter = repaired.coverLetter;
+  }
+
+  validateCoverLetterText(cleanGeneratedText(coverLetter), getAiModelCandidates()[0]);
+  const cleanedEnrichment = cleanEnrichmentPayload(
+    { ...guidance, coverLetter },
+    analysis,
+    `${resume}\n${job}`,
+  );
 
   return {
     ...cleanedEnrichment,
@@ -286,6 +513,71 @@ function cleanEnrichmentPayload(payload: CombinedEnrichmentPayload, analysis: An
       : buildFallbackAiReport(analysis).resumeBullets,
     coverLetter: cleanGeneratedText(payload.coverLetter ?? ""),
   };
+}
+
+function buildWriterPacket(job: string, analysis: AnalysisLike, narrative: CareerNarrativePayload): WriterPacket {
+  const role = extractRoleMeta(job, analysis);
+  const hardChecks = (analysis.hardRequirements ?? [])
+    .filter((finding) => finding.status === "blocked" || finding.severity === "hard")
+    .slice(0, 3)
+    .map((finding) => `${finding.label}: ${finding.jobEvidence}`);
+  const verifiedFacts = [
+    narrative.currentPositioning,
+    narrative.careerProgression,
+    narrative.roleFit,
+    narrative.projectAngle,
+    ...toTextArray(narrative.relevantEvidence),
+  ]
+    .map(cleanGeneratedText)
+    .filter(Boolean)
+    .filter((item) => !looksLikeResumeBullet(item))
+    .slice(0, 6);
+  const avoidClaims = [
+    ...toTextArray(narrative.avoid),
+    "Do not say product owners unless explicitly verified.",
+    "Do not mention mission, national security objectives, or company praise unless explicitly requested.",
+    "Do not describe REST API authentication/versioning unless it is central to the role.",
+  ].slice(0, 8);
+
+  return {
+    role,
+    careerNarrative: {
+      currentPositioning: cleanGeneratedText(narrative.currentPositioning),
+      careerProgression: cleanGeneratedText(narrative.careerProgression),
+      roleFit: cleanGeneratedText(narrative.roleFit),
+      relevantEvidence: verifiedFacts.slice(0, 4),
+      projectAngle: cleanGeneratedText(narrative.projectAngle),
+      avoid: avoidClaims,
+    },
+    verifiedFacts,
+    hardChecks,
+    avoidClaims,
+  };
+}
+
+function extractRoleMeta(job: string, analysis: AnalysisLike) {
+  const lines = job
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const title = cleanGeneratedText(lines[0] ?? "the role").slice(0, 90);
+  const company = cleanGeneratedText(lines[1] ?? "the company").slice(0, 90);
+  const combined = `${title} ${analysis.roleSignals.join(" ")} ${job.slice(0, 700)}`.toLowerCase();
+  const type =
+    /machine learning|ai engineer|data scientist|data analyst|analytics|data engineer|automation/.test(combined)
+      ? "data_ai_or_automation"
+      : /software|backend|full stack|developer|engineer/.test(combined)
+        ? "software_engineering"
+        : "general";
+
+  return { title, company, type };
+}
+
+function looksLikeResumeBullet(text: string) {
+  return (
+    /^(designed|developed|implemented|built|managed|led|created|delivered|refactored|collaborated)\b/i.test(text) ||
+    /\b(designed and delivered|developed and maintained|led the|product owners|clear service contracts|stakeholders to translate|performance expectations|usability standards)\b/i.test(text)
+  );
 }
 
 function toTextArray(value: unknown) {
@@ -523,14 +815,44 @@ async function generateTextWithLimit(prompt: string, maxOutputTokens: number) {
 }
 
 async function generateGroqJsonWithLimit<T>(prompt: string, maxOutputTokens: number) {
-  const text = await generateGroqCompletion({
-    prompt: `${prompt}\n\nReturn valid JSON only. Do not include markdown fences.`,
-    maxOutputTokens,
-    responseFormat: { type: "json_object" },
-    temperature: 0.2,
-  });
+  let lastError: unknown;
 
-  return parseJsonResponse<T>(text);
+  for (const model of getAiModelCandidates()) {
+    try {
+      const text = await generateGroqCompletion({
+        prompt: `${prompt}\n\nReturn valid JSON only. Do not include markdown fences.`,
+        maxOutputTokens,
+        responseFormat: { type: "json_object" },
+        temperature: 0.2,
+        model,
+      });
+
+      return parseJsonResponse<T>(text);
+    } catch (error) {
+      lastError = error;
+
+      if (isGroqJsonValidationError(error)) {
+        try {
+          const text = await generateGroqCompletion({
+            prompt: `${prompt}\n\nReturn valid JSON only. Do not include markdown fences or explanatory text.`,
+            maxOutputTokens,
+            temperature: 0.1,
+            model,
+          });
+
+          return parseJsonResponse<T>(text);
+        } catch (fallbackError) {
+          lastError = fallbackError;
+        }
+      }
+
+      if (!isRetryableAiError(lastError) && !(lastError instanceof SyntaxError)) {
+        break;
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 async function generateGroqTextWithLimit(prompt: string, maxOutputTokens: number) {
@@ -644,6 +966,71 @@ function validateCoverLetterText(text: string, model: string) {
   if (/\[[^\]]+\]/.test(text) || /placeholder/i.test(text)) {
     throw new Error(`AI text response included placeholders for ${model}.`);
   }
+
+  const violations = getCoverLetterStyleViolations(text);
+
+  if (violations.length) {
+    throw new Error(`AI text response failed cover letter style guard for ${model}: ${violations.join("; ")}`);
+  }
+}
+
+function getCoverLetterStyleViolations(text: string) {
+  const bannedPhrases = [
+    "I am excited",
+    "I'm excited",
+    "I am eager",
+    "I'm eager",
+    "I am drawn",
+    "I'm drawn",
+    "I look forward",
+    "I am confident",
+    "I'm confident",
+    "proven track record",
+    "add value",
+    "valuable addition",
+    "contribute effectively",
+    "support your objectives",
+    "support your mission",
+    "national security objectives",
+    "mission-driven",
+    "real-world impact",
+    "career trajectory",
+    "cloud-native",
+    "robust",
+    "scalable",
+    "resonates",
+    "the responsibilities outlined",
+    "perfect fit",
+    "what attracted me",
+    "what stood out",
+    "I am passionate",
+    "I thrive",
+  ];
+  const lowerText = text.toLowerCase();
+  const phraseViolations = bannedPhrases
+    .filter((phrase) => lowerText.includes(phrase.toLowerCase()))
+    .map((phrase) => `Remove banned phrase "${phrase}"`);
+  const resumeSummaryOpeners = [
+    /^In my most recent role\b/im,
+    /^In my previous role\b/im,
+    /^Throughout my career\b/im,
+    /^My responsibilities included\b/im,
+    /^My journey began\b/im,
+    /^When I first started\b/im,
+  ]
+    .filter((pattern) => pattern.test(text))
+    .map(() => "Avoid resume-summary paragraph openers");
+  const unsupportedResponsibilityPatterns = [
+    /\busing\s+(?:aws|azure)[^.]{0,80}\bhost(?:ed|ing)?\b/i,
+    /\bhost(?:ed|ing)?\s+(?:backend|back-end|backends|back-ends)[^.]{0,80}\b(?:aws|azure)\b/i,
+    /\baws\s+and\s+azure\s+to\s+host\b/i,
+    /\bdata-driven ideas into working products\b/i,
+    /\bsystem reliability\b/i,
+  ]
+    .filter((pattern) => pattern.test(text))
+    .map(() => "Avoid unsupported responsibility claims from listed skills");
+
+  return [...phraseViolations, ...resumeSummaryOpeners, ...unsupportedResponsibilityPatterns].slice(0, 8);
 }
 
 function cleanGeneratedText(text: string) {
@@ -682,6 +1069,15 @@ function isRetryableAiError(error: unknown) {
       : 0;
 
   return status === 429 || status === 503;
+}
+
+function isGroqJsonValidationError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+
+  const status =
+    "status" in error ? Number((error as Error & { status?: unknown }).status) : 0;
+
+  return status === 400 && /json_validate_failed|Failed to validate JSON/i.test(error.message);
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
@@ -726,22 +1122,41 @@ const fitEnrichmentSchema = {
   ],
 };
 
-const combinedEnrichmentSchema = {
+const careerNarrativeSchema = {
   type: "object",
   properties: {
-    ...fitEnrichmentSchema.properties,
-    coverLetter: {
-      type: "string",
-      description: "A finished, truthful cover letter based only on supplied evidence.",
+    currentPositioning: { type: "string" },
+    careerProgression: { type: "string" },
+    roleFit: { type: "string" },
+    relevantEvidence: {
+      ...stringArraySchema,
+      description: "Three short factual evidence points worth using.",
+    },
+    projectAngle: { type: "string" },
+    avoid: {
+      ...stringArraySchema,
+      description: "Three phrases or claims the cover letter should avoid.",
     },
   },
   required: [
-    "summary",
-    "nextStep",
-    "fitReasoning",
-    "resumeBullets",
-    "coverLetter",
+    "currentPositioning",
+    "careerProgression",
+    "roleFit",
+    "relevantEvidence",
+    "projectAngle",
+    "avoid",
   ],
+};
+
+const coverLetterOnlySchema = {
+  type: "object",
+  properties: {
+    coverLetter: {
+      type: "string",
+      description: "A rewritten cover letter that follows the supplied style guard.",
+    },
+  },
+  required: ["coverLetter"],
 };
 
 const jobBriefSchema = {

@@ -4,10 +4,16 @@ import { CheckCircle2, FileText, Trash2, Upload, X } from "lucide-react";
 import Link from "next/link";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import {
+  cleanCoverLetterExample,
+  cleanCoverLetterExamples,
   cleanCoverLetterPreferences,
+  coverLetterExampleMaxLength,
+  coverLetterExamplesMaxCount,
+  coverLetterExamplesStorageKey,
   coverLetterPreferencesMaxLength,
   coverLetterPreferencesStorageKey,
   defaultCoverLetterPreferences,
+  sampleCoverLetterExample,
 } from "@/lib/cover-letter-preferences";
 import { SharedFooter } from "../shared-footer";
 import { SharedHeader } from "../shared-header";
@@ -100,6 +106,9 @@ export default function ProfilePage() {
   const [history, setHistory] = useState<MatchHistoryItem[]>([]);
   const [candidateProfile, setCandidateProfile] = useState<CandidateProfile>({});
   const [coverLetterPreferences, setCoverLetterPreferences] = useState(defaultCoverLetterPreferences);
+  const [coverLetterExamples, setCoverLetterExamples] = useState<string[]>([]);
+  const [coverLetterExampleDraft, setCoverLetterExampleDraft] = useState("");
+  const [editingCoverLetterExampleIndex, setEditingCoverLetterExampleIndex] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [activePanel, setActivePanel] = useState<"details" | "coverLetter" | "history">("details");
   const [message, setMessage] = useState("");
@@ -118,11 +127,13 @@ export default function ProfilePage() {
     const savedCandidateProfile = readCandidateProfile();
     const savedResumeFileName = window.localStorage.getItem(resumeProfileNameStorageKey) ?? "";
     const savedCoverLetterPreferences = window.localStorage.getItem(coverLetterPreferencesStorageKey);
+    const savedCoverLetterExamples = readCoverLetterExamples();
 
     setResume(savedResume);
     setResumeFileName(savedResumeFileName);
     setHistory(savedHistory);
     setCandidateProfile(savedCandidateProfile);
+    setCoverLetterExamples(savedCoverLetterExamples);
     setCoverLetterPreferences(
       savedCoverLetterPreferences
         ? cleanCoverLetterPreferences(savedCoverLetterPreferences) || defaultCoverLetterPreferences
@@ -220,6 +231,72 @@ export default function ProfilePage() {
     setCoverLetterPreferences(defaultCoverLetterPreferences);
     setError("");
     setMessage("Cover letter style reset to the default.");
+  }
+
+  function saveCoverLetterExamples(nextExamples: string[]) {
+    const cleaned = cleanCoverLetterExamples(nextExamples);
+
+    setCoverLetterExamples(cleaned);
+    window.localStorage.setItem(coverLetterExamplesStorageKey, JSON.stringify(cleaned));
+  }
+
+  function addOrUpdateCoverLetterExample() {
+    const cleaned = cleanCoverLetterExample(coverLetterExampleDraft);
+
+    if (cleaned.length < 120) {
+      setError("Add a fuller example letter before saving.");
+      return;
+    }
+
+    if (editingCoverLetterExampleIndex === null && coverLetterExamples.length >= coverLetterExamplesMaxCount) {
+      setError(`You can save up to ${coverLetterExamplesMaxCount} examples.`);
+      return;
+    }
+
+    const nextExamples =
+      editingCoverLetterExampleIndex === null
+        ? [...coverLetterExamples, cleaned]
+        : coverLetterExamples.map((example, index) =>
+            index === editingCoverLetterExampleIndex ? cleaned : example,
+          );
+
+    saveCoverLetterExamples(nextExamples);
+    setCoverLetterExampleDraft("");
+    setEditingCoverLetterExampleIndex(null);
+    setError("");
+    setMessage(editingCoverLetterExampleIndex === null ? "Example letter added." : "Example letter updated.");
+  }
+
+  function editCoverLetterExample(index: number) {
+    setCoverLetterExampleDraft(coverLetterExamples[index] ?? "");
+    setEditingCoverLetterExampleIndex(index);
+    setError("");
+    setMessage("");
+  }
+
+  function deleteCoverLetterExample(index: number) {
+    saveCoverLetterExamples(coverLetterExamples.filter((_, currentIndex) => currentIndex !== index));
+
+    if (editingCoverLetterExampleIndex === index) {
+      setCoverLetterExampleDraft("");
+      setEditingCoverLetterExampleIndex(null);
+    }
+
+    setError("");
+    setMessage("Example letter deleted.");
+  }
+
+  function cancelCoverLetterExampleEdit() {
+    setCoverLetterExampleDraft("");
+    setEditingCoverLetterExampleIndex(null);
+    setError("");
+  }
+
+  function useSampleCoverLetterExample() {
+    setCoverLetterExampleDraft(sampleCoverLetterExample);
+    setEditingCoverLetterExampleIndex(null);
+    setError("");
+    setMessage("");
   }
 
   function deleteMatch(id: string) {
@@ -472,7 +549,109 @@ export default function ProfilePage() {
                   Reset default
                 </button>
               </div>
+              <div className="mt-8 border-t border-[#DDE8F6] pt-6">
+                <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
+                  <div>
+                    <p className="text-sm font-bold uppercase text-[#4F9CF9]">Writing examples</p>
+                    <h3 className="mt-2 text-xl font-extrabold text-[#212529]">Add letters that sound like you</h3>
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-[#4F5F6F]">
+                      Optional. Save up to three examples. RoleGuage studies tone, pacing, and structure only; it
+                      should not copy facts from these letters.
+                    </p>
+                  </div>
+                  <p className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-3 py-2 text-xs font-bold text-[#4F5F6F]">
+                    {coverLetterExamples.length} / {coverLetterExamplesMaxCount} saved
+                  </p>
+                </div>
+
+                <label className="mt-5 grid gap-2">
+                  <span className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F5F6F]">
+                    Example cover letter
+                  </span>
+                  <textarea
+                    value={coverLetterExampleDraft}
+                    onChange={(event) => setCoverLetterExampleDraft(event.target.value.slice(0, coverLetterExampleMaxLength))}
+                    maxLength={coverLetterExampleMaxLength}
+                    placeholder="Paste a cover letter whose style you like..."
+                    className="min-h-[190px] resize-y rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 text-[#1B2A3A] outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15"
+                  />
+                </label>
+                <div className="mt-2 flex flex-col justify-between gap-2 text-xs font-semibold text-[#4F5F6F] sm:flex-row">
+                  <p>Examples should show writing style, not private details you do not want reused.</p>
+                  <p>
+                    {coverLetterExampleDraft.length.toLocaleString()} / {coverLetterExampleMaxLength.toLocaleString()}
+                  </p>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={addOrUpdateCoverLetterExample}
+                    disabled={editingCoverLetterExampleIndex === null && coverLetterExamples.length >= coverLetterExamplesMaxCount}
+                    className="h-11 cursor-pointer rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {editingCoverLetterExampleIndex === null ? "Add example" : "Save example"}
+                  </button>
+                  {editingCoverLetterExampleIndex !== null ? (
+                    <button
+                      type="button"
+                      onClick={cancelCoverLetterExampleEdit}
+                      className="h-11 cursor-pointer rounded-md border border-[#A7CEFC] bg-white px-4 text-sm font-bold text-[#043873] transition hover:bg-[#F8FBFF]"
+                    >
+                      Cancel edit
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={useSampleCoverLetterExample}
+                    className="h-11 cursor-pointer rounded-md border border-[#FFE492] bg-white px-4 text-sm font-bold text-[#043873] transition hover:bg-[#FFE492]"
+                  >
+                    Use sample example
+                  </button>
+                </div>
+
+                <div className="mt-5 grid gap-3">
+                  {coverLetterExamples.length ? (
+                    coverLetterExamples.map((example, index) => (
+                      <article
+                        key={`${index}-${example.slice(0, 20)}`}
+                        className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4"
+                      >
+                        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                          <div className="min-w-0">
+                            <p className="text-sm font-extrabold text-[#043873]">Example {index + 1}</p>
+                            <p className="mt-2 line-clamp-3 text-sm leading-6 text-[#4F5F6F]">
+                              {example}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => editCoverLetterExample(index)}
+                              className="h-9 cursor-pointer rounded-md border border-[#A7CEFC] bg-white px-3 text-xs font-bold text-[#043873] transition hover:bg-[#A7CEFC]/20"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteCoverLetterExample(index)}
+                              className="h-9 cursor-pointer rounded-md border border-[#B5121B] bg-white px-3 text-xs font-bold text-[#B5121B] transition hover:bg-[#FFF1F2]"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    ))
+                  ) : (
+                    <div className="rounded-md border border-dashed border-[#A7CEFC] bg-[#F8FBFF] p-4 text-sm font-semibold text-[#4F5F6F]">
+                      No examples saved yet.
+                    </div>
+                  )}
+                </div>
+              </div>
               {message ? <p className="mt-3 text-sm font-semibold text-[#007a52]">{message}</p> : null}
+              {error ? <p className="mt-3 text-sm font-semibold text-[#b00000]">{error}</p> : null}
             </section>
           ) : null}
 
@@ -888,5 +1067,13 @@ function readCandidateProfile() {
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return {};
+  }
+}
+
+function readCoverLetterExamples() {
+  try {
+    return cleanCoverLetterExamples(JSON.parse(window.localStorage.getItem(coverLetterExamplesStorageKey) ?? "[]"));
+  } catch {
+    return [];
   }
 }

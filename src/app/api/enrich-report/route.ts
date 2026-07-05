@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateFitEnrichment, getAiModel } from "@/lib/ai";
-import { cleanCoverLetterPreferences } from "@/lib/cover-letter-preferences";
+import { cleanCoverLetterExamples, cleanCoverLetterPreferences } from "@/lib/cover-letter-preferences";
 import { CandidateProfile } from "@/lib/requirements";
 import { analyzeResumeAgainstJob } from "../analyze/route";
 
@@ -12,6 +12,7 @@ export async function POST(request: NextRequest) {
         profile?: CandidateProfile;
         analysis?: ReturnType<typeof analyzeResumeAgainstJob>;
         coverLetterInstructions?: string;
+        coverLetterExamples?: string[];
       }
     | null;
 
@@ -27,9 +28,16 @@ export async function POST(request: NextRequest) {
 
   const analysis = body?.analysis ?? analyzeResumeAgainstJob(resume, job, body?.profile);
   const coverLetterInstructions = cleanCoverLetterPreferences(body?.coverLetterInstructions);
+  const coverLetterExamples = cleanCoverLetterExamples(body?.coverLetterExamples);
 
   try {
-    const aiEnrichment = await generateFitEnrichment({ resume, job, analysis, coverLetterInstructions });
+    const aiEnrichment = await generateFitEnrichment({
+      resume,
+      job,
+      analysis,
+      coverLetterInstructions,
+      coverLetterExamples,
+    });
 
     if (!aiEnrichment) {
       return NextResponse.json({

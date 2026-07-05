@@ -18,7 +18,12 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { ChangeEvent, FormEvent, useMemo, useRef, useState } from "react";
-import { cleanCoverLetterPreferences, coverLetterPreferencesStorageKey } from "@/lib/cover-letter-preferences";
+import {
+  cleanCoverLetterExamples,
+  cleanCoverLetterPreferences,
+  coverLetterExamplesStorageKey,
+  coverLetterPreferencesStorageKey,
+} from "@/lib/cover-letter-preferences";
 import { SharedFooter } from "../shared-footer";
 import { SharedHeader } from "../shared-header";
 
@@ -242,6 +247,7 @@ export default function Home() {
           profile: readCandidateProfile(),
           analysis: baseResult,
           coverLetterInstructions: readCoverLetterPreferences(),
+          coverLetterExamples: readCoverLetterExamples(),
         }),
       });
 
@@ -982,6 +988,16 @@ function readCoverLetterPreferences() {
   if (typeof window === "undefined") return "";
 
   return cleanCoverLetterPreferences(window.localStorage.getItem(coverLetterPreferencesStorageKey) ?? "");
+}
+
+function readCoverLetterExamples() {
+  if (typeof window === "undefined") return [];
+
+  try {
+    return cleanCoverLetterExamples(JSON.parse(window.localStorage.getItem(coverLetterExamplesStorageKey) ?? "[]"));
+  } catch {
+    return [];
+  }
 }
 
 function hasHardBlocker(result: AnalysisResult) {
