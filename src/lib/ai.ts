@@ -203,11 +203,12 @@ function buildFitPrompt(context: PromptContext) {
   return `You are RoleGuage, an evidence-first job application assistant.
 
 Use only the profile, evidence, and match result below. Never invent facts.
-Write direct jobseeker advice. Do not mention AI, models, RAG, algorithms, backend, or scoring rules.
-Avoid filler and cliches.
+Write direct jobseeker advice addressed to the user. Do not write a recruiter bio or third-person candidate summary.
+Do not mention AI, models, RAG, algorithms, backend, or scoring rules.
+Avoid filler, cliches, and inflated phrases such as "proven track record".
 
 Return JSON only.
-summary: one honest paragraph.
+summary: 1-2 sentences about whether this role is worth applying for and what to adjust. Start with "This role". Do not use the candidate's name, "he/she/they", or third-person phrasing.
 nextStep: one direct instruction under 24 words.
 fitReasoning: 3 concise evidence-based reasons.
 resumeBullets: 2-3 honest resume bullet ideas.
@@ -246,17 +247,75 @@ EVIDENCE
 ${context.evidenceBlock}`;
 }
 
-function formatCoverLetterRoleBrief(analysis: AnalysisLike, writerPacket: WriterPacket) {
+function formatCoverLetterRoleBrief(job: string, analysis: AnalysisLike, writerPacket: WriterPacket) {
+  const workingStyle = inferRoleWorkingStyle(job, analysis);
+  const recommendedFocus = inferCoverLetterFocus(job, analysis, writerPacket.role.type);
+
   return [
     `role: ${writerPacket.role.title}`,
     `company: ${writerPacket.role.company}`,
     `role_type: ${writerPacket.role.type}`,
     `recommendation: ${analysis.decision}`,
     `fit_level: ${analysis.level}`,
-    `matched_themes: ${analysis.matchedSkills.slice(0, 5).join(", ") || "None"}`,
+    `role_working_style: ${workingStyle}`,
+    `recommended_focus: ${recommendedFocus}`,
+    `tech_stack_context: Mention specific technologies only as supporting detail. Do not make a stack list the centre of the letter unless recommended_focus says the stack is the main hiring signal.`,
     `gaps_or_cautions: ${analysis.missingSkills.slice(0, 4).join(", ") || "None"}`,
     `hard_checks: ${writerPacket.hardChecks.join(" | ") || "None"}`,
   ].join("\n");
+}
+
+function inferRoleWorkingStyle(job: string, analysis: AnalysisLike) {
+  const text = `${job} ${analysis.roleSignals.join(" ")}`.toLowerCase();
+  const themes: string[] = [];
+
+  if (/\bsmall\b|startup|founder|ground floor|rapidly growing|little bit of everything/.test(text)) {
+    themes.push("small team, broad product involvement");
+  }
+
+  if (/customer|client|supporting our clients|requirements quickly|customer needs/.test(text)) {
+    themes.push("customer-facing problem solving");
+  }
+
+  if (/testing new stuff|improving it|new concepts|picking up complex/.test(text)) {
+    themes.push("learn unfamiliar concepts and improve evolving product areas");
+  }
+
+  if (/energy|renewables|sustainability|net zero/.test(text)) {
+    themes.push("learn the energy and renewables domain");
+  }
+
+  if (/distributed architecture|multi[-\s]?tenant|multiple customers|platform/.test(text)) {
+    themes.push("production platform work across customers");
+  }
+
+  if (/stakeholder|founder|all levels|feedback|constructive|collaborative/.test(text)) {
+    themes.push("clear communication with different people in the business");
+  }
+
+  return themes.length ? themes.slice(0, 5).join(", ") : "practical software delivery";
+}
+
+function inferCoverLetterFocus(job: string, analysis: AnalysisLike, roleType: string) {
+  const text = `${job} ${analysis.roleSignals.join(" ")}`.toLowerCase();
+
+  if (/\bsmall\b|startup|founder|little bit of everything|ground floor|rapidly growing/.test(text)) {
+    return "Lead with commercial software engineering foundation, comfort working across the product, learning quickly, and practical customer/problem focus. Do not lead with TypeScript, React, AWS, or Azure.";
+  }
+
+  if (/customer|client|supporting our clients|requirements quickly/.test(text)) {
+    return "Lead with understanding requirements, building useful software, and communicating clearly. Keep technologies secondary.";
+  }
+
+  if (roleType === "data_ai_or_automation") {
+    return "Lead with software engineering foundation plus data, automation, or AI project direction. Clearly separate project/study experience from commercial experience.";
+  }
+
+  if (/government|clearance|citizen|public sector|security/.test(text)) {
+    return "Lead with steady software engineering experience, reliability, communication, and learning. Avoid company praise or mission language.";
+  }
+
+  return "Lead with the broader role fit and career direction. Mention technologies only where they clarify fit.";
 }
 
 function buildCoverLetterOnlyPrompt(
@@ -277,6 +336,9 @@ Non-negotiable rules:
 - Do not infer specific stakeholder groups, architecture involvement, security work, scale, partners, or integrations unless those exact ideas are present in WRITER PACKET verifiedFacts.
 - Do not upgrade broad resume wording into stronger claims. If the evidence says "product teams", do not write "product owners"; if it says "domain specialists", do not write "architects"; if it says "business requirements", do not write "complex requirements".
 - Do not turn a listed skill into a responsibility. If WRITER PACKET says AWS or Azure is a skill, do not claim the candidate hosted, deployed, operated, or managed backends on AWS/Azure unless that exact responsibility is verified.
+- Treat ROLE BRIEF recommended_focus as the main cover-letter angle. Do not lead with a list of technologies unless recommended_focus says technical stack is the main hiring signal.
+- Treat any technology names in ROLE BRIEF as supporting context only, not proof of commercial experience. Do not say the candidate used a technology "regularly", "professionally", "in day-to-day work", or "at [employer]" unless WRITER PACKET explicitly says that.
+- If a tool or skill may come from projects or study, phrase it broadly as "my background includes" or "I have been building projects around" instead of claiming professional use.
 - Do not invent numbers, percentages, revenue, latency, scale, or impact metrics. Only include metrics if they appear in evidence.
 - coverLetter: 210-280 words.
 - No headings, no markdown, no placeholders, no bracketed text.
@@ -422,7 +484,7 @@ export async function generateFitEnrichment({
   const writerPacket = buildWriterPacket(job, analysis, narrative);
   const guidance = await cachedJsonWithLimit<FitGuidancePayload>(
     [
-      "fit-guidance-v1",
+      "fit-guidance-v2",
       getLlmProvider(),
       getAiModelCandidates().join(","),
       resume,
@@ -433,10 +495,10 @@ export async function generateFitEnrichment({
     buildFitPrompt(promptContext),
     700,
   );
-  const roleBrief = formatCoverLetterRoleBrief(analysis, writerPacket);
+  const roleBrief = formatCoverLetterRoleBrief(job, analysis, writerPacket);
   const coverLetterPayload = await cachedJsonWithLimit<CoverLetterOnlyPayload>(
     [
-      "cover-letter-writer-v1",
+      "cover-letter-writer-v3",
       getLlmProvider(),
       getAiModelCandidates().join(","),
       cleanedCoverLetterInstructions,
@@ -459,7 +521,7 @@ export async function generateFitEnrichment({
   if (coverLetterViolations.length) {
     const repaired = await cachedJsonWithLimit<CoverLetterOnlyPayload>(
       [
-        "cover-letter-repair-v3",
+        "cover-letter-repair-v4",
         getLlmProvider(),
         getAiModelCandidates().join(","),
         cleanedCoverLetterInstructions,
@@ -505,7 +567,7 @@ function cleanEnrichmentPayload(payload: CombinedEnrichmentPayload, analysis: An
 
   return {
     ...payload,
-    summary: looksLikeCoverLetter(summary) ? analysis.summary : summary,
+    summary: needsUserFacingSummaryFallback(summary) ? analysis.summary : summary,
     nextStep: cleanGeneratedText(payload.nextStep),
     fitReasoning: fitReasoning.length ? fitReasoning.map(cleanGeneratedText) : buildFallbackAiReport(analysis).fitReasoning,
     resumeBullets: resumeBullets.length
@@ -594,6 +656,15 @@ function toTextArray(value: unknown) {
 
 function looksLikeCoverLetter(text: string) {
   return /\b(i am writing|my background|i bring|i would welcome|thank you for|kind regards|dear |hi team)\b/i.test(text);
+}
+
+function needsUserFacingSummaryFallback(text: string) {
+  return (
+    looksLikeCoverLetter(text) ||
+    /\b(has|possesses|brings)\s+(?:over\s+)?\d\+?\s+years\b/i.test(text) ||
+    /\bproven track record\b/i.test(text) ||
+    /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}\s+has\b/.test(text)
+  );
 }
 
 function removeUnsupportedMetrics(text: string, sourceText: string) {
@@ -1000,6 +1071,8 @@ function getCoverLetterStyleViolations(text: string) {
     "scalable",
     "resonates",
     "the responsibilities outlined",
+    "the role's emphasis",
+    "core of my skill set",
     "perfect fit",
     "what attracted me",
     "what stood out",
@@ -1026,6 +1099,8 @@ function getCoverLetterStyleViolations(text: string) {
     /\baws\s+and\s+azure\s+to\s+host\b/i,
     /\bdata-driven ideas into working products\b/i,
     /\bsystem reliability\b/i,
+    /\bworked with\b[^.]{0,80}\bregularly\b/i,
+    /\bprofessional setting\b/i,
   ]
     .filter((pattern) => pattern.test(text))
     .map(() => "Avoid unsupported responsibility claims from listed skills");
