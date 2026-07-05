@@ -116,6 +116,9 @@ export async function POST(request: NextRequest) {
 
 async function extractPdfText(data: Uint8Array) {
   ensurePdfJsServerGlobals();
+  const worker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+  (globalThis as Record<string, unknown>)["pdfjsWorker"] ??= worker;
+
   const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
   const document = await getDocument({
