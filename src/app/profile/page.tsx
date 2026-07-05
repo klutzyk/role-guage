@@ -15,6 +15,7 @@ import {
   defaultCoverLetterPreferences,
   sampleCoverLetterExample,
 } from "@/lib/cover-letter-preferences";
+import { readJsonResponse } from "@/lib/http";
 import { SharedFooter } from "../shared-footer";
 import { SharedHeader } from "../shared-header";
 
@@ -99,6 +100,7 @@ const workModeOptions = ["Remote", "Hybrid", "On-site", "Relocation open", "Melb
 const clearanceOptions = ["None", "Baseline", "NV1", "NV2", "AGSVA eligible"];
 const licenceOptions = ["Driver licence", "Working With Children Check", "Police check", "CPA", "CA", "PMP", "Real Estate Licence"];
 const targetRoleOptions = ["Software Engineer", "Backend Engineer", "Full Stack Developer", "Data Analyst", "Data Scientist", "Machine Learning Engineer", "AI Engineer", "Analytics Engineer"];
+const maxResumePdfBytes = 4 * 1024 * 1024;
 
 export default function ProfilePage() {
   const [resume, setResume] = useState("");
@@ -147,6 +149,11 @@ export default function ProfilePage() {
     event.target.value = "";
     if (!file) return;
 
+    if (file.size > maxResumePdfBytes) {
+      setError("Resume PDF must be smaller than 4 MB.");
+      return;
+    }
+
     setError("");
     setMessage("");
 
@@ -158,7 +165,7 @@ export default function ProfilePage() {
         method: "POST",
         body: formData,
       });
-      const data = (await response.json()) as { text?: string; filename?: string; error?: string };
+      const data = await readJsonResponse<{ text?: string; filename?: string; error?: string }>(response);
 
       if (!response.ok || !data.text) {
         throw new Error(data.error ?? "Could not extract this PDF.");

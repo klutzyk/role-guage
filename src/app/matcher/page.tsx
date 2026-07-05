@@ -17,13 +17,14 @@ import {
   Upload,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { ChangeEvent, FormEvent, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   cleanCoverLetterExamples,
   cleanCoverLetterPreferences,
   coverLetterExamplesStorageKey,
   coverLetterPreferencesStorageKey,
 } from "@/lib/cover-letter-preferences";
+import { readJsonResponse } from "@/lib/http";
 import { SharedFooter } from "../shared-footer";
 import { SharedHeader } from "../shared-header";
 
@@ -119,9 +120,11 @@ const emptyJobMeta: JobMeta = {
 };
 
 const resumeProfileStorageKey = "roleguage.resume-profile.v1";
+const resumeProfileNameStorageKey = "roleguage.resume-profile-name.v1";
 const legacyResumeProfileStorageKey = "applypilot.resume-profile.v1";
 const matchHistoryStorageKey = "roleguage.match-history.v1";
 const candidateProfileStorageKey = "roleguage.candidate-profile.v1";
+const maxResumePdfBytes = 4 * 1024 * 1024;
 
 const workflowSteps: Array<[string, string, LucideIcon]> = [
   ["Upload once", "Use a resume PDF or saved profile as the evidence base for the match.", Upload],
@@ -189,6 +192,20 @@ export default function Home() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const activeRequest = useRef(0);
+
+  useEffect(() => {
+    const savedResume =
+      window.localStorage.getItem(resumeProfileStorageKey) ??
+      window.localStorage.getItem(legacyResumeProfileStorageKey);
+
+    if (!savedResume) {
+      return;
+    }
+
+    const savedName = window.localStorage.getItem(resumeProfileNameStorageKey) ?? "Saved resume profile";
+    setResume(savedResume);
+    setResumeFileName(savedName);
+  }, []);
 
   const canAnalyze = useMemo(
     () => resume.trim().length > 80 && job.trim().length > 80,
@@ -322,6 +339,11 @@ export default function Home() {
     event.target.value = "";
     if (!file) return;
 
+    if (file.size > maxResumePdfBytes) {
+      setError("Resume PDF must be smaller than 4 MB.");
+      return;
+    }
+
     setError("");
     setMessage("");
     setIsExtractingResume(true);
@@ -334,15 +356,18 @@ export default function Home() {
         method: "POST",
         body: formData,
       });
-      const data = (await response.json()) as { text?: string; filename?: string; error?: string };
+      const data = await readJsonResponse<{ text?: string; filename?: string; error?: string }>(response);
 
       if (!response.ok || !data.text) {
         throw new Error(data.error ?? "Could not extract this PDF.");
       }
 
       setResume(data.text);
-      setResumeFileName(data.filename ?? file.name);
-      setMessage(`Extracted resume text from ${data.filename ?? file.name}. Review it before matching.`);
+      const filename = data.filename ?? file.name;
+      setResumeFileName(filename);
+      window.localStorage.setItem(resumeProfileStorageKey, data.text);
+      window.localStorage.setItem(resumeProfileNameStorageKey, filename);
+      setMessage(`Extracted and saved resume text from ${filename}. Review it before matching.`);
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -361,6 +386,7 @@ export default function Home() {
     }
 
     window.localStorage.setItem(resumeProfileStorageKey, resume);
+    window.localStorage.setItem(resumeProfileNameStorageKey, resumeFileName || "Saved resume profile");
     setError("");
     setMessage("Resume profile saved for this browser.");
   }
@@ -376,7 +402,7 @@ export default function Home() {
     }
 
     setResume(savedResume);
-    setResumeFileName("Saved resume profile");
+    setResumeFileName(window.localStorage.getItem(resumeProfileNameStorageKey) ?? "Saved resume profile");
     setError("");
     setMessage("Loaded your saved resume profile.");
   }

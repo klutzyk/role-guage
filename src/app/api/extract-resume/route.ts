@@ -1,9 +1,69 @@
-import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { NextRequest, NextResponse } from "next/server";
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 export const runtime = "nodejs";
+
+const maxResumePdfBytes = 4 * 1024 * 1024;
+
+class ServerDOMMatrix {
+  a = 1;
+  b = 0;
+  c = 0;
+  d = 1;
+  e = 0;
+  f = 0;
+
+  constructor(init?: number[] | string) {
+    if (Array.isArray(init)) {
+      [this.a, this.b, this.c, this.d, this.e, this.f] = [
+        init[0] ?? 1,
+        init[1] ?? 0,
+        init[2] ?? 0,
+        init[3] ?? 1,
+        init[4] ?? 0,
+        init[5] ?? 0,
+      ];
+    }
+  }
+
+  multiplySelf() {
+    return this;
+  }
+
+  preMultiplySelf() {
+    return this;
+  }
+
+  translateSelf() {
+    return this;
+  }
+
+  scaleSelf() {
+    return this;
+  }
+
+  rotateSelf() {
+    return this;
+  }
+
+  invertSelf() {
+    return this;
+  }
+
+  transformPoint(point?: { x?: number; y?: number; z?: number; w?: number }) {
+    return {
+      x: point?.x ?? 0,
+      y: point?.y ?? 0,
+      z: point?.z ?? 0,
+      w: point?.w ?? 1,
+    };
+  }
+}
+
+function ensurePdfJsServerGlobals() {
+  const globalScope = globalThis as Record<string, unknown>;
+
+  globalScope["DOMMatrix"] ??= ServerDOMMatrix;
+}
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData().catch(() => null);
@@ -17,8 +77,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Only PDF resumes are supported right now." }, { status: 400 });
   }
 
-  if (file.size > 5 * 1024 * 1024) {
-    return NextResponse.json({ error: "Resume PDF must be smaller than 5 MB." }, { status: 400 });
+  if (file.size > maxResumePdfBytes) {
+    return NextResponse.json({ error: "Resume PDF must be smaller than 4 MB." }, { status: 400 });
   }
 
   try {
@@ -41,7 +101,9 @@ export async function POST(request: NextRequest) {
       pages: parsed.pages,
       text: text.length > 10000 ? `${text.slice(0, 10000)}...` : text,
     });
-  } catch {
+  } catch (error) {
+    console.error("Resume PDF extraction failed", error);
+
     return NextResponse.json(
       {
         error:
@@ -53,11 +115,15 @@ export async function POST(request: NextRequest) {
 }
 
 async function extractPdfText(data: Uint8Array) {
-  GlobalWorkerOptions.workerSrc = pathToFileURL(
-    path.join(process.cwd(), "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"),
-  ).href;
+  ensurePdfJsServerGlobals();
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
-  const document = await getDocument({ data }).promise;
+  const document = await getDocument({
+    data,
+    disableWorker: true,
+    isEvalSupported: false,
+    useWorkerFetch: false,
+  } as Parameters<typeof getDocument>[0] & { disableWorker: boolean }).promise;
   const pages: string[] = [];
 
   for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
