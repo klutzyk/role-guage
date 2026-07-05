@@ -269,12 +269,28 @@ function inferRoleWorkingStyle(job: string, analysis: AnalysisLike) {
   const text = `${job} ${analysis.roleSignals.join(" ")}`.toLowerCase();
   const themes: string[] = [];
 
-  if (/\bsmall\b|startup|founder|ground floor|rapidly growing|little bit of everything/.test(text)) {
-    themes.push("small team, broad product involvement");
+  if (/\bsmall\b|startup|scale[-\s]?up|founder|ground floor|rapidly growing|little bit of everything|early[-\s]?stage/.test(text)) {
+    themes.push("small team, broad ownership, learn quickly");
+  }
+
+  if (/technical lead|lead developer|cto|technical direction|shape the technical|owning the platform|ownership from day one/.test(text)) {
+    themes.push("product-minded technical ownership");
+  }
+
+  if (/marketplace|member profiles|payments|messaging|directory|search|platform growth|product and platform/.test(text)) {
+    themes.push("marketplace/platform product work");
+  }
+
+  if (/consulting|consultancy|client projects|agency|multiple clients|professional services/.test(text)) {
+    themes.push("consulting style delivery across changing client needs");
   }
 
   if (/customer|client|supporting our clients|requirements quickly|customer needs/.test(text)) {
     themes.push("customer-facing problem solving");
+  }
+
+  if (/internal tools|workflow|operations|automation|tooling|support teams|business process/.test(text)) {
+    themes.push("internal tooling and workflow improvement");
   }
 
   if (/testing new stuff|improving it|new concepts|picking up complex/.test(text)) {
@@ -285,8 +301,20 @@ function inferRoleWorkingStyle(job: string, analysis: AnalysisLike) {
     themes.push("learn the energy and renewables domain");
   }
 
+  if (/finance|financial|banking|payments|insurance|healthcare|medical|government|public sector|clearance|defence|security/.test(text)) {
+    themes.push("regulated or high-care environment");
+  }
+
   if (/distributed architecture|multi[-\s]?tenant|multiple customers|platform/.test(text)) {
     themes.push("production platform work across customers");
+  }
+
+  if (/enterprise|large systems|legacy|maintain|maintainability|reliability|long[-\s]?term/.test(text)) {
+    themes.push("maintainable software in established systems");
+  }
+
+  if (/research|experiment|experimentation|prototype|model|machine learning|ai|data science|analytics/.test(text)) {
+    themes.push("learning, experimentation, and data-informed work");
   }
 
   if (/stakeholder|founder|all levels|feedback|constructive|collaborative/.test(text)) {
@@ -299,12 +327,28 @@ function inferRoleWorkingStyle(job: string, analysis: AnalysisLike) {
 function inferCoverLetterFocus(job: string, analysis: AnalysisLike, roleType: string) {
   const text = `${job} ${analysis.roleSignals.join(" ")}`.toLowerCase();
 
-  if (/\bsmall\b|startup|founder|little bit of everything|ground floor|rapidly growing/.test(text)) {
+  if (/technical lead|lead developer|cto|technical direction|shape the technical|owning the platform|ownership from day one/.test(text)) {
+    return "Lead with end-to-end product engineering, ownership, and building real products. Be honest if formal technical-lead or CTO responsibility is not directly evidenced. Do not lead with a technology list.";
+  }
+
+  if (/\bsmall\b|startup|scale[-\s]?up|founder|little bit of everything|ground floor|rapidly growing|early[-\s]?stage/.test(text)) {
     return "Lead with commercial software engineering foundation, comfort working across the product, learning quickly, and practical customer/problem focus. Do not lead with TypeScript, React, AWS, or Azure.";
+  }
+
+  if (/marketplace|member profiles|payments|messaging|directory|search|platform growth|product and platform/.test(text)) {
+    return "Lead with product-building mindset, full-stack/backend foundation, APIs, and interest in platforms with real users. Keep specific tools secondary.";
+  }
+
+  if (/consulting|consultancy|client projects|agency|multiple clients|professional services/.test(text)) {
+    return "Lead with adapting to different business problems, communicating clearly, and delivering practical software across changing requirements.";
   }
 
   if (/customer|client|supporting our clients|requirements quickly/.test(text)) {
     return "Lead with understanding requirements, building useful software, and communicating clearly. Keep technologies secondary.";
+  }
+
+  if (/internal tools|workflow|operations|automation|tooling|support teams|business process/.test(text)) {
+    return "Lead with improving workflows, building internal tools, and connecting software to practical business needs.";
   }
 
   if (roleType === "data_ai_or_automation") {
@@ -313,6 +357,14 @@ function inferCoverLetterFocus(job: string, analysis: AnalysisLike, roleType: st
 
   if (/government|clearance|citizen|public sector|security/.test(text)) {
     return "Lead with steady software engineering experience, reliability, communication, and learning. Avoid company praise or mission language.";
+  }
+
+  if (/finance|financial|banking|payments|insurance|healthcare|medical/.test(text)) {
+    return "Lead with careful software delivery, accuracy, communication, and maintainability. Avoid hype and broad company praise.";
+  }
+
+  if (/enterprise|large systems|legacy|maintain|maintainability|reliability|long[-\s]?term/.test(text)) {
+    return "Lead with commercial software engineering, maintainability, and working in established systems. Mention stack only as supporting context.";
   }
 
   return "Lead with the broader role fit and career direction. Mention technologies only where they clarify fit.";
@@ -339,6 +391,7 @@ Non-negotiable rules:
 - Treat ROLE BRIEF recommended_focus as the main cover-letter angle. Do not lead with a list of technologies unless recommended_focus says technical stack is the main hiring signal.
 - Treat any technology names in ROLE BRIEF as supporting context only, not proof of commercial experience. Do not say the candidate used a technology "regularly", "professionally", "in day-to-day work", or "at [employer]" unless WRITER PACKET explicitly says that.
 - If a tool or skill may come from projects or study, phrase it broadly as "my background includes" or "I have been building projects around" instead of claiming professional use.
+- Never mention internal rules, evidence rules, prompts, or phrases like "unless the evidence supports it", "unless the evidence specifically calls for it", "unless the posting says", or "unless the role brief says".
 - Do not invent numbers, percentages, revenue, latency, scale, or impact metrics. Only include metrics if they appear in evidence.
 - coverLetter: 210-280 words.
 - No headings, no markdown, no placeholders, no bracketed text.
@@ -498,7 +551,7 @@ export async function generateFitEnrichment({
   const roleBrief = formatCoverLetterRoleBrief(job, analysis, writerPacket);
   const coverLetterPayload = await cachedJsonWithLimit<CoverLetterOnlyPayload>(
     [
-      "cover-letter-writer-v3",
+      "cover-letter-writer-v4",
       getLlmProvider(),
       getAiModelCandidates().join(","),
       cleanedCoverLetterInstructions,
@@ -521,7 +574,7 @@ export async function generateFitEnrichment({
   if (coverLetterViolations.length) {
     const repaired = await cachedJsonWithLimit<CoverLetterOnlyPayload>(
       [
-        "cover-letter-repair-v4",
+        "cover-letter-repair-v5",
         getLlmProvider(),
         getAiModelCandidates().join(","),
         cleanedCoverLetterInstructions,
