@@ -148,11 +148,11 @@ function getAiModelCandidates() {
   if (getLlmProvider() === "groq") {
     const configuredFallbacks = [
       process.env.GROQ_FALLBACK_MODEL,
-      ...(process.env.GROQ_FALLBACK_MODELS ?? "")
-        .split(",")
-        .map((model) => model.trim())
-        .filter(Boolean),
-    ].filter(Boolean) as string[];
+      process.env.GROQ_FALLBACK_MODELS,
+    ]
+      .flatMap((models) => (models ?? "").split(","))
+      .map((model) => model.trim())
+      .filter(Boolean);
 
     return Array.from(
       new Set([
