@@ -85,6 +85,9 @@ type CareerNarrativePayload = {
   currentPositioning: string;
   careerProgression: string;
   roleFit: string;
+  workingStyle: string;
+  careerDirection: string;
+  stretchFraming: string;
   relevantEvidence: string[];
   projectAngle: string;
   avoid: string[];
@@ -233,6 +236,9 @@ Return valid JSON only with these fields:
 currentPositioning: one plain sentence describing the candidate now
 careerProgression: one plain sentence explaining the candidate's path without fictional origin stories
 roleFit: one plain sentence explaining why this role makes sense
+workingStyle: how the candidate appears to prefer working, based only on evidence and role fit
+careerDirection: where the candidate's career seems to be moving
+stretchFraming: if the role is a stretch, how to frame it honestly without pretending direct experience
 relevantEvidence: 3 short factual evidence points worth using
 projectAngle: one sentence explaining whether personal projects should be mentioned, and why
 avoid: 3 phrases or claims the cover letter should avoid
@@ -389,6 +395,8 @@ Non-negotiable rules:
 - Do not upgrade broad resume wording into stronger claims. If the evidence says "product teams", do not write "product owners"; if it says "domain specialists", do not write "architects"; if it says "business requirements", do not write "complex requirements".
 - Do not turn a listed skill into a responsibility. If WRITER PACKET says AWS or Azure is a skill, do not claim the candidate hosted, deployed, operated, or managed backends on AWS/Azure unless that exact responsibility is verified.
 - Treat ROLE BRIEF recommended_focus as the main cover-letter angle. Do not lead with a list of technologies unless recommended_focus says technical stack is the main hiring signal.
+- Use workingStyle, careerDirection, and stretchFraming as the main source of human context. These should guide the letter more than individual skills.
+- If stretchFraming says the role is a stretch, do not imply the candidate already has lead, CTO, architecture ownership, or strategy experience. Frame the application around growth, ownership mindset, and transferable software engineering experience.
 - Treat any technology names in ROLE BRIEF as supporting context only, not proof of commercial experience. Do not say the candidate used a technology "regularly", "professionally", "in day-to-day work", or "at [employer]" unless WRITER PACKET explicitly says that.
 - If a tool or skill may come from projects or study, phrase it broadly as "my background includes" or "I have been building projects around" instead of claiming professional use.
 - Never mention internal rules, evidence rules, prompts, or phrases like "unless the evidence supports it", "unless the evidence specifically calls for it", "unless the posting says", or "unless the role brief says".
@@ -523,7 +531,7 @@ export async function generateFitEnrichment({
   const cleanedCoverLetterExamples = cleanCoverLetterExamples(coverLetterExamples);
   const narrative = await cachedJsonWithLimit<CareerNarrativePayload>(
     [
-      "career-narrative-v1",
+      "career-narrative-v2",
       getLlmProvider(),
       getAiModelCandidates().join(","),
       resume,
@@ -551,7 +559,7 @@ export async function generateFitEnrichment({
   const roleBrief = formatCoverLetterRoleBrief(job, analysis, writerPacket);
   const coverLetterPayload = await cachedJsonWithLimit<CoverLetterOnlyPayload>(
     [
-      "cover-letter-writer-v4",
+      "cover-letter-writer-v5",
       getLlmProvider(),
       getAiModelCandidates().join(","),
       cleanedCoverLetterInstructions,
@@ -574,7 +582,7 @@ export async function generateFitEnrichment({
   if (coverLetterViolations.length) {
     const repaired = await cachedJsonWithLimit<CoverLetterOnlyPayload>(
       [
-        "cover-letter-repair-v5",
+        "cover-letter-repair-v6",
         getLlmProvider(),
         getAiModelCandidates().join(","),
         cleanedCoverLetterInstructions,
@@ -660,6 +668,9 @@ function buildWriterPacket(job: string, analysis: AnalysisLike, narrative: Caree
       currentPositioning: cleanGeneratedText(narrative.currentPositioning),
       careerProgression: cleanGeneratedText(narrative.careerProgression),
       roleFit: cleanGeneratedText(narrative.roleFit),
+      workingStyle: cleanGeneratedText(narrative.workingStyle),
+      careerDirection: cleanGeneratedText(narrative.careerDirection),
+      stretchFraming: cleanGeneratedText(narrative.stretchFraming),
       relevantEvidence: verifiedFacts.slice(0, 4),
       projectAngle: cleanGeneratedText(narrative.projectAngle),
       avoid: avoidClaims,
@@ -1131,6 +1142,11 @@ function getCoverLetterStyleViolations(text: string) {
     "what stood out",
     "I am passionate",
     "I thrive",
+    "I have spent the last",
+    "over time I moved",
+    "my day-to-day work",
+    "my background aligns",
+    "bring my experience",
   ];
   const lowerText = text.toLowerCase();
   const phraseViolations = bannedPhrases
@@ -1196,7 +1212,11 @@ function isRetryableAiError(error: unknown) {
       ? Number((error as { status?: unknown }).status)
       : 0;
 
-  return status === 429 || status === 503;
+  if ([408, 429, 500, 502, 503, 504].includes(status)) {
+    return true;
+  }
+
+  return error instanceof Error && /timed out|internal server error|temporarily unavailable/i.test(error.message);
 }
 
 function isGroqJsonValidationError(error: unknown) {
@@ -1256,6 +1276,18 @@ const careerNarrativeSchema = {
     currentPositioning: { type: "string" },
     careerProgression: { type: "string" },
     roleFit: { type: "string" },
+    workingStyle: {
+      type: "string",
+      description: "How the candidate appears to prefer working, based only on evidence and role fit.",
+    },
+    careerDirection: {
+      type: "string",
+      description: "Where the candidate's career seems to be moving.",
+    },
+    stretchFraming: {
+      type: "string",
+      description: "If the role is a stretch, how to frame it honestly without pretending direct experience.",
+    },
     relevantEvidence: {
       ...stringArraySchema,
       description: "Three short factual evidence points worth using.",
@@ -1270,6 +1302,9 @@ const careerNarrativeSchema = {
     "currentPositioning",
     "careerProgression",
     "roleFit",
+    "workingStyle",
+    "careerDirection",
+    "stretchFraming",
     "relevantEvidence",
     "projectAngle",
     "avoid",
