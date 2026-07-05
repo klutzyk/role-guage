@@ -607,7 +607,8 @@ export async function generateFitEnrichment({
     coverLetter = repaired.coverLetter;
   }
 
-  validateCoverLetterText(cleanGeneratedText(coverLetter), getAiModelCandidates()[0]);
+  coverLetter = sanitizeCoverLetterStyle(cleanGeneratedText(coverLetter));
+  validateCoverLetterText(coverLetter, getAiModelCandidates()[0]);
   const cleanedEnrichment = cleanEnrichmentPayload(
     { ...guidance, coverLetter },
     analysis,
@@ -1109,6 +1110,49 @@ function validateCoverLetterText(text: string, model: string) {
   }
 }
 
+function sanitizeCoverLetterStyle(text: string) {
+  return text
+    .replace(/\bI look forward to (?:discussing|speaking|hearing|the opportunity to discuss)[^.]*\.\s*/gi, "")
+    .replace(/\bI am excited to\b/gi, "I am applying to")
+    .replace(/\bI'm excited to\b/gi, "I am applying to")
+    .replace(/\bI am eager to\b/gi, "I would like to")
+    .replace(/\bI'm eager to\b/gi, "I would like to")
+    .replace(/\bI am drawn to\b/gi, "I am interested in")
+    .replace(/\bI'm drawn to\b/gi, "I am interested in")
+    .replace(/\bI am confident that\b/gi, "I think")
+    .replace(/\bI'm confident that\b/gi, "I think")
+    .replace(/\bproven track record\b/gi, "background")
+    .replace(/\badd value\b/gi, "be useful")
+    .replace(/\bvaluable addition\b/gi, "useful addition")
+    .replace(/\bcontribute effectively\b/gi, "contribute")
+    .replace(/\bsupport your objectives\b/gi, "support the work")
+    .replace(/\bsupport your mission\b/gi, "support the work")
+    .replace(/\bnational security objectives\b/gi, "the work")
+    .replace(/\bmission-driven\b/gi, "focused")
+    .replace(/\breal-world impact\b/gi, "practical impact")
+    .replace(/\bcareer trajectory\b/gi, "career direction")
+    .replace(/\bcloud-native\b/gi, "cloud")
+    .replace(/\brobust\b/gi, "reliable")
+    .replace(/\bscalable\b/gi, "maintainable")
+    .replace(/\bresonates\b/gi, "makes sense")
+    .replace(/\bthe responsibilities outlined\b/gi, "the role")
+    .replace(/\bthe role's emphasis\b/gi, "the role's focus")
+    .replace(/\bcore of my skill set\b/gi, "part of my background")
+    .replace(/\bperfect fit\b/gi, "good fit")
+    .replace(/\bwhat attracted me\b/gi, "why I am applying")
+    .replace(/\bwhat stood out\b/gi, "one useful part")
+    .replace(/\bI am passionate\b/gi, "I am interested")
+    .replace(/\bI thrive\b/gi, "I work well")
+    .replace(/\bI have spent the last\b/gi, "For the last")
+    .replace(/\bover time I moved\b/gi, "My work has moved")
+    .replace(/\bmy day-to-day work\b/gi, "my work")
+    .replace(/\bmy background aligns\b/gi, "my background fits")
+    .replace(/\bbring my experience\b/gi, "use my experience")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function getCoverLetterStyleViolations(text: string) {
   const bannedPhrases = [
     "I am excited",
@@ -1190,7 +1234,7 @@ function cleanGeneratedText(text: string) {
 function isRetryableTextError(error: unknown) {
   if (!(error instanceof Error)) return false;
 
-  return /too short|included placeholders/i.test(error.message);
+  return /too short|included placeholders|style guard/i.test(error.message);
 }
 
 function parseJsonResponse<T>(text: string) {
