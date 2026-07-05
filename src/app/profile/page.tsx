@@ -3,6 +3,12 @@
 import { CheckCircle2, FileText, Trash2, Upload, X } from "lucide-react";
 import Link from "next/link";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import {
+  cleanCoverLetterPreferences,
+  coverLetterPreferencesMaxLength,
+  coverLetterPreferencesStorageKey,
+  defaultCoverLetterPreferences,
+} from "@/lib/cover-letter-preferences";
 import { SharedFooter } from "../shared-footer";
 import { SharedHeader } from "../shared-header";
 
@@ -93,8 +99,9 @@ export default function ProfilePage() {
   const [resumeFileName, setResumeFileName] = useState("");
   const [history, setHistory] = useState<MatchHistoryItem[]>([]);
   const [candidateProfile, setCandidateProfile] = useState<CandidateProfile>({});
+  const [coverLetterPreferences, setCoverLetterPreferences] = useState(defaultCoverLetterPreferences);
   const [selectedId, setSelectedId] = useState("");
-  const [activePanel, setActivePanel] = useState<"details" | "history">("details");
+  const [activePanel, setActivePanel] = useState<"details" | "coverLetter" | "history">("details");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const selectedMatch = useMemo(
@@ -110,11 +117,17 @@ export default function ProfilePage() {
     const savedHistory = readMatchHistory();
     const savedCandidateProfile = readCandidateProfile();
     const savedResumeFileName = window.localStorage.getItem(resumeProfileNameStorageKey) ?? "";
+    const savedCoverLetterPreferences = window.localStorage.getItem(coverLetterPreferencesStorageKey);
 
     setResume(savedResume);
     setResumeFileName(savedResumeFileName);
     setHistory(savedHistory);
     setCandidateProfile(savedCandidateProfile);
+    setCoverLetterPreferences(
+      savedCoverLetterPreferences
+        ? cleanCoverLetterPreferences(savedCoverLetterPreferences) || defaultCoverLetterPreferences
+        : defaultCoverLetterPreferences,
+    );
     setSelectedId(savedHistory[0]?.id ?? "");
   }, []);
 
@@ -193,6 +206,22 @@ export default function ProfilePage() {
     setMessage("Candidate details cleared.");
   }
 
+  function saveCoverLetterPreferences() {
+    const cleaned = cleanCoverLetterPreferences(coverLetterPreferences) || defaultCoverLetterPreferences;
+
+    window.localStorage.setItem(coverLetterPreferencesStorageKey, cleaned);
+    setCoverLetterPreferences(cleaned);
+    setError("");
+    setMessage("Cover letter style saved.");
+  }
+
+  function resetCoverLetterPreferences() {
+    window.localStorage.removeItem(coverLetterPreferencesStorageKey);
+    setCoverLetterPreferences(defaultCoverLetterPreferences);
+    setError("");
+    setMessage("Cover letter style reset to the default.");
+  }
+
   function deleteMatch(id: string) {
     const nextHistory = history.filter((item) => item.id !== id);
 
@@ -234,6 +263,15 @@ export default function ProfilePage() {
               }`}
             >
               Basic details
+            </button>
+            <button
+              type="button"
+              onClick={() => setActivePanel("coverLetter")}
+              className={`mt-1 w-full rounded-md px-4 py-3 text-left text-sm font-bold transition ${
+                activePanel === "coverLetter" ? "bg-[#043873] text-white" : "text-[#4F5F6F] hover:bg-[#F8FBFF] hover:text-[#043873]"
+              }`}
+            >
+              Cover letter style
             </button>
             <button
               type="button"
@@ -386,6 +424,55 @@ export default function ProfilePage() {
             </div>
             {message ? <p className="mt-3 text-sm font-semibold text-[#007a52]">{message}</p> : null}
               </section>
+            </section>
+          ) : null}
+
+          {activePanel === "coverLetter" ? (
+            <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_16px_44px_rgba(4,56,115,0.08)] md:p-6">
+              <div>
+                <p className="text-sm font-bold uppercase text-[#4F9CF9]">Cover letter style</p>
+                <h2 className="mt-2 text-2xl font-extrabold text-[#212529]">Set your writing preferences</h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-[#4F5F6F]">
+                  Tell RoleGuage how your cover letters should sound. These preferences are saved in this browser and
+                  used only when generating cover letter drafts.
+                </p>
+              </div>
+
+              <label className="mt-5 grid gap-2">
+                <span className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F5F6F]">
+                  Cover letter instructions
+                </span>
+                <textarea
+                  value={coverLetterPreferences}
+                  onChange={(event) => setCoverLetterPreferences(event.target.value.slice(0, coverLetterPreferencesMaxLength))}
+                  maxLength={coverLetterPreferencesMaxLength}
+                  className="min-h-[260px] resize-y rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 text-[#1B2A3A] outline-none transition focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15"
+                />
+              </label>
+              <div className="mt-2 flex flex-col justify-between gap-2 text-xs font-semibold text-[#4F5F6F] sm:flex-row">
+                <p>Keep this focused on tone, structure, and phrases you like or dislike.</p>
+                <p>
+                  {coverLetterPreferences.length.toLocaleString()} / {coverLetterPreferencesMaxLength.toLocaleString()}
+                </p>
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={saveCoverLetterPreferences}
+                  className="h-11 cursor-pointer rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97]"
+                >
+                  Save style
+                </button>
+                <button
+                  type="button"
+                  onClick={resetCoverLetterPreferences}
+                  className="h-11 cursor-pointer rounded-md border border-[#FFE492] bg-white px-4 text-sm font-bold text-[#043873] transition hover:bg-[#FFE492]"
+                >
+                  Reset default
+                </button>
+              </div>
+              {message ? <p className="mt-3 text-sm font-semibold text-[#007a52]">{message}</p> : null}
             </section>
           ) : null}
 

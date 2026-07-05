@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { ChangeEvent, FormEvent, useMemo, useRef, useState } from "react";
+import { cleanCoverLetterPreferences, coverLetterPreferencesStorageKey } from "@/lib/cover-letter-preferences";
 import { SharedFooter } from "../shared-footer";
 import { SharedHeader } from "../shared-header";
 
@@ -235,7 +236,13 @@ export default function Home() {
       const response = await fetch("/api/enrich-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resume: resumeText, job: jobText, profile: readCandidateProfile(), analysis: baseResult }),
+        body: JSON.stringify({
+          resume: resumeText,
+          job: jobText,
+          profile: readCandidateProfile(),
+          analysis: baseResult,
+          coverLetterInstructions: readCoverLetterPreferences(),
+        }),
       });
 
       if (!response.ok) throw new Error("Enrichment failed");
@@ -402,7 +409,7 @@ export default function Home() {
 
       <section className="bg-[#043873] px-5 py-10 text-white md:px-8 md:py-14 lg:px-10">
         <div className="mx-auto max-w-7xl">
-          <h1 className="text-4xl font-extrabold leading-tight text-[#A7CEFC] md:text-6xl">Matcher</h1>
+          <h1 className="text-4xl font-extrabold leading-tight text-[#A7CEFC] md:text-6xl">Resume to Job Matcher</h1>
           <p className="mt-4 max-w-5xl text-2xl font-extrabold leading-tight text-white md:text-4xl">
             Check one role before you spend time applying.
           </p>
@@ -418,7 +425,7 @@ export default function Home() {
           <form onSubmit={analyzeRole}>
             <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
               <div>
-                <h2 className="text-2xl font-extrabold text-[#212529]">Role matcher</h2>
+                <h2 className="text-2xl font-extrabold text-[#212529]">Check your resume against a Job Ad</h2>
                 <p className="mt-3 text-sm leading-6 text-[#4F5F6F]">
                   Start with the sample, upload your resume, or paste your own job ad.
                 </p>
@@ -969,6 +976,12 @@ function readCandidateProfile(): CandidateProfile {
   } catch {
     return {};
   }
+}
+
+function readCoverLetterPreferences() {
+  if (typeof window === "undefined") return "";
+
+  return cleanCoverLetterPreferences(window.localStorage.getItem(coverLetterPreferencesStorageKey) ?? "");
 }
 
 function hasHardBlocker(result: AnalysisResult) {
