@@ -1,4 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  cleanBoundedText,
+  maxJobTextChars,
+  maxResumeTextChars,
+} from "@/lib/request-limits";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import { CandidateProfile, checkHardRequirements } from "@/lib/requirements";
 
 type SkillDefinition = {
@@ -145,12 +151,20 @@ const roleFamilyChecks = [
 ];
 
 export async function POST(request: NextRequest) {
+  const rateLimited = enforceRateLimit(request, {
+    key: "api:analyze",
+    limit: 60,
+    windowMs: 60_000,
+  });
+
+  if (rateLimited) return rateLimited;
+
   const body = (await request.json().catch(() => null)) as
     | { resume?: string; job?: string; profile?: CandidateProfile }
     | null;
 
-  const resume = body?.resume?.trim() ?? "";
-  const job = body?.job?.trim() ?? "";
+  const resume = cleanBoundedText(body?.resume, maxResumeTextChars);
+  const job = cleanBoundedText(body?.job, maxJobTextChars);
 
   if (resume.length < 80 || job.length < 80) {
     return NextResponse.json(

@@ -1,23 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateFitEnrichment, getAiModel } from "@/lib/ai";
 import { cleanCoverLetterExamples, cleanCoverLetterPreferences } from "@/lib/cover-letter-preferences";
+import {
+  cleanBoundedText,
+  maxJobTextChars,
+  maxResumeTextChars,
+} from "@/lib/request-limits";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import { CandidateProfile } from "@/lib/requirements";
 import { analyzeResumeAgainstJob } from "../analyze/route";
 
 export async function POST(request: NextRequest) {
+  const rateLimited = enforceRateLimit(request, {
+    key: "api:enrich-report",
+    limit: 10,
+    windowMs: 60_000,
+  });
+
+  if (rateLimited) return rateLimited;
+
   const body = (await request.json().catch(() => null)) as
     | {
         resume?: string;
         job?: string;
         profile?: CandidateProfile;
-        analysis?: ReturnType<typeof analyzeResumeAgainstJob>;
         coverLetterInstructions?: string;
         coverLetterExamples?: string[];
       }
     | null;
 
-  const resume = body?.resume?.trim() ?? "";
-  const job = body?.job?.trim() ?? "";
+  const resume = cleanBoundedText(body?.resume, maxResumeTextChars);
+  const job = cleanBoundedText(body?.job, maxJobTextChars);
 
   if (resume.length < 80 || job.length < 80) {
     return NextResponse.json(
@@ -26,7 +39,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const analysis = body?.analysis ?? analyzeResumeAgainstJob(resume, job, body?.profile);
+  const analysis = analyzeResumeAgainstJob(resume, job, body?.profile);
   const coverLetterInstructions = cleanCoverLetterPreferences(body?.coverLetterInstructions);
   const coverLetterExamples = cleanCoverLetterExamples(body?.coverLetterExamples);
 

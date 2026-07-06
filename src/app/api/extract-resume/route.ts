@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { maxResumePdfPages } from "@/lib/request-limits";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
 const maxResumePdfBytes = 4 * 1024 * 1024;
+
+class PdfPageLimitError extends Error {
+  constructor() {
+    super(`Resume PDF must be ${maxResumePdfPages} pages or fewer.`);
+  }
+}
 
 class ServerDOMMatrix {
   a = 1;
@@ -66,6 +74,14 @@ function ensurePdfJsServerGlobals() {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimited = enforceRateLimit(request, {
+    key: "api:extract-resume",
+    limit: 15,
+    windowMs: 60_000,
+  });
+
+  if (rateLimited) return rateLimited;
+
   const formData = await request.formData().catch(() => null);
   const file = formData?.get("resume");
 
@@ -77,12 +93,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Only PDF resumes are supported right now." }, { status: 400 });
   }
 
+  if (!file.name.toLowerCase().endsWith(".pdf")) {
+    return NextResponse.json({ error: "Resume file must use a .pdf extension." }, { status: 400 });
+  }
+
   if (file.size > maxResumePdfBytes) {
     return NextResponse.json({ error: "Resume PDF must be smaller than 4 MB." }, { status: 400 });
   }
 
   try {
     const data = new Uint8Array(await file.arrayBuffer());
+
+    if (!hasPdfHeader(data)) {
+      return NextResponse.json({ error: "Uploaded file is not a valid PDF." }, { status: 400 });
+    }
+
     const parsed = await extractPdfText(data);
     const text = cleanText(parsed.text);
 
@@ -102,7 +127,11 @@ export async function POST(request: NextRequest) {
       text: text.length > 10000 ? `${text.slice(0, 10000)}...` : text,
     });
   } catch (error) {
-    console.error("Resume PDF extraction failed", error);
+    console.error("Resume PDF extraction failed", getErrorSummary(error));
+
+    if (error instanceof PdfPageLimitError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
 
     return NextResponse.json(
       {
@@ -127,6 +156,11 @@ async function extractPdfText(data: Uint8Array) {
     isEvalSupported: false,
     useWorkerFetch: false,
   } as Parameters<typeof getDocument>[0] & { disableWorker: boolean }).promise;
+
+  if (document.numPages > maxResumePdfPages) {
+    throw new PdfPageLimitError();
+  }
+
   const pages: string[] = [];
 
   for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
@@ -143,6 +177,21 @@ async function extractPdfText(data: Uint8Array) {
     pages: document.numPages,
     text: pages.join("\n\n"),
   };
+}
+
+function hasPdfHeader(data: Uint8Array) {
+  return (
+    data.length > 4 &&
+    data[0] === 0x25 &&
+    data[1] === 0x50 &&
+    data[2] === 0x44 &&
+    data[3] === 0x46 &&
+    data[4] === 0x2d
+  );
+}
+
+function getErrorSummary(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function cleanText(value: string) {
