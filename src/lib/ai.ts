@@ -106,6 +106,7 @@ type WriterPacket = {
 };
 
 const aiCache = new Map<string, { expiresAt: number; value: unknown }>();
+const groqModelCooldowns = new Map<string, number>();
 const defaultGeminiModel = "gemini-2.5-flash";
 const defaultGroqModel = "openai/gpt-oss-20b";
 const aiTimeoutMs = getConfiguredTimeout();
@@ -962,6 +963,8 @@ async function generateGroqJsonWithLimit<T>(prompt: string, maxOutputTokens: num
   let lastError: unknown;
 
   for (const model of getAiModelCandidates()) {
+    if (isGroqModelCoolingDown(model)) continue;
+
     try {
       const text = await generateGroqCompletion({
         prompt: `${prompt}\n\nReturn valid JSON only. Do not include markdown fences.`,
@@ -990,6 +993,8 @@ async function generateGroqJsonWithLimit<T>(prompt: string, maxOutputTokens: num
         }
       }
 
+      markGroqModelCooldown(model, lastError);
+
       if (!isRetryableAiError(lastError) && !(lastError instanceof SyntaxError)) {
         break;
       }
@@ -1003,6 +1008,8 @@ async function generateGroqTextWithLimit(prompt: string, maxOutputTokens: number
   let lastError: unknown;
 
   for (const model of getAiModelCandidates()) {
+    if (isGroqModelCoolingDown(model)) continue;
+
     try {
       const text = await generateGroqCompletion({
         prompt,
@@ -1021,6 +1028,7 @@ async function generateGroqTextWithLimit(prompt: string, maxOutputTokens: number
       return cleaned;
     } catch (error) {
       lastError = error;
+      markGroqModelCooldown(model, error);
 
       if (!isRetryableAiError(error) && !isRetryableTextError(error)) {
         break;
@@ -1084,10 +1092,14 @@ async function generateGroqCompletion({
   if (!response.ok) {
     const message = await response.text().catch(() => response.statusText);
     const rateLimitSummary = getGroqRateLimitSummary(response);
+    if (response.status === 429) {
+      console.warn(`Groq rate limited ${model}`, rateLimitSummary || "no rate-limit headers returned");
+    }
     const error = new Error(
       [message || response.statusText, rateLimitSummary].filter(Boolean).join(" "),
-    ) as Error & { status?: number };
+    ) as Error & { retryAfterMs?: number; status?: number };
     error.status = response.status;
+    error.retryAfterMs = getGroqRetryAfterMs(response);
     throw error;
   }
 
@@ -1121,6 +1133,46 @@ function getGroqRateLimitSummary(response: Response) {
     .filter(Boolean);
 
   return headers.length ? `[groq-rate-limit ${headers.join(" ")}]` : "";
+}
+
+function getGroqRetryAfterMs(response: Response) {
+  const retryAfter = Number(response.headers.get("retry-after"));
+
+  if (Number.isFinite(retryAfter) && retryAfter > 0) {
+    return Math.min(Math.ceil(retryAfter * 1000), 30_000);
+  }
+
+  return 10_000;
+}
+
+function isGroqModelCoolingDown(model: string) {
+  const cooldownUntil = groqModelCooldowns.get(model) ?? 0;
+
+  if (cooldownUntil <= Date.now()) {
+    groqModelCooldowns.delete(model);
+    return false;
+  }
+
+  return true;
+}
+
+function markGroqModelCooldown(model: string, error: unknown) {
+  const status =
+    error && typeof error === "object" && "status" in error
+      ? Number((error as { status?: unknown }).status)
+      : 0;
+
+  if (status !== 429) return;
+
+  const retryAfterMs =
+    error && typeof error === "object" && "retryAfterMs" in error
+      ? Number((error as { retryAfterMs?: unknown }).retryAfterMs)
+      : 10_000;
+
+  groqModelCooldowns.set(
+    model,
+    Date.now() + (Number.isFinite(retryAfterMs) ? retryAfterMs : 10_000),
+  );
 }
 
 function validateCoverLetterText(text: string, model: string) {
