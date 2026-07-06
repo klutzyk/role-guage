@@ -1083,7 +1083,10 @@ async function generateGroqCompletion({
 
   if (!response.ok) {
     const message = await response.text().catch(() => response.statusText);
-    const error = new Error(message || response.statusText) as Error & { status?: number };
+    const rateLimitSummary = getGroqRateLimitSummary(response);
+    const error = new Error(
+      [message || response.statusText, rateLimitSummary].filter(Boolean).join(" "),
+    ) as Error & { status?: number };
     error.status = response.status;
     throw error;
   }
@@ -1098,6 +1101,26 @@ async function generateGroqCompletion({
   }
 
   return text;
+}
+
+function getGroqRateLimitSummary(response: Response) {
+  const headers = [
+    "retry-after",
+    "x-ratelimit-limit-requests",
+    "x-ratelimit-limit-tokens",
+    "x-ratelimit-remaining-requests",
+    "x-ratelimit-remaining-tokens",
+    "x-ratelimit-reset-requests",
+    "x-ratelimit-reset-tokens",
+  ]
+    .map((header) => {
+      const value = response.headers.get(header);
+
+      return value ? `${header}=${value}` : "";
+    })
+    .filter(Boolean);
+
+  return headers.length ? `[groq-rate-limit ${headers.join(" ")}]` : "";
 }
 
 function validateCoverLetterText(text: string, model: string) {
