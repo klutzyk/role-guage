@@ -105,10 +105,15 @@ type WriterPacket = {
   avoidClaims: string[];
 };
 
+type AiTask = "analysis" | "coverLetter" | "repair";
+
 const aiCache = new Map<string, { expiresAt: number; value: unknown }>();
 const groqModelCooldowns = new Map<string, number>();
 const defaultGeminiModel = "gemini-2.5-flash";
 const defaultGroqModel = "openai/gpt-oss-20b";
+const defaultGroqAnalysisModel = "meta-llama/llama-4-scout-17b-16e-instruct";
+const defaultGroqCoverLetterModel = "openai/gpt-oss-120b";
+const defaultGroqRepairModel = "meta-llama/llama-4-scout-17b-16e-instruct";
 const aiTimeoutMs = getConfiguredTimeout();
 const cacheTtlMs = 1000 * 60 * 60 * 12;
 
@@ -145,23 +150,63 @@ function getConfiguredTimeout() {
   return Math.min(Math.max(timeout, 8000), 45000);
 }
 
-function getAiModelCandidates() {
+function getAiModelCandidates(task: AiTask = "analysis") {
   if (getLlmProvider() === "groq") {
-    const configuredFallbacks = [
+    const fallbackModels = parseModelList([
       process.env.GROQ_FALLBACK_MODEL,
       process.env.GROQ_FALLBACK_MODELS,
-    ]
-      .flatMap((models) => (models ?? "").split(","))
-      .map((model) => model.trim())
-      .filter(Boolean);
+    ]);
+
+    if (task === "coverLetter") {
+      const coverFallbacks = parseModelList([
+        process.env.GROQ_COVER_LETTER_FALLBACK_MODEL,
+        process.env.GROQ_COVER_LETTER_FALLBACK_MODELS,
+      ]);
+
+      return Array.from(
+        new Set([
+          process.env.GROQ_COVER_LETTER_MODEL ||
+            process.env.GROQ_MODEL ||
+            defaultGroqCoverLetterModel,
+          ...coverFallbacks,
+          "llama-3.3-70b-versatile",
+          "meta-llama/llama-4-scout-17b-16e-instruct",
+          "openai/gpt-oss-20b",
+          ...fallbackModels,
+        ]),
+      );
+    }
+
+    if (task === "repair") {
+      const repairFallbacks = parseModelList([
+        process.env.GROQ_REPAIR_FALLBACK_MODEL,
+        process.env.GROQ_REPAIR_FALLBACK_MODELS,
+      ]);
+
+      return Array.from(
+        new Set([
+          process.env.GROQ_REPAIR_MODEL || defaultGroqRepairModel,
+          ...repairFallbacks,
+          "llama-3.3-70b-versatile",
+          "qwen/qwen3-32b",
+          "llama-3.1-8b-instant",
+          ...fallbackModels,
+        ]),
+      );
+    }
 
     return Array.from(
       new Set([
-        process.env.GROQ_MODEL || defaultGroqModel,
-        ...configuredFallbacks,
-        "openai/gpt-oss-120b",
-        "llama-3.3-70b-versatile",
+        process.env.GROQ_ANALYSIS_MODEL || defaultGroqAnalysisModel,
+        ...parseModelList([
+          process.env.GROQ_ANALYSIS_FALLBACK_MODEL,
+          process.env.GROQ_ANALYSIS_FALLBACK_MODELS,
+        ]),
+        ...fallbackModels,
         "meta-llama/llama-4-scout-17b-16e-instruct",
+        "llama-3.3-70b-versatile",
+        "qwen/qwen3-32b",
+        "llama-3.1-8b-instant",
       ]),
     );
   }
@@ -172,6 +217,13 @@ function getAiModelCandidates() {
     : [configuredModel, "gemini-2.5-flash"];
 
   return Array.from(new Set(preferredModels));
+}
+
+function parseModelList(values: Array<string | undefined>) {
+  return values
+    .flatMap((models) => (models ?? "").split(","))
+    .map((model) => model.trim())
+    .filter(Boolean);
 }
 
 function buildPromptContext(resume: string, job: string, analysis: AnalysisLike): PromptContext {
@@ -542,7 +594,7 @@ export async function generateFitEnrichment({
     [
       "career-narrative-v2",
       getLlmProvider(),
-      getAiModelCandidates().join(","),
+      getAiModelCandidates("analysis").join(","),
       resume,
       job,
       JSON.stringify(analysis),
@@ -550,13 +602,14 @@ export async function generateFitEnrichment({
     careerNarrativeSchema,
     buildCareerNarrativePrompt(promptContext),
     450,
+    "analysis",
   );
   const writerPacket = buildWriterPacket(job, analysis, narrative);
   const guidance = await cachedJsonWithLimit<FitGuidancePayload>(
     [
       "fit-guidance-v2",
       getLlmProvider(),
-      getAiModelCandidates().join(","),
+      getAiModelCandidates("analysis").join(","),
       resume,
       job,
       JSON.stringify(analysis),
@@ -564,13 +617,14 @@ export async function generateFitEnrichment({
     fitEnrichmentSchema,
     buildFitPrompt(promptContext),
     700,
+    "analysis",
   );
   const roleBrief = formatCoverLetterRoleBrief(job, analysis, writerPacket);
   const coverLetterPayload = await cachedJsonWithLimit<CoverLetterOnlyPayload>(
     [
       "cover-letter-writer-v5",
       getLlmProvider(),
-      getAiModelCandidates().join(","),
+      getAiModelCandidates("coverLetter").join(","),
       cleanedCoverLetterInstructions,
       JSON.stringify(cleanedCoverLetterExamples),
       JSON.stringify(writerPacket),
@@ -584,6 +638,7 @@ export async function generateFitEnrichment({
       cleanedCoverLetterExamples,
     ),
     650,
+    "coverLetter",
   );
 
   let coverLetter = cleanGeneratedText(coverLetterPayload.coverLetter ?? "");
@@ -593,7 +648,7 @@ export async function generateFitEnrichment({
       [
         "cover-letter-repair-v6",
         getLlmProvider(),
-        getAiModelCandidates().join(","),
+        getAiModelCandidates("repair").join(","),
         cleanedCoverLetterInstructions,
         JSON.stringify(cleanedCoverLetterExamples),
         JSON.stringify(writerPacket),
@@ -611,13 +666,14 @@ export async function generateFitEnrichment({
         roleBrief,
       }),
       520,
+      "repair",
     );
 
     coverLetter = repaired.coverLetter;
   }
 
   coverLetter = sanitizeCoverLetterStyle(cleanGeneratedText(coverLetter));
-  validateCoverLetterText(coverLetter, getAiModelCandidates()[0]);
+  validateCoverLetterText(coverLetter, getAiModelCandidates("coverLetter")[0]);
   const cleanedEnrichment = cleanEnrichmentPayload(
     { ...guidance, coverLetter },
     analysis,
@@ -627,7 +683,7 @@ export async function generateFitEnrichment({
   return {
     ...cleanedEnrichment,
     aiStatus: "generated",
-    aiModel: getAiModelCandidates()[0],
+    aiModel: getAiModelCandidates("coverLetter")[0],
   };
 }
 
@@ -815,6 +871,7 @@ async function cachedJsonWithLimit<T>(
   schema: Record<string, unknown>,
   prompt: string,
   maxOutputTokens: number,
+  task: AiTask = "analysis",
 ) {
   const key = createHash("sha256").update(seed).digest("hex");
   const cached = aiCache.get(key);
@@ -824,8 +881,8 @@ async function cachedJsonWithLimit<T>(
   }
 
   const value = await withTimeout(
-    generateJsonWithLimit<T>(prompt, schema, maxOutputTokens),
-    aiTimeoutMs * getAiModelCandidates().length,
+    generateJsonWithLimit<T>(prompt, schema, maxOutputTokens, task),
+    aiTimeoutMs * getAiModelCandidates(task).length,
   );
 
   aiCache.set(key, {
@@ -840,6 +897,7 @@ async function cachedTextWithLimit(
   seed: string,
   prompt: string,
   maxOutputTokens: number,
+  task: AiTask = "analysis",
 ) {
   const key = createHash("sha256").update(seed).digest("hex");
   const cached = aiCache.get(key);
@@ -849,8 +907,8 @@ async function cachedTextWithLimit(
   }
 
   const value = await withTimeout(
-    generateTextWithLimit(prompt, maxOutputTokens),
-    aiTimeoutMs * getAiModelCandidates().length,
+    generateTextWithLimit(prompt, maxOutputTokens, task),
+    aiTimeoutMs * getAiModelCandidates(task).length,
   );
 
   aiCache.set(key, {
@@ -865,16 +923,17 @@ async function generateJsonWithLimit<T>(
   prompt: string,
   schema: Record<string, unknown>,
   maxOutputTokens: number,
+  task: AiTask = "analysis",
 ) {
   if (getLlmProvider() === "groq") {
-    return generateGroqJsonWithLimit<T>(prompt, maxOutputTokens);
+    return generateGroqJsonWithLimit<T>(prompt, maxOutputTokens, task);
   }
 
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   const ai = new GoogleGenAI({ apiKey });
   let lastError: unknown;
 
-  for (const model of getAiModelCandidates()) {
+  for (const model of getAiModelCandidates(task)) {
     try {
       const response = await withTimeout(
         ai.models.generateContent({
@@ -909,16 +968,20 @@ async function generateJsonWithLimit<T>(
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
-async function generateTextWithLimit(prompt: string, maxOutputTokens: number) {
+async function generateTextWithLimit(
+  prompt: string,
+  maxOutputTokens: number,
+  task: AiTask = "analysis",
+) {
   if (getLlmProvider() === "groq") {
-    return generateGroqTextWithLimit(prompt, maxOutputTokens);
+    return generateGroqTextWithLimit(prompt, maxOutputTokens, task);
   }
 
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   const ai = new GoogleGenAI({ apiKey });
   let lastError: unknown;
 
-  for (const model of getAiModelCandidates()) {
+  for (const model of getAiModelCandidates(task)) {
     try {
       const response = await withTimeout(
         ai.models.generateContent({
@@ -959,10 +1022,14 @@ async function generateTextWithLimit(prompt: string, maxOutputTokens: number) {
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
-async function generateGroqJsonWithLimit<T>(prompt: string, maxOutputTokens: number) {
+async function generateGroqJsonWithLimit<T>(
+  prompt: string,
+  maxOutputTokens: number,
+  task: AiTask = "analysis",
+) {
   let lastError: unknown;
 
-  for (const model of getAiModelCandidates()) {
+  for (const model of getAiModelCandidates(task)) {
     if (isGroqModelCoolingDown(model)) continue;
 
     try {
@@ -1004,10 +1071,14 @@ async function generateGroqJsonWithLimit<T>(prompt: string, maxOutputTokens: num
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
-async function generateGroqTextWithLimit(prompt: string, maxOutputTokens: number) {
+async function generateGroqTextWithLimit(
+  prompt: string,
+  maxOutputTokens: number,
+  task: AiTask = "analysis",
+) {
   let lastError: unknown;
 
-  for (const model of getAiModelCandidates()) {
+  for (const model of getAiModelCandidates(task)) {
     if (isGroqModelCoolingDown(model)) continue;
 
     try {
