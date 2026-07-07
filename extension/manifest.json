@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "RoleGuage Job Matcher",
-  "version": "1.0.1",
-  "description": "Analyze the current job page or selected job text against your resume.",
+  "name": "RoleGuage Resume & Job Matcher",
+  "version": "1.0.2",
+  "description": "Analyze the current job page or selected job text against your resume and get fit insights.",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": ["https://roleguage.com/*"],
   "icons": {

@@ -53,6 +53,9 @@ const steps = [
   ["03", "Get your match report", "Review fit, gaps, blockers, cover letter draft, and next actions."],
 ];
 
+const chromeExtensionUrl =
+  "https://chromewebstore.google.com/detail/roleguage-job-matcher/fodmkdebllldfgclbicnjojgenlndlba";
+
 export default function Home() {
   return (
     <main className="min-h-screen overflow-hidden bg-[#F0F4FF] text-[#0F1C35]">
@@ -82,7 +85,9 @@ export default function Home() {
               <ArrowRight size={18} aria-hidden="true" />
             </a>
             <a
-              href="#demo"
+              href={chromeExtensionUrl}
+              target="_blank"
+              rel="noreferrer"
               className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-[#A7CEFC] bg-white/54 px-6 text-sm font-extrabold text-[#245FEA] transition hover:bg-white"
             >
               <Globe size={18} aria-hidden="true" />
@@ -168,7 +173,9 @@ export default function Home() {
               <ArrowRight size={18} aria-hidden="true" />
             </a>
             <a
-              href="#demo"
+              href={chromeExtensionUrl}
+              target="_blank"
+              rel="noreferrer"
               className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-[#A7CEFC] bg-white/48 px-6 text-sm font-extrabold text-[#245FEA] transition hover:bg-white"
             >
               <Globe size={18} aria-hidden="true" />
