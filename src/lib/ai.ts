@@ -451,6 +451,7 @@ Non-negotiable rules:
 - Treat ROLE BRIEF hard checks as authoritative. If a hard check is blocked or unknown, make it clear naturally.
 - Never claim the candidate satisfies a blocker, warning, location requirement, work-rights requirement, licence requirement, salary requirement, security-clearance requirement, or experience requirement unless WRITER PACKET verifiedFacts explicitly proves it.
 - If ROLE BRIEF or WRITER PACKET says a requirement is blocked, unknown, or needs checking, do not write as if the candidate meets that requirement. Either mention the check carefully or leave the claim out.
+- If WRITER PACKET says the candidate location conflicts with a job location requirement, include one cautious plain sentence such as "I am currently based in [candidate location], so I would need to confirm whether the [job location] location requirement is flexible before applying." Do not mention remote work unless ROLE BRIEF explicitly says remote is allowed.
 - Do not invent tools, employers, certifications, achievements, locations, work rights, or degrees.
 - Do not infer specific stakeholder groups, architecture involvement, security work, scale, partners, or integrations unless those exact ideas are present in WRITER PACKET verifiedFacts.
 - Do not upgrade broad resume wording into stronger claims. If the evidence says "product teams", do not write "product owners"; if it says "domain specialists", do not write "architects"; if it says "business requirements", do not write "complex requirements".
@@ -537,6 +538,7 @@ Rules:
 - Do not add facts, tools, employers, teams, responsibilities, motivations, or achievements that are not present in WRITER PACKET.
 - Never claim the candidate satisfies a blocker, warning, location requirement, work-rights requirement, licence requirement, salary requirement, security-clearance requirement, or experience requirement unless WRITER PACKET verifiedFacts explicitly proves it.
 - If ROLE BRIEF or WRITER PACKET says a requirement is blocked, unknown, or needs checking, do not write as if the candidate meets that requirement. Either mention the check carefully or leave the claim out.
+- If WRITER PACKET says the candidate location conflicts with a job location requirement, include one cautious plain sentence such as "I am currently based in [candidate location], so I would need to confirm whether the [job location] location requirement is flexible before applying." Do not mention remote work unless ROLE BRIEF explicitly says remote is allowed.
 - Do not turn listed skills into responsibilities. Skills can be mentioned as background, not as claims of hosting, deployment, ownership, or delivery unless verified.
 - Do not write a prose version of the resume.
 - If examples are supplied, follow their plain, restrained style.
@@ -717,6 +719,10 @@ function buildWriterPacket(job: string, analysis: AnalysisLike, narrative: Caree
       const candidate = finding.candidateEvidence ? ` Candidate: ${finding.candidateEvidence}` : "";
       return `${finding.label} (${finding.status} ${finding.severity}): Job says ${finding.jobEvidence}.${candidate}`;
     });
+  const locationCaution = buildLocationCoverLetterCaution(analysis.hardRequirements ?? []);
+  if (locationCaution) {
+    hardChecks.unshift(locationCaution);
+  }
   const verifiedFacts = [
     narrative.currentPositioning,
     narrative.careerProgression,
@@ -753,6 +759,37 @@ function buildWriterPacket(job: string, analysis: AnalysisLike, narrative: Caree
     hardChecks,
     avoidClaims,
   };
+}
+
+function buildLocationCoverLetterCaution(findings: RequirementFinding[]) {
+  const locationFinding = findings.find(
+    (finding) => finding.type === "location" && finding.status !== "matched" && finding.candidateEvidence,
+  );
+
+  if (!locationFinding?.candidateEvidence) return "";
+
+  const candidateLocation = cleanLocationName(locationFinding.candidateEvidence);
+  const jobLocation = cleanLocationName(extractRequirementLocation(locationFinding.jobEvidence));
+
+  if (!candidateLocation || !jobLocation) return "";
+
+  return `Location caution: Candidate is currently based in ${candidateLocation}. Job requires ${jobLocation}. If writing a cover letter, include: "I am currently based in ${candidateLocation}, so I would need to confirm whether the ${jobLocation} location requirement is flexible before applying."`;
+}
+
+function extractRequirementLocation(text: string) {
+  const city = text.match(/\b(Melbourne|Sydney|Brisbane|Perth|Adelaide|Canberra)\b/i)?.[1];
+  return city ?? text;
+}
+
+function cleanLocationName(text: string) {
+  const city = text.match(/\b(Melbourne|Sydney|Brisbane|Perth|Adelaide|Canberra)\b/i)?.[1];
+  if (city) return city[0].toUpperCase() + city.slice(1).toLowerCase();
+
+  return cleanGeneratedText(text)
+    .replace(/^(location|based in|candidate is currently based in)\s*[:,-]?\s*/i, "")
+    .split(/[.;|]/)[0]
+    .trim()
+    .slice(0, 40);
 }
 
 function extractRoleMeta(job: string, analysis: AnalysisLike) {
