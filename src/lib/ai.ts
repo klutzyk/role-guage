@@ -1396,11 +1396,12 @@ function validateCoverLetterText(text: string, model: string) {
 }
 
 function sanitizeCoverLetterStyle(text: string) {
-  return text
+  const cleaned = text
     .replace(/\bDear\s+\[[^\]]+\]\s*,?/gi, "Hi team,")
     .replace(/\bHi\s+\[[^\]]+\]\s*,?/gi, "Hi team,")
     .replace(/\[[^\]]+\]/g, "")
     .replace(/\bplaceholder\b/gi, "")
+    .replace(/\bI look forward\b[^.\n]*(?:\.|\n|$)/gi, "")
     .replace(/\bI look forward to (?:discussing|speaking|hearing|the opportunity to discuss)[^.]*\.\s*/gi, "")
     .replace(/\bI am excited about\b/gi, "I am interested in")
     .replace(/\bI'm excited about\b/gi, "I am interested in")
@@ -1437,6 +1438,12 @@ function sanitizeCoverLetterStyle(text: string) {
     .replace(/\bI am passionate\b/gi, "I am interested")
     .replace(/\bI thrive\b/gi, "I work well")
     .replace(/\bI have spent the last\b/gi, "Recently, I have spent time")
+    .replace(/\bI have spent over\b/gi, "After more than")
+    .replace(/\bI have spent\b/gi, "I have worked on")
+    .replace(/\bI have been working\b/gi, "I have worked")
+    .replace(/\bOver the last\b/gi, "Recently,")
+    .replace(/\bFor the last\b/gi, "Recently,")
+    .replace(/\bMost of my professional experience\b/gi, "A lot of my professional experience")
     .replace(/\bover time I moved\b/gi, "My work has moved")
     .replace(/\bmy day-to-day work\b/gi, "my work")
     .replace(/\bmy background aligns\b/gi, "my background fits")
@@ -1452,6 +1459,34 @@ function sanitizeCoverLetterStyle(text: string) {
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+
+  return rewriteCoverLetterOpening(cleaned);
+}
+
+function rewriteCoverLetterOpening(text: string) {
+  const paragraphs = text.split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
+  if (!paragraphs.length) return text;
+
+  const greeting = /^hi\s+(?:team|hiring manager|there),?$/i.test(paragraphs[0]) ? paragraphs[0] : "";
+  const firstBodyIndex = greeting ? 1 : 0;
+  const firstBody = paragraphs[firstBodyIndex];
+
+  if (!firstBody) return text;
+
+  let rewritten = firstBody
+    .replace(/^with over\b/i, "After more than")
+    .replace(/^i have spent\b/i, "I have worked on")
+    .replace(/^i have been working\b/i, "I have worked")
+    .replace(/^over the last\b/i, "Recently,")
+    .replace(/^for the last\b/i, "Recently,")
+    .replace(/^most of my professional experience\b/i, "A lot of my professional experience")
+    .replace(/^my background includes\b/i, "My work has included");
+
+  if (rewritten !== firstBody) {
+    paragraphs[firstBodyIndex] = rewritten;
+  }
+
+  return paragraphs.join("\n\n");
 }
 
 function formatCoverLetterText(text: string) {
