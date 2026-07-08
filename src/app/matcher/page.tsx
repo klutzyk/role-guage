@@ -23,6 +23,7 @@ import {
   coverLetterExamplesStorageKey,
   coverLetterPreferencesStorageKey,
 } from "@/lib/cover-letter-preferences";
+import { downloadDocx, downloadPdf } from "@/lib/document-export";
 import { readJsonResponse } from "@/lib/http";
 import { SharedFooter } from "../shared-footer";
 import { SharedHeader } from "../shared-header";
@@ -389,6 +390,20 @@ export default function Home() {
     window.setTimeout(() => setCopiedCoverLetter(false), 1800);
   }
 
+  function exportCoverLetterDocx() {
+    if (!coverLetter) return;
+    const meta = inferJobMeta(job, jobMeta);
+    downloadDocx(`${slugify(meta.title || "cover-letter")}-cover-letter`, coverLetter);
+    setMessage("Cover letter DOCX downloaded.");
+  }
+
+  function exportCoverLetterPdf() {
+    if (!coverLetter) return;
+    const meta = inferJobMeta(job, jobMeta);
+    downloadPdf(`${slugify(meta.title || "cover-letter")}-cover-letter`, coverLetter);
+    setMessage("Cover letter PDF downloaded.");
+  }
+
   function downloadReport() {
     if (!result) return;
     const meta = inferJobMeta(job, jobMeta);
@@ -607,21 +622,41 @@ export default function Home() {
             </div>
             <div className="grid gap-5">
               <section className="rounded-md border border-[#DDE8F6] bg-white p-5 text-[#212529] shadow-[0_14px_40px_rgba(4,56,115,0.12)]">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <h3 className="text-xl font-extrabold">Cover letter draft</h3>
-                  <button
-                    type="button"
-                    onClick={copyCoverLetter}
-                    disabled={!coverLetter}
-                    className={`inline-flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                      copiedCoverLetter
-                        ? "border-[#0F7A57] bg-[#0F7A57] text-white"
-                        : "border-[#A7CEFC] text-[#043873] hover:bg-[#A7CEFC]/20"
-                    }`}
-                  >
-                    {copiedCoverLetter ? <Check size={16} aria-hidden="true" /> : <Clipboard size={16} aria-hidden="true" />}
-                    {copiedCoverLetter ? "Copied" : "Copy"}
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={copyCoverLetter}
+                      disabled={!coverLetter}
+                      className={`inline-flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                        copiedCoverLetter
+                          ? "border-[#0F7A57] bg-[#0F7A57] text-white"
+                          : "border-[#A7CEFC] text-[#043873] hover:bg-[#A7CEFC]/20"
+                      }`}
+                    >
+                      {copiedCoverLetter ? <Check size={16} aria-hidden="true" /> : <Clipboard size={16} aria-hidden="true" />}
+                      {copiedCoverLetter ? "Copied" : "Copy"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={exportCoverLetterDocx}
+                      disabled={!coverLetter}
+                      className="inline-flex h-10 items-center gap-2 rounded-md border border-[#A7CEFC] px-3 text-sm font-bold text-[#043873] transition hover:bg-[#A7CEFC]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Download size={16} aria-hidden="true" />
+                      DOCX
+                    </button>
+                    <button
+                      type="button"
+                      onClick={exportCoverLetterPdf}
+                      disabled={!coverLetter}
+                      className="inline-flex h-10 items-center gap-2 rounded-md border border-[#A7CEFC] px-3 text-sm font-bold text-[#043873] transition hover:bg-[#A7CEFC]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Download size={16} aria-hidden="true" />
+                      PDF
+                    </button>
+                  </div>
                 </div>
                 <div className="mt-4 whitespace-pre-line rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 text-[#4F5F6F]">
                   {isPreparingReport

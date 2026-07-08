@@ -368,6 +368,13 @@ ul {
   margin-bottom: 8px;
 }
 
+.coverLetterActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .coverLetter {
   max-height: 190px;
   overflow: auto;

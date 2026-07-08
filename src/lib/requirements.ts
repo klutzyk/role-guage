@@ -400,10 +400,7 @@ function addExperienceFindings(
   normalizedJob: string,
   candidate: ReturnType<typeof buildCandidateFacts>,
 ) {
-  const experienceEvidence = findEvidence(job, [
-    /(?:minimum|at least)?\s*\d{1,2}\+?\s+years?[^.]*(?:experience|commercial|professional)/i,
-    /(?:experience|commercial experience|professional experience)[^.]{0,50}\d{1,2}\+?\s+years?/i,
-  ]);
+  const experienceEvidence = findExperienceRequirementEvidence(job);
 
   if (!experienceEvidence) return;
 
@@ -423,6 +420,31 @@ function addExperienceFindings(
   }
 
   void normalizedJob;
+}
+
+function findExperienceRequirementEvidence(job: string) {
+  const segments = job
+    .split(/[\n\r.]+/)
+    .map((segment) => segment.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  for (const segment of segments) {
+    if (isNonRequirementExperienceMention(segment)) continue;
+
+    const hasYears = /\b\d{1,2}\+?\s+years?\b/i.test(segment);
+    const hasExperience = /\b(?:experience|commercial|professional)\b/i.test(segment);
+    const hasRequirementLanguage = /\b(?:required|require|need|needs|must|minimum|at least|you(?:'|’)?ll need|you will need|what we(?:'|’)?re looking for|looking for|hands[- ]?on)\b/i.test(segment);
+
+    if (hasYears && hasExperience && hasRequirementLanguage) {
+      return trimEvidence(segment);
+    }
+  }
+
+  return "";
+}
+
+function isNonRequirementExperienceMention(segment: string) {
+  return /\b(?:combined experience|leaders? who have|learning from|mentor|mentoring|in ten years|years old|all ages)\b/i.test(segment);
 }
 
 function addSalaryFinding(
