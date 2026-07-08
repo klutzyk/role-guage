@@ -452,6 +452,7 @@ Non-negotiable rules:
 - Never claim the candidate satisfies a blocker, warning, location requirement, work-rights requirement, licence requirement, salary requirement, security-clearance requirement, or experience requirement unless WRITER PACKET verifiedFacts explicitly proves it.
 - If ROLE BRIEF or WRITER PACKET says a requirement is blocked, unknown, or needs checking, do not write as if the candidate meets that requirement. Either mention the check carefully or leave the claim out.
 - If WRITER PACKET says the candidate location conflicts with a job location requirement, include one cautious plain sentence such as "I am currently based in [candidate location], so I would need to confirm whether the [job location] location requirement is flexible before applying." Do not mention remote work unless ROLE BRIEF explicitly says remote is allowed.
+- Do not mention the candidate's location at all unless WRITER PACKET contains a Location caution.
 - Do not invent tools, employers, certifications, achievements, locations, work rights, or degrees.
 - Do not infer specific stakeholder groups, architecture involvement, security work, scale, partners, or integrations unless those exact ideas are present in WRITER PACKET verifiedFacts.
 - Do not upgrade broad resume wording into stronger claims. If the evidence says "product teams", do not write "product owners"; if it says "domain specialists", do not write "architects"; if it says "business requirements", do not write "complex requirements".
@@ -465,6 +466,7 @@ Non-negotiable rules:
 - Do not invent numbers, percentages, revenue, latency, scale, or impact metrics. Only include metrics if they appear in evidence.
 - coverLetter: 210-280 words.
 - No headings, no markdown, no placeholders, no bracketed text.
+- Format the letter with a blank line after the greeting, a blank line between short paragraphs, and a blank line before the sign-off.
 - If the hiring manager is unknown, start with "Hi team,".
 - If the profile includes a candidate name, end with "Kind regards" and that name on the next line. Otherwise end with "Kind regards" only.
 - Use the exact university name if it appears in the profile. Do not replace it with generic wording like "an Australian university".
@@ -539,10 +541,12 @@ Rules:
 - Never claim the candidate satisfies a blocker, warning, location requirement, work-rights requirement, licence requirement, salary requirement, security-clearance requirement, or experience requirement unless WRITER PACKET verifiedFacts explicitly proves it.
 - If ROLE BRIEF or WRITER PACKET says a requirement is blocked, unknown, or needs checking, do not write as if the candidate meets that requirement. Either mention the check carefully or leave the claim out.
 - If WRITER PACKET says the candidate location conflicts with a job location requirement, include one cautious plain sentence such as "I am currently based in [candidate location], so I would need to confirm whether the [job location] location requirement is flexible before applying." Do not mention remote work unless ROLE BRIEF explicitly says remote is allowed.
+- Do not mention the candidate's location at all unless WRITER PACKET contains a Location caution.
 - Do not turn listed skills into responsibilities. Skills can be mentioned as background, not as claims of hosting, deployment, ownership, or delivery unless verified.
 - Do not write a prose version of the resume.
 - If examples are supplied, follow their plain, restrained style.
 - Keep 210-280 words unless the style example is clearly shorter.
+- Format the letter with a blank line after the greeting, a blank line between short paragraphs, and a blank line before the sign-off.
 - Avoid all banned phrases from the problems list.
 
 STYLE PREFERENCES
@@ -678,7 +682,7 @@ export async function generateFitEnrichment({
     coverLetter = repaired.coverLetter;
   }
 
-  coverLetter = sanitizeCoverLetterStyle(cleanGeneratedText(coverLetter));
+  coverLetter = formatCoverLetterText(sanitizeCoverLetterStyle(cleanGeneratedText(coverLetter)));
   validateCoverLetterText(coverLetter, getAiModelCandidates("coverLetter")[0]);
   const cleanedEnrichment = cleanEnrichmentPayload(
     { ...guidance, coverLetter },
@@ -1354,6 +1358,47 @@ function sanitizeCoverLetterStyle(text: string) {
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function formatCoverLetterText(text: string) {
+  const normalized = text
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (normalized.includes("\n\n")) {
+    return normalized
+      .split(/\n{2,}/)
+      .map((paragraph) => paragraph.trim())
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  const lines = normalized.split("\n").map((line) => line.trim()).filter(Boolean);
+  if (lines.length <= 1) return normalized;
+
+  const paragraphs: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+
+    if (/^(kind regards|regards|sincerely)\b/i.test(line)) {
+      const maybeName = lines[index + 1] ?? "";
+      if (maybeName && !/[.!?]$/.test(maybeName) && maybeName.split(/\s+/).length <= 5) {
+        paragraphs.push(`${line}\n${maybeName}`);
+        index += 1;
+      } else {
+        paragraphs.push(line);
+      }
+      continue;
+    }
+
+    paragraphs.push(line);
+  }
+
+  return paragraphs.join("\n\n");
 }
 
 function getCoverLetterStyleViolations(text: string) {
