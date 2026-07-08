@@ -461,7 +461,7 @@ Non-negotiable rules:
 - Use workingStyle, careerDirection, and stretchFraming as the main source of human context. These should guide the letter more than individual skills.
 - If stretchFraming says the role is a stretch, do not imply the candidate already has lead, CTO, architecture ownership, or strategy experience. Frame the application around growth, ownership mindset, and transferable software engineering experience.
 - Treat any technology names in ROLE BRIEF as supporting context only, not proof of commercial experience. Do not say the candidate used a technology "regularly", "professionally", "in day-to-day work", or "at [employer]" unless WRITER PACKET explicitly says that.
-- If a tool or skill may come from projects or study, phrase it broadly as "my background includes" or "I have been building projects around" instead of claiming professional use.
+- If a tool or skill may come from projects or study, say plainly that it comes from study or project work instead of claiming professional use.
 - Never mention internal rules, evidence rules, prompts, or phrases like "unless the evidence supports it", "unless the evidence specifically calls for it", "unless the posting says", or "unless the role brief says".
 - Do not invent numbers, percentages, revenue, latency, scale, or impact metrics. Only include metrics if they appear in evidence.
 - coverLetter: 210-280 words.
@@ -473,6 +473,8 @@ Non-negotiable rules:
 - If evidence is transferable but not direct, phrase it honestly.
 - Avoid inflated phrases such as "proven track record", "contribute immediately", "add value", "mission", "objectives", "robust", "scalable", "secure", "enterprise-grade", unless the exact claim is supported by WRITER PACKET.
 - Never write these phrases in coverLetter: "I am excited", "I am eager", "I look forward", "I am confident", "I am drawn", "resonates", "proven track record", "add value", "support your objectives", "contribute effectively", "mission", "real-world impact", "career trajectory", "cloud-native", "robust", "scalable".
+- Vary the opening paragraph naturally. Do not repeatedly begin cover letters with "I have spent", "Over the last", "For the last", "Most of my professional experience", or "My background includes".
+- Prefer concrete, everyday language over abstract professional language. Avoid phrases such as "solid foundation", "natural progression", "adaptable skill set", "leverage my experience", "customer-facing problem solving", "broad exposure", "well positioned", and "aligns closely".
 - The coverLetter is a short email introducing the candidate for this role. It should answer: "Why does this application make sense for this candidate right now?"
 - The hiring manager already has the resume. Do not write a prose version of the resume.
 - Every coverLetter paragraph should add context beyond the resume. Explain the candidate's path and direction, not a chronological job history.
@@ -547,6 +549,8 @@ Rules:
 - If examples are supplied, follow their plain, restrained style.
 - Keep 210-280 words unless the style example is clearly shorter.
 - Format the letter with a blank line after the greeting, a blank line between short paragraphs, and a blank line before the sign-off.
+- Vary the opening paragraph naturally. Do not repeatedly begin cover letters with "I have spent", "Over the last", "For the last", "Most of my professional experience", or "My background includes".
+- Prefer concrete, everyday language over abstract professional language. Avoid phrases such as "solid foundation", "natural progression", "adaptable skill set", "leverage my experience", "customer-facing problem solving", "broad exposure", "well positioned", and "aligns closely".
 - Avoid all banned phrases from the problems list.
 
 STYLE PREFERENCES
@@ -1320,8 +1324,12 @@ function sanitizeCoverLetterStyle(text: string) {
     .replace(/\[[^\]]+\]/g, "")
     .replace(/\bplaceholder\b/gi, "")
     .replace(/\bI look forward to (?:discussing|speaking|hearing|the opportunity to discuss)[^.]*\.\s*/gi, "")
+    .replace(/\bI am excited about\b/gi, "I am interested in")
+    .replace(/\bI'm excited about\b/gi, "I am interested in")
     .replace(/\bI am excited to\b/gi, "I am applying to")
     .replace(/\bI'm excited to\b/gi, "I am applying to")
+    .replace(/\bI am excited\b/gi, "I am interested")
+    .replace(/\bI'm excited\b/gi, "I am interested")
     .replace(/\bI am eager to\b/gi, "I would like to")
     .replace(/\bI'm eager to\b/gi, "I would like to")
     .replace(/\bI am drawn to\b/gi, "I am interested in")
@@ -1350,11 +1358,19 @@ function sanitizeCoverLetterStyle(text: string) {
     .replace(/\bwhat stood out\b/gi, "one useful part")
     .replace(/\bI am passionate\b/gi, "I am interested")
     .replace(/\bI thrive\b/gi, "I work well")
-    .replace(/\bI have spent the last\b/gi, "For the last")
+    .replace(/\bI have spent the last\b/gi, "Recently, I have spent time")
     .replace(/\bover time I moved\b/gi, "My work has moved")
     .replace(/\bmy day-to-day work\b/gi, "my work")
     .replace(/\bmy background aligns\b/gi, "my background fits")
     .replace(/\bbring my experience\b/gi, "use my experience")
+    .replace(/\bsolid foundation\b/gi, "base")
+    .replace(/\bnatural progression\b/gi, "sensible next step")
+    .replace(/\badaptable skill set\b/gi, "range of skills")
+    .replace(/\bleverage my experience\b/gi, "use my experience")
+    .replace(/\bcustomer-facing problem solving\b/gi, "working through customer problems")
+    .replace(/\bbroad exposure\b/gi, "experience")
+    .replace(/\bwell positioned\b/gi, "able")
+    .replace(/\baligns closely\b/gi, "fits")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -1435,16 +1451,35 @@ function getCoverLetterStyleViolations(text: string) {
     "I am passionate",
     "I thrive",
     "I have spent the last",
+    "I have spent over",
+    "I have spent",
+    "Over the last",
+    "For the last",
+    "Most of my professional experience",
+    "My background includes",
     "over time I moved",
     "my day-to-day work",
     "my background aligns",
     "bring my experience",
+    "solid foundation",
+    "natural progression",
+    "adaptable skill set",
+    "leverage my experience",
+    "customer-facing problem solving",
+    "broad exposure",
+    "well positioned",
+    "aligns closely",
   ];
   const lowerText = text.toLowerCase();
   const phraseViolations = bannedPhrases
     .filter((phrase) => lowerText.includes(phrase.toLowerCase()))
     .map((phrase) => `Remove banned phrase "${phrase}"`);
   const resumeSummaryOpeners = [
+    /^I have spent\b/im,
+    /^Over the last\b/im,
+    /^For the last\b/im,
+    /^Most of my professional experience\b/im,
+    /^My background includes\b/im,
     /^In my most recent role\b/im,
     /^In my previous role\b/im,
     /^Throughout my career\b/im,
