@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateFitEnrichment, getAiModel } from "@/lib/ai";
 import {
+  cleanCoverLetterExamples,
+  cleanCoverLetterPreferences,
+} from "@/lib/cover-letter-preferences";
+import {
   cleanBoundedText,
   cleanOneLine,
   cleanPublicUrl,
@@ -9,6 +13,7 @@ import {
   maxResumeTextChars,
 } from "@/lib/request-limits";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { CandidateProfile } from "@/lib/requirements";
 import { analyzeResumeAgainstJob } from "../../analyze/route";
 
 const corsHeaders = {
@@ -41,13 +46,23 @@ export async function POST(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { resume?: string; job?: string; pageTitle?: string; pageUrl?: string }
+    | {
+        resume?: string;
+        job?: string;
+        pageTitle?: string;
+        pageUrl?: string;
+        profile?: CandidateProfile;
+        coverLetterInstructions?: string;
+        coverLetterExamples?: string[];
+      }
     | null;
 
   const resume = cleanBoundedText(body?.resume, maxResumeTextChars);
   const job = cleanBoundedText(body?.job, maxJobTextChars);
   const pageTitle = cleanOneLine(body?.pageTitle, maxPageTitleChars);
   const pageUrl = cleanPublicUrl(body?.pageUrl);
+  const coverLetterInstructions = cleanCoverLetterPreferences(body?.coverLetterInstructions);
+  const coverLetterExamples = cleanCoverLetterExamples(body?.coverLetterExamples);
 
   if (resume.length < 80 || job.length < 80) {
     return NextResponse.json(
@@ -56,10 +71,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const analysis = analyzeResumeAgainstJob(resume, job);
+  const analysis = analyzeResumeAgainstJob(resume, job, body?.profile);
 
   try {
-    const aiEnrichment = await generateFitEnrichment({ resume, job, analysis });
+    const aiEnrichment = await generateFitEnrichment({
+      resume,
+      job,
+      analysis,
+      coverLetterInstructions,
+      coverLetterExamples,
+    });
 
     return NextResponse.json(
       {
@@ -71,7 +92,7 @@ export async function POST(request: NextRequest) {
         enrichment: aiEnrichment
           ? {
               aiStatus: "generated",
-              aiModel: getAiModel(),
+              aiModel: aiEnrichment.aiModel ?? getAiModel(),
               summary: aiEnrichment.summary,
               nextStep: aiEnrichment.nextStep,
               fitReasoning: aiEnrichment.fitReasoning,
