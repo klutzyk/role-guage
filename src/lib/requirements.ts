@@ -367,10 +367,10 @@ function addLocationFindings(
   if (!onsiteEvidence) return;
 
   const candidateLocation = normalize(candidate.location);
-  const jobCities = ["melbourne", "sydney", "brisbane", "perth", "adelaide", "canberra"].filter((city) =>
-    normalizedJob.includes(city),
-  );
+  const cleanConstraint = extractCleanLocationConstraint(job, normalizedJob);
+  const jobCities = cleanConstraint.cities.map((city) => city.toLowerCase());
   const cityMismatch = candidateLocation && jobCities.length && !jobCities.some((city) => candidateLocation.includes(city));
+  const jobEvidence = cleanConstraint.label || onsiteEvidence;
 
   if (cityMismatch) {
     findings.push({
@@ -378,7 +378,7 @@ function addLocationFindings(
       severity: "warning",
       status: "blocked",
       label: "Location constraint",
-      jobEvidence: onsiteEvidence,
+      jobEvidence,
       candidateEvidence: candidate.location,
       message: "The job location may not match your saved location preference.",
     });
@@ -388,10 +388,38 @@ function addLocationFindings(
       severity: "info",
       status: "unknown",
       label: "Location constraint",
-      jobEvidence: onsiteEvidence,
+      jobEvidence,
       message: "This job has a location or on-site requirement. Add location preferences in Profile for automatic checks.",
     });
   }
+}
+
+function extractCleanLocationConstraint(job: string, normalizedJob: string) {
+  const cities = ["Melbourne", "Sydney", "Brisbane", "Perth", "Adelaide", "Canberra"].filter((city) =>
+    normalizedJob.includes(city.toLowerCase()),
+  );
+  const hasOnsite = /\b(on-site|onsite|in person|in-person)\b/i.test(job);
+  const hasHybrid = /\bhybrid\b/i.test(job);
+  const basedOnly = job.match(/\b(?:must\s+)?(?:be\s+)?(?:based|located)\s+in\s+(Melbourne|Sydney|Brisbane|Perth|Adelaide|Canberra)\b[^.\n]{0,80}?\b(?:only|required|role)\b/i);
+  const primaryCity = basedOnly?.[1] ?? cities[0] ?? "";
+
+  if (!primaryCity) {
+    return { cities, label: hasOnsite ? "On-site location requirement" : "Location requirement" };
+  }
+
+  if (hasOnsite && primaryCity) {
+    return { cities: [primaryCity], label: `On-site in ${primaryCity}` };
+  }
+
+  if (basedOnly) {
+    return { cities: [primaryCity], label: `${primaryCity} based role` };
+  }
+
+  if (hasHybrid) {
+    return { cities: [primaryCity], label: `Hybrid in ${primaryCity}` };
+  }
+
+  return { cities: [primaryCity], label: `${primaryCity} location requirement` };
 }
 
 function addExperienceFindings(

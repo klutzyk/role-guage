@@ -7,7 +7,7 @@ import {
   personalCoverLetterExamples,
 } from "./cover-letter-preferences";
 import { buildRagCorpus, buildStructuredProfile, formatRetrievedContext, retrieveContext } from "./rag";
-import { RequirementFinding, formatRequirementFindingsForPrompt } from "./requirements";
+import { CandidateProfile, RequirementFinding, formatRequirementFindingsForPrompt } from "./requirements";
 
 type AnalysisLike = {
   score: number;
@@ -224,7 +224,12 @@ function parseModelList(values: Array<string | undefined>) {
     .filter(Boolean);
 }
 
-function buildPromptContext(resume: string, job: string, analysis: AnalysisLike): PromptContext {
+function buildPromptContext(
+  resume: string,
+  job: string,
+  analysis: AnalysisLike,
+  candidateProfile: CandidateProfile = {},
+): PromptContext {
   const query = [
     analysis.decision,
     analysis.level,
@@ -237,7 +242,9 @@ function buildPromptContext(resume: string, job: string, analysis: AnalysisLike)
   const evidence = formatRetrievedContext(retrieveContext(query, buildRagCorpus(resume, job), 3));
 
   return {
-    profileBlock: toCompactProfile(profile),
+    profileBlock: [toCompactProfile(profile), toCompactCandidateProfile(candidateProfile)]
+      .filter(Boolean)
+      .join("\n"),
     evidenceBlock: evidence.slice(0, 1800),
     matchBlock: [
       `score: ${analysis.score}`,
@@ -606,22 +613,40 @@ function toCompactProfile(profile: ReturnType<typeof buildStructuredProfile>) {
   ].join("\n");
 }
 
+function toCompactCandidateProfile(profile: CandidateProfile = {}) {
+  const lines = [
+    profile.workRights ? `candidate_work_rights: ${profile.workRights}` : "",
+    profile.visaExpiry ? `candidate_visa_expiry: ${profile.visaExpiry}` : "",
+    profile.location ? `candidate_location: ${profile.location}` : "",
+    profile.workMode ? `candidate_work_mode: ${profile.workMode}` : "",
+    profile.driversLicence ? `candidate_drivers_licence: ${profile.driversLicence}` : "",
+    profile.securityClearance ? `candidate_security_clearance: ${profile.securityClearance}` : "",
+    profile.licences ? `candidate_licences: ${profile.licences}` : "",
+    profile.minimumSalary ? `candidate_minimum_salary: ${profile.minimumSalary}` : "",
+    profile.targetRoles ? `candidate_target_roles: ${profile.targetRoles}` : "",
+  ].filter(Boolean);
+
+  return lines.length ? `candidate_profile:\n${lines.join("\n")}` : "";
+}
+
 export async function generateFitEnrichment({
   resume,
   job,
   analysis,
+  profile,
   coverLetterInstructions,
   coverLetterExamples,
 }: {
   resume: string;
   job: string;
   analysis: AnalysisLike;
+  profile?: CandidateProfile;
   coverLetterInstructions?: string;
   coverLetterExamples?: string[];
 }): Promise<AiFitEnrichment | null> {
   if (!isAiConfigured()) return null;
 
-  const promptContext = buildPromptContext(resume, job, analysis);
+  const promptContext = buildPromptContext(resume, job, analysis, profile);
   const cleanedCoverLetterInstructions =
     cleanCoverLetterPreferences(coverLetterInstructions) || defaultCoverLetterPreferences;
   const cleanedCoverLetterExamples = cleanCoverLetterExamples(coverLetterExamples);
@@ -635,6 +660,7 @@ export async function generateFitEnrichment({
       getAiModelCandidates("analysis").join(","),
       resume,
       job,
+      JSON.stringify(profile ?? {}),
       JSON.stringify(analysis),
     ].join("\n"),
     careerNarrativeSchema,
@@ -643,6 +669,15 @@ export async function generateFitEnrichment({
     "analysis",
   );
   const writerPacket = buildWriterPacket(resume, job, analysis, narrative);
+  if (process.env.NODE_ENV !== "production") {
+    console.info("Fit enrichment writer packet", {
+      role: writerPacket.role,
+      projectFacts: writerPacket.projectFacts,
+      verifiedFactsCount: writerPacket.verifiedFacts.length,
+      hardChecks: writerPacket.hardChecks,
+      coverLetterExamplesCount: effectiveCoverLetterExamples.length,
+    });
+  }
   const guidance = await cachedJsonWithLimit<FitGuidancePayload>(
     [
       "fit-guidance-v3-personal",
@@ -650,6 +685,7 @@ export async function generateFitEnrichment({
       getAiModelCandidates("analysis").join(","),
       resume,
       job,
+      JSON.stringify(profile ?? {}),
       JSON.stringify(analysis),
     ].join("\n"),
     fitEnrichmentSchema,
@@ -660,7 +696,7 @@ export async function generateFitEnrichment({
   const roleBrief = formatCoverLetterRoleBrief(job, analysis, writerPacket);
   const coverLetterPayload = await cachedJsonWithLimit<CoverLetterOnlyPayload>(
     [
-      "cover-letter-writer-v6-personal",
+      "cover-letter-writer-v7-personal-projects",
       getLlmProvider(),
       getAiModelCandidates("coverLetter").join(","),
       cleanedCoverLetterInstructions,
@@ -680,45 +716,10 @@ export async function generateFitEnrichment({
   );
 
   let coverLetter = cleanGeneratedText(coverLetterPayload.coverLetter ?? "");
-  const coverLetterViolations = getCoverLetterStyleViolations(coverLetter);
-  if (coverLetterViolations.length) {
-  try {
-    const repaired = await cachedJsonWithLimit<CoverLetterOnlyPayload>(
-      [
-        "cover-letter-repair-v7-personal",
-        getLlmProvider(),
-        getAiModelCandidates("repair").join(","),
-        cleanedCoverLetterInstructions,
-        JSON.stringify(effectiveCoverLetterExamples),
-        JSON.stringify(writerPacket),
-        roleBrief,
-        coverLetter,
-        JSON.stringify(coverLetterViolations),
-      ].join("\n"),
-      coverLetterOnlySchema,
-      buildCoverLetterRepairPrompt({
-        coverLetter,
-        violations: coverLetterViolations,
-        coverLetterInstructions: cleanedCoverLetterInstructions,
-        coverLetterExamples: effectiveCoverLetterExamples,
-        writerPacket,
-        roleBrief,
-      }),
-      520,
-      "repair",
-    );
-
-    coverLetter = repaired.coverLetter;
-  } catch (error) {
-    console.warn(
-      "Cover letter repair skipped",
-      error instanceof Error ? error.message : String(error),
-    );
-  }
-}
-
   coverLetter = formatCoverLetterText(sanitizeCoverLetterStyle(cleanGeneratedText(coverLetter)));
-  validateCoverLetterText(coverLetter, getAiModelCandidates("coverLetter")[0]);
+  validateCoverLetterText(coverLetter, getAiModelCandidates("coverLetter")[0], {
+    enforceStyleGuard: false,
+  });
   const cleanedEnrichment = cleanEnrichmentPayload(
     { ...guidance, coverLetter },
     analysis,
@@ -808,7 +809,11 @@ function extractNamedProjectFacts(resume: string) {
   const lower = normalized.toLowerCase();
   const facts: string[] = [];
 
-  if (lower.includes("roleguage")) {
+  if (
+    lower.includes("roleguage") ||
+    /ai[-\s]?(?:powered\s+)?resume[-\s]?job match/i.test(normalized) ||
+    /resume(?:s)?\s+(?:and|to|with)\s+job descriptions/i.test(normalized)
+  ) {
     facts.push(
       "RoleGuage is a personal AI resume and job matching platform that compares resumes with job descriptions and produces fit assessments.",
     );
@@ -859,7 +864,10 @@ function buildLocationCoverLetterCaution(findings: RequirementFinding[]) {
 
   if (!candidateLocation || !jobLocation) return "";
 
-  return `Location caution: Candidate is currently based in ${candidateLocation}. Job requires ${jobLocation}. If writing a cover letter, include: "I am currently based in ${candidateLocation}, so I would need to confirm whether the ${jobLocation} location requirement is flexible before applying."`;
+  const isOnsite = /\b(on-site|onsite)\b/i.test(locationFinding.jobEvidence);
+  const requirement = isOnsite ? `${jobLocation} on-site requirement` : `${jobLocation} location requirement`;
+
+  return `Location caution: candidate is based in ${candidateLocation}; job appears ${isOnsite ? "on-site " : ""}in ${jobLocation}. If writing a cover letter, include: "I am currently based in ${candidateLocation}, so I would need to confirm whether the ${requirement} is flexible before applying."`;
 }
 
 function extractRequirementLocation(text: string) {
@@ -1377,7 +1385,11 @@ function markGroqModelCooldown(model: string, error: unknown) {
   );
 }
 
-function validateCoverLetterText(text: string, model: string) {
+function validateCoverLetterText(
+  text: string,
+  model: string,
+  options: { enforceStyleGuard?: boolean } = {},
+) {
   const wordCount = text.split(/\s+/).filter(Boolean).length;
 
   if (wordCount < 90) {
@@ -1387,6 +1399,8 @@ function validateCoverLetterText(text: string, model: string) {
   if (/\[[^\]]+\]/.test(text) || /placeholder/i.test(text)) {
     throw new Error(`AI text response included placeholders for ${model}.`);
   }
+
+  if (options.enforceStyleGuard === false) return;
 
   const violations = getCoverLetterStyleViolations(text);
 

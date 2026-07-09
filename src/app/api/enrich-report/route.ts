@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
       resume,
       job,
       analysis,
+      profile: body?.profile,
       coverLetterInstructions,
       coverLetterExamples,
     });

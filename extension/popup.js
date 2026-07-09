@@ -1,40 +1,20 @@
-const API_BASE = "https://roleguage.com";
+const API_BASE = "http://localhost:3000";
 const PREF_KEY = "roleguage.cover-letter-preferences.v1";
 const EXAMPLES_KEY = "roleguage.cover-letter-examples.v1";
+const CANDIDATE_PROFILE_KEY = "roleguage.candidate-profile.v1";
+const PERSONAL_COVER_LETTER_INSTRUCTIONS = `Study the example letters before writing.
 
-const RESUME_KEYS = [
-  "resume",
-  "resumeFileName",
-  "resumePageCount",
-  "resumeUpdatedAt",
-  PREF_KEY,
-  EXAMPLES_KEY,
-];
-const LAST_REPORT_KEY = "lastReportByPage";
+Your goal is to write like the same applicant, not to improve the writing.
 
-const DEFAULT_COVER_LETTER_INSTRUCTIONS = `Study the example letter before writing.
+Match the examples' tone, pacing, paragraph length, sentence length, level of detail, and restraint.
 
-Your goal is to imitate the writing style, not improve it.
+Do not make the writing more polished, more persuasive, or more impressive than the examples.
 
-Match the example's:
-- tone
-- pacing
-- paragraph length
-- sentence length
-- level of detail
-- restraint
+The examples intentionally avoid sales language.
 
-Do not make the writing more polished, more persuasive or more impressive than the example.
-
-The example intentionally avoids sales language.
-
-Do not add extra technical detail, business language or professional-sounding filler.
+Do not add extra technical detail, business language, or professional-sounding filler.
 
 Do not invent stronger wording than the resume supports.
-
-If the example says "building projects", do not change it into "delivering innovative solutions."
-
-If the example says "spent time learning", do not change it into "developed expertise."
 
 Keep the writing simple.
 
@@ -44,12 +24,32 @@ The hiring manager already has the resume.
 
 Only explain the career direction and why this role makes sense.
 
-Write an original letter that feels like it was written by the same person as the example, without copying wording or sentence structure.
+If a personal project is clearly relevant to the role, mention it briefly once in plain language. Do not list every feature.
+
+For AI, data, automation, or software integration roles, briefly connect the role to practical project work around AI, LLMs, data, automation, APIs, or full-stack applications.
+
+For software engineering roles, focus on the commercial software engineering background first and mention AI/data projects only if they help explain the role fit.
+
+Avoid phrases like:
+- I am writing to express my interest
+- I am excited
+- I am passionate
+- I am eager
+- I am confident
+- proven track record
+- add value
+- leverage my experience
+- robust
+- scalable
+- career trajectory
+- natural progression
+- solid foundation
 
 End with:
 Kind regards,
 Kulunu Abeysinghe`;
-const DEFAULT_COVER_LETTER_EXAMPLES = [
+
+const PERSONAL_COVER_LETTER_EXAMPLES = [
   `Hi Team,
 
 I recently completed a Master of Data Science at Monash. Before that I worked for just over four years as a software engineer building backend systems, APIs, and full stack applications.
@@ -72,7 +72,7 @@ Those projects ended up being much broader than just training models. Most of th
 
 That's why this role caught my attention. It combines software engineering with the sort of practical AI and data work I've been moving towards over the last couple of years.
 
-I don't claim to know every technology listed in the advertisement, but I do enjoy learning new things and I'm comfortable working my way through unfamiliar problems. I think my software engineering background gives me a solid foundation to continue building in that direction.
+I don't claim to know every technology listed in the advertisement, but I do enjoy learning new things and I'm comfortable working my way through unfamiliar problems. I think my software engineering background gives me a solid base to continue building in that direction.
 
 Thank you for your consideration.
 
@@ -93,6 +93,17 @@ Thank you for your consideration.
 Kind regards,
 Kulunu Abeysinghe`,
 ];
+
+const RESUME_KEYS = [
+  "resume",
+  "resumeFileName",
+  "resumePageCount",
+  "resumeUpdatedAt",
+  PREF_KEY,
+  EXAMPLES_KEY,
+  CANDIDATE_PROFILE_KEY,
+];
+const LAST_REPORT_KEY = "lastReportByPage";
 
 const elements = {
   resume: document.querySelector("#resume"),
@@ -323,6 +334,7 @@ async function analyzeFit() {
     "resume",
     PREF_KEY,
     EXAMPLES_KEY,
+    CANDIDATE_PROFILE_KEY,
   ]);
 
   const resume = (saved.resume || elements.resume.value || "").trim();
@@ -343,23 +355,28 @@ async function analyzeFit() {
       job = payload.jobText.trim();
     }
 
+    const savedInstructions =
+      typeof saved[PREF_KEY] === "string" && saved[PREF_KEY].trim()
+        ? saved[PREF_KEY].trim()
+        : PERSONAL_COVER_LETTER_INSTRUCTIONS;
+    const savedExamples = Array.isArray(saved[EXAMPLES_KEY]) && saved[EXAMPLES_KEY].length
+      ? saved[EXAMPLES_KEY]
+      : PERSONAL_COVER_LETTER_EXAMPLES;
+    const savedProfile = getSavedCandidateProfile(saved[CANDIDATE_PROFILE_KEY]);
+    const requestBody = {
+      resume,
+      job,
+      pageTitle: elements.jobText.dataset.pageTitle || "",
+      pageUrl: elements.jobText.dataset.pageUrl || "",
+      coverLetterInstructions: savedInstructions,
+      coverLetterExamples: savedExamples,
+      ...(savedProfile ? { profile: savedProfile } : {}),
+    };
+
     const response = await fetch(`${API_BASE}/api/extension/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        resume,
-        job,
-        pageTitle: elements.jobText.dataset.pageTitle || "",
-        pageUrl: elements.jobText.dataset.pageUrl || "",
-
-        coverLetterInstructions:
-          saved[PREF_KEY] || DEFAULT_COVER_LETTER_INSTRUCTIONS,
-
-        coverLetterExamples:
-          Array.isArray(saved[EXAMPLES_KEY]) && saved[EXAMPLES_KEY].length
-            ? saved[EXAMPLES_KEY]
-            : DEFAULT_COVER_LETTER_EXAMPLES,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     const data = await response.json();
@@ -487,6 +504,25 @@ function exportCoverLetterPdf() {
 
 async function openApp() {
   await chrome.tabs.create({ url: API_BASE });
+}
+
+function getSavedCandidateProfile(value) {
+  if (!value) return null;
+
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 function getCoverLetterFileBaseName() {
