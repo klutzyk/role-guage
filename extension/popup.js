@@ -1,8 +1,12 @@
 const API_BASE = "https://roleguage.com";
 const RESUME_KEYS = ["resume", "resumeFileName", "resumePageCount", "resumeUpdatedAt"];
 const LAST_REPORT_KEY = "lastReportByPage";
+const ACCOUNT_GATE_DISMISSED_KEY = "accountGateDismissed";
 
 const elements = {
+  accountGate: document.querySelector("#accountGate"),
+  extensionSignIn: document.querySelector("#extensionSignIn"),
+  continueGuest: document.querySelector("#continueGuest"),
   resume: document.querySelector("#resume"),
   resumeStateTitle: document.querySelector("#resumeStateTitle"),
   resumeMeta: document.querySelector("#resumeMeta"),
@@ -39,11 +43,14 @@ let lastReport = null;
 init();
 
 async function init() {
-  const saved = await chrome.storage.local.get(RESUME_KEYS);
+  const saved = await chrome.storage.local.get([...RESUME_KEYS, ACCOUNT_GATE_DISMISSED_KEY]);
   elements.resume.value = saved.resume || "";
   updateResumeUi(saved);
+  updateAccountGate(saved);
   const restored = await restoreLastResultForActivePage();
 
+  elements.extensionSignIn.addEventListener("click", openSignIn);
+  elements.continueGuest.addEventListener("click", continueWithoutAccount);
   elements.uploadResume.addEventListener("click", uploadResumePdf);
   elements.resumeFile.addEventListener("change", uploadResumePdf);
   elements.deleteResume.addEventListener("click", clearResume);
@@ -103,6 +110,7 @@ async function uploadResumePdf() {
     elements.resume.value = resumeProfile.resume;
     elements.resumeFile.value = "";
     updateResumeUi(resumeProfile);
+    updateAccountGate({ ...resumeProfile, accountGateDismissed: true });
     setStatus("Resume saved. Open a job ad and click Analyze this job.");
   } catch (error) {
     setStatus(error.message || "Could not upload this resume.", true);
@@ -129,14 +137,16 @@ async function saveResume() {
   await chrome.storage.local.set(resumeProfile);
   await chrome.storage.local.remove([LAST_REPORT_KEY]);
   updateResumeUi(resumeProfile);
+  updateAccountGate({ ...resumeProfile, accountGateDismissed: true });
   setStatus("Resume saved. Open a job ad and click Analyze this job.");
 }
 
 async function clearResume() {
   elements.resume.value = "";
   elements.resumeFile.value = "";
-  await chrome.storage.local.remove([...RESUME_KEYS, LAST_REPORT_KEY]);
+  await chrome.storage.local.remove([...RESUME_KEYS, LAST_REPORT_KEY, ACCOUNT_GATE_DISMISSED_KEY]);
   updateResumeUi({});
+  updateAccountGate({});
   setStatus("Resume cleared.");
 }
 
@@ -150,10 +160,25 @@ function updateResumeUi(saved) {
   elements.resumeStateTitle.textContent = hasResume ? "Resume saved" : "Upload resume once";
   elements.resumeMeta.textContent = hasResume
     ? [name, pages, chars].filter(Boolean).join(" - ")
-    : "Upload a text-based PDF. RoleGuage stores only the extracted text in this browser.";
+    : "Upload a text-based PDF to start checking roles.";
   elements.uploadResume.textContent = hasResume ? "Replace Resume PDF" : "Upload Resume PDF";
   elements.deleteResume.classList.toggle("hidden", !hasResume);
   elements.resumeEditor.classList.toggle("hidden", hasResume);
+}
+
+function updateAccountGate(saved) {
+  const shouldShow = !saved.accountGateDismissed;
+
+  elements.accountGate.classList.toggle("hidden", !shouldShow);
+}
+
+async function openSignIn() {
+  await chrome.tabs.create({ url: `${API_BASE}/auth?next=/profile` });
+}
+
+async function continueWithoutAccount() {
+  await chrome.storage.local.set({ [ACCOUNT_GATE_DISMISSED_KEY]: true });
+  updateAccountGate({ accountGateDismissed: true });
 }
 
 async function restoreLastResultForActivePage() {
@@ -319,13 +344,30 @@ function renderResult(data) {
   elements.nextStep.textContent = nextStep;
   renderChips(elements.matchedSkills, analysis.matchedSkills);
   renderChips(elements.missingSkills, analysis.missingSkills.length ? analysis.missingSkills : ["None"]);
-  elements.resumeBullets.innerHTML = bullets.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  renderList(elements.resumeBullets, bullets);
   elements.coverLetterBlock.classList.toggle("hidden", !coverLetter);
   elements.coverLetter.textContent = coverLetter;
 }
 
 function renderChips(container, items) {
-  container.innerHTML = items.map((item) => `<span class="chip">${escapeHtml(item)}</span>`).join("");
+  container.replaceChildren(
+    ...items.map((item) => {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = item;
+      return chip;
+    }),
+  );
+}
+
+function renderList(container, items) {
+  container.replaceChildren(
+    ...items.map((item) => {
+      const listItem = document.createElement("li");
+      listItem.textContent = item;
+      return listItem;
+    }),
+  );
 }
 
 async function copyReport() {
@@ -643,15 +685,6 @@ function setBusy(isBusy, message) {
 function setStatus(message, isError = false) {
   elements.status.textContent = message;
   elements.status.classList.toggle("error", isError);
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
 }
 
 function extractJobTextFromPage() {
@@ -1159,7 +1192,6 @@ function extractJobTextFromPage() {
 
   function cleanIndeedText(value) {
     const removeExact = new Set([
-      "Welcome, Kulunu",
       "Job details",
       "Here’s how the job details align with your profile.",
       "Here's how the job details align with your profile.",
@@ -1174,6 +1206,7 @@ function extractJobTextFromPage() {
       "Report job",
     ]);
     const removePatterns = [
+      /^welcome,\s+\S+/i,
       /^here.?s how the job details align with your profile/i,
       /^missing preference$/i,
       /^matching preference$/i,

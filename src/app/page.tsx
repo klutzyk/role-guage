@@ -48,8 +48,8 @@ const features: Array<{ title: string; copy: string; icon: LucideIcon }> = [
 ];
 
 const steps = [
-  ["01", "Upload your resume", "Use a PDF once or keep a saved profile in your browser."],
-  ["02", "Paste the job ad", "Use URL import, copy text, or the browser extension workflow."],
+  ["01", "Upload your resume", "Use a PDF once or keep a saved profile."],
+  ["02", "Paste the job ad", "Use URL import, copy text, or the Chrome extension."],
   ["03", "Get your match report", "Review fit, gaps, blockers, cover letter draft, and next actions."],
 ];
 
@@ -162,7 +162,7 @@ export default function Home() {
         <div className="mx-auto max-w-3xl rounded-[1.35rem] border border-[#BFD6FF] bg-[#DCE9FF]/82 p-7 text-center backdrop-blur md:p-10">
           <h2 className="text-3xl font-extrabold text-[#0F1C35] md:text-4xl">Ready to match smarter?</h2>
           <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-[#536C99]">
-            Start analyzing your resume against any job in seconds. Or use the extension workflow and do it right from the job board.
+            Start analyzing your resume against any job in seconds. Or use the Chrome extension from the job board.
           </p>
           <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
             <a
@@ -202,8 +202,8 @@ export default function Home() {
           <div className="mt-10 grid gap-4">
             {[
               ["Does it invent experience?", "No. RoleGuage separates supported evidence from gaps and flags places where you need real proof."],
-              ["Can I use a job board page?", "Yes. Use URL import where possible, copy text when a site blocks extraction, or use the extension workflow."],
-              ["Where is my resume stored?", "Saved profile data stays in your browser, and you can remove it from your profile page when needed."],
+              ["Can I use a job board page?", "Yes. Use URL import where possible, copy text when a site blocks extraction, or use the Chrome extension."],
+              ["Where is my resume stored?", "You can save it to your account, keep it on this device, or delete it from your profile page."],
             ].map(([question, answer]) => (
               <article key={question} className="rounded-2xl border border-[#DDE8F6] bg-white/62 p-5 backdrop-blur">
                 <h3 className="text-base font-extrabold text-[#0F1C35]">{question}</h3>

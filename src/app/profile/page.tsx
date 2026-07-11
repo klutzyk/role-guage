@@ -3,6 +3,7 @@
 import { CheckCircle2, FileText, Trash2, Upload, X } from "lucide-react";
 import Link from "next/link";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { AccountProfile } from "@/lib/account-profile";
 import {
   cleanCoverLetterExample,
   cleanCoverLetterExamples,
@@ -16,6 +17,9 @@ import {
   sampleCoverLetterExample,
 } from "@/lib/cover-letter-preferences";
 import { readJsonResponse } from "@/lib/http";
+import { clearLocalRoleGuageData } from "@/lib/local-profile-storage";
+import { getBrowserSupabaseClient } from "@/lib/supabase-browser";
+import { useAuthSession } from "@/lib/use-auth-session";
 import { SharedFooter } from "../shared-footer";
 import { SharedHeader } from "../shared-header";
 
@@ -113,8 +117,16 @@ export default function ProfilePage() {
   const [editingCoverLetterExampleIndex, setEditingCoverLetterExampleIndex] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [activePanel, setActivePanel] = useState<"details" | "coverLetter" | "history">("details");
+  const [isAccountLoading, setIsAccountLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const {
+    email: signedInEmail,
+    isAuthenticated,
+    isConfigured: isAccountConfigured,
+    isLoading: isAuthLoading,
+    signOut,
+  } = useAuthSession();
   const selectedMatch = useMemo(
     () => history.find((item) => item.id === selectedId) ?? history[0],
     [history, selectedId],
@@ -320,6 +332,185 @@ export default function ProfilePage() {
     window.localStorage.removeItem(matchHistoryStorageKey);
   }
 
+  async function signOutAccount() {
+    setIsAccountLoading(true);
+    clearLocalRoleGuageData();
+    setResume("");
+    setResumeFileName("");
+    setHistory([]);
+    setSelectedId("");
+    setCandidateProfile({});
+    setCoverLetterPreferences(defaultCoverLetterPreferences);
+    setCoverLetterExamples([]);
+    setCoverLetterExampleDraft("");
+    setEditingCoverLetterExampleIndex(null);
+    await signOut();
+    setIsAccountLoading(false);
+    setMessage("Signed out.");
+  }
+
+  async function loadAccountProfile() {
+    const token = await getAccountAccessToken();
+    if (!token) return;
+
+    setIsAccountLoading(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/account/profile", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await readJsonResponse<{ profile: AccountProfile | null; error?: string }>(response);
+
+      if (!response.ok) throw new Error(data.error ?? "Could not load account profile.");
+      if (!data.profile) {
+        setMessage("No account profile saved yet.");
+        return;
+      }
+
+      applyAccountProfile(data.profile);
+      setMessage("Profile loaded.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not load account profile.");
+    } finally {
+      setIsAccountLoading(false);
+    }
+  }
+
+  async function saveAccountProfile() {
+    const token = await getAccountAccessToken();
+    if (!token) return;
+
+    setIsAccountLoading(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/account/profile", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ profile: buildAccountProfileSnapshot() }),
+      });
+      const data = await readJsonResponse<{ profile: AccountProfile; error?: string }>(response);
+
+      if (!response.ok) throw new Error(data.error ?? "Could not save account profile.");
+      setMessage("Profile saved.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not save account profile.");
+    } finally {
+      setIsAccountLoading(false);
+    }
+  }
+
+  async function deleteAccountProfile() {
+    const token = await getAccountAccessToken();
+    if (!token) return;
+
+    setIsAccountLoading(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/account/profile", {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await readJsonResponse<{ deleted?: boolean; error?: string }>(response);
+
+      if (!response.ok) throw new Error(data.error ?? "Could not delete account profile.");
+      setMessage("Saved profile deleted.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not delete account profile.");
+    } finally {
+      setIsAccountLoading(false);
+    }
+  }
+
+  async function exportAccountProfile() {
+    const token = await getAccountAccessToken();
+    if (!token) return;
+
+    setIsAccountLoading(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/account/profile", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await readJsonResponse<{ profile: AccountProfile | null; error?: string }>(response);
+
+      if (!response.ok) throw new Error(data.error ?? "Could not export account profile.");
+
+      const blob = new Blob([JSON.stringify(data.profile ?? {}, null, 2)], {
+        type: "application/json;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "roleguage-account-profile.json";
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setMessage("Profile exported.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not export account profile.");
+    } finally {
+      setIsAccountLoading(false);
+    }
+  }
+
+  async function getAccountAccessToken() {
+    const supabase = getBrowserSupabaseClient();
+    if (!supabase) {
+      setError("Account sign in is not available right now.");
+      return "";
+    }
+
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token ?? "";
+
+    if (!token) {
+      setError("Sign in to manage your account profile.");
+      return "";
+    }
+
+    return token;
+  }
+
+  function buildAccountProfileSnapshot(): AccountProfile {
+    return {
+      resumeText: resume,
+      resumeFileName,
+      candidateProfile,
+      coverLetterInstructions: coverLetterPreferences,
+      coverLetterExamples,
+    };
+  }
+
+  function applyAccountProfile(profile: AccountProfile) {
+    setResume(profile.resumeText);
+    setResumeFileName(profile.resumeFileName);
+    setCandidateProfile(profile.candidateProfile);
+    setCoverLetterPreferences(profile.coverLetterInstructions);
+    setCoverLetterExamples(profile.coverLetterExamples);
+
+    if (profile.resumeText) window.localStorage.setItem(resumeProfileStorageKey, profile.resumeText);
+    if (profile.resumeFileName) window.localStorage.setItem(resumeProfileNameStorageKey, profile.resumeFileName);
+    window.localStorage.setItem(candidateProfileStorageKey, JSON.stringify(profile.candidateProfile));
+    window.localStorage.setItem(coverLetterPreferencesStorageKey, profile.coverLetterInstructions);
+    window.localStorage.setItem(coverLetterExamplesStorageKey, JSON.stringify(profile.coverLetterExamples));
+  }
+
   return (
     <main className="min-h-screen bg-[#F8FBFF] text-[#212529]">
       <SharedHeader active="profile" />
@@ -371,6 +562,82 @@ export default function ProfilePage() {
           {activePanel === "details" ? (
             <section className="grid gap-6">
               <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_16px_44px_rgba(4,56,115,0.08)] md:p-6">
+                <div>
+                  <p className="text-sm font-bold uppercase text-[#4F9CF9]">Account</p>
+                  <h2 className="mt-2 text-2xl font-extrabold text-[#212529]">
+                    {signedInEmail ? "Signed in" : "Sign in to save your profile"}
+                  </h2>
+                </div>
+
+                {!isAccountConfigured ? (
+                  <div className="mt-5 rounded-md border border-dashed border-[#A7CEFC] bg-[#F8FBFF] p-4 text-sm font-semibold leading-6 text-[#4F5F6F]">
+                    Account sign in is not available right now.
+                  </div>
+                ) : isAuthenticated ? (
+                  <div className="mt-5 grid gap-4">
+                    <div className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-4 py-3">
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F5F6F]">Signed in as</p>
+                      <p className="mt-1 break-all text-sm font-extrabold text-[#043873]">{signedInEmail}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={saveAccountProfile}
+                        disabled={isAccountLoading || isAuthLoading}
+                        className="h-11 cursor-pointer rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Save profile
+                      </button>
+                      <button
+                        type="button"
+                        onClick={loadAccountProfile}
+                        disabled={isAccountLoading || isAuthLoading}
+                        className="h-11 cursor-pointer rounded-md border border-[#A7CEFC] bg-white px-4 text-sm font-bold text-[#043873] transition hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Restore profile
+                      </button>
+                      <button
+                        type="button"
+                        onClick={deleteAccountProfile}
+                        disabled={isAccountLoading || isAuthLoading}
+                        className="h-11 cursor-pointer rounded-md border border-[#B5121B] bg-white px-4 text-sm font-bold text-[#B5121B] transition hover:bg-[#FFF1F2] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Delete saved profile
+                      </button>
+                      <button
+                        type="button"
+                        onClick={exportAccountProfile}
+                        disabled={isAccountLoading || isAuthLoading}
+                        className="h-11 cursor-pointer rounded-md border border-[#A7CEFC] bg-white px-4 text-sm font-bold text-[#043873] transition hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Export data
+                      </button>
+                      <button
+                        type="button"
+                        onClick={signOutAccount}
+                        disabled={isAccountLoading || isAuthLoading}
+                        className="h-11 cursor-pointer rounded-md border border-[#DDE8F6] bg-white px-4 text-sm font-bold text-[#4F5F6F] transition hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Sign out
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-5 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
+                    <p className="text-sm font-semibold leading-6 text-[#4F5F6F]">
+                      Sign in to save your resume, preferences, and role history.
+                    </p>
+                    <Link
+                      href="/auth?next=/profile"
+                      className="mt-4 inline-flex h-11 items-center rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97]"
+                    >
+                      Sign in or create account
+                    </Link>
+                  </div>
+                )}
+              </section>
+
+              <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_16px_44px_rgba(4,56,115,0.08)] md:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-bold uppercase text-[#4F9CF9]">Resume profile</p>
@@ -379,8 +646,8 @@ export default function ProfilePage() {
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
                   {resume.trim().length >= 80
-                    ? `${resumeFileName || "Saved resume profile"} - ${resume.length.toLocaleString()} characters saved locally.`
-                    : "Upload a PDF or paste resume text to create your local profile."}
+                    ? `${resumeFileName || "Saved resume profile"} - ${resume.length.toLocaleString()} characters saved.`
+                    : "Upload a PDF to create your profile."}
                 </p>
               </div>
               <button
@@ -399,7 +666,7 @@ export default function ProfilePage() {
                   {resume.trim().length >= 80 ? resumeFileName || "Saved resume profile" : "No resume uploaded"}
                 </p>
                 <p className="mt-1 text-xs font-semibold text-[#4F5F6F]">
-                  {resume.trim().length >= 80 ? "Stored locally in this browser" : "Upload a text-based PDF to create your profile"}
+                  {resume.trim().length >= 80 ? "Ready to use" : "Upload a text-based PDF to create your profile"}
                 </p>
               </div>
               <label className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97]">
@@ -418,7 +685,7 @@ export default function ProfilePage() {
               <p className="text-sm font-bold uppercase text-[#4F9CF9]">Candidate details</p>
               <h2 className="mt-2 text-2xl font-extrabold text-[#212529]">Application checks</h2>
               <p className="mt-2 text-sm leading-6 text-[#4F5F6F]">
-                These facts stay in this browser and are used only when a job asks for them.
+                Add the requirements employers often ask about.
               </p>
             </div>
 
@@ -517,8 +784,7 @@ export default function ProfilePage() {
                 <p className="text-sm font-bold uppercase text-[#4F9CF9]">Cover letter style</p>
                 <h2 className="mt-2 text-2xl font-extrabold text-[#212529]">Set your writing preferences</h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-[#4F5F6F]">
-                  Tell RoleGuage how your cover letters should sound. These preferences are saved in this browser and
-                  used only when generating cover letter drafts.
+                  Tell RoleGuage how your cover letters should sound.
                 </p>
               </div>
 

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { AccountProfile } from "@/lib/account-profile";
 import {
   cleanCoverLetterExamples,
   cleanCoverLetterPreferences,
@@ -25,6 +26,7 @@ import {
 } from "@/lib/cover-letter-preferences";
 import { downloadDocx, downloadPdf } from "@/lib/document-export";
 import { readJsonResponse } from "@/lib/http";
+import { getBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { SharedFooter } from "../shared-footer";
 import { SharedHeader } from "../shared-header";
 
@@ -170,7 +172,7 @@ const faqs: Array<[string, string]> = [
   ],
   [
     "Where is my resume stored?",
-    "Saved profiles and match history stay in your browser, and you can delete them from your profile page.",
+    "Save your profile when you want to reuse it for future role checks.",
   ],
 ];
 
@@ -202,6 +204,37 @@ export default function Home() {
     const savedName = window.localStorage.getItem(resumeProfileNameStorageKey) ?? "Saved resume profile";
     setResume(savedResume);
     setResumeFileName(savedName);
+  }, []);
+
+  useEffect(() => {
+    const supabase = getBrowserSupabaseClient();
+    if (!supabase) return;
+
+    let mounted = true;
+
+    supabase.auth.getSession().then(async ({ data }) => {
+      const token = data.session?.access_token;
+      if (!mounted || !token) return;
+
+      try {
+        const response = await fetch("/api/account/profile", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const payload = await readJsonResponse<{ profile: AccountProfile | null }>(response);
+
+        if (!mounted || !response.ok || !payload.profile) return;
+
+        applyAccountProfileToLocalState(payload.profile, setResume, setResumeFileName);
+      } catch {
+        // Keep the current profile if account loading is unavailable.
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const canAnalyze = useMemo(
@@ -972,6 +1005,26 @@ function readCoverLetterExamples() {
   } catch {
     return [];
   }
+}
+
+function applyAccountProfileToLocalState(
+  profile: AccountProfile,
+  setResume: (value: string) => void,
+  setResumeFileName: (value: string) => void,
+) {
+  if (profile.resumeText) {
+    setResume(profile.resumeText);
+    window.localStorage.setItem(resumeProfileStorageKey, profile.resumeText);
+  }
+
+  if (profile.resumeFileName) {
+    setResumeFileName(profile.resumeFileName);
+    window.localStorage.setItem(resumeProfileNameStorageKey, profile.resumeFileName);
+  }
+
+  window.localStorage.setItem(candidateProfileStorageKey, JSON.stringify(profile.candidateProfile));
+  window.localStorage.setItem(coverLetterPreferencesStorageKey, profile.coverLetterInstructions);
+  window.localStorage.setItem(coverLetterExamplesStorageKey, JSON.stringify(profile.coverLetterExamples));
 }
 
 function hasHardBlocker(result: AnalysisResult) {

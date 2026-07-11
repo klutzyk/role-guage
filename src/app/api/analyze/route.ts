@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cleanCandidateProfile } from "@/lib/account-profile";
 import {
   cleanBoundedText,
   maxJobTextChars,
@@ -174,7 +175,7 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({
-    ...analyzeResumeAgainstJob(resume, job, body?.profile),
+    ...analyzeResumeAgainstJob(resume, job, cleanCandidateProfile(body?.profile)),
     aiStatus: "disabled",
   });
 }

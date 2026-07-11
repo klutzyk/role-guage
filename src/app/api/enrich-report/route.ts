@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateFitEnrichment, getAiModel } from "@/lib/ai";
+import { cleanCandidateProfile } from "@/lib/account-profile";
 import { cleanCoverLetterExamples, cleanCoverLetterPreferences } from "@/lib/cover-letter-preferences";
 import {
   cleanBoundedText,
@@ -39,7 +40,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const analysis = analyzeResumeAgainstJob(resume, job, body?.profile);
+  const profile = cleanCandidateProfile(body?.profile);
+  const analysis = analyzeResumeAgainstJob(resume, job, profile);
   const coverLetterInstructions = cleanCoverLetterPreferences(body?.coverLetterInstructions);
   const coverLetterExamples = cleanCoverLetterExamples(body?.coverLetterExamples);
 

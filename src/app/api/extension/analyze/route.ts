@@ -11,14 +11,15 @@ import {
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { analyzeResumeAgainstJob } from "../../analyze/route";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-  Vary: "Origin",
-};
+const publishedExtensionOrigin = "chrome-extension://fodmkdebllldfgclbicnjojgenlndlba";
 
-export async function OPTIONS() {
+export async function OPTIONS(request: NextRequest) {
+  const corsHeaders = getCorsHeaders(request);
+
+  if (!corsHeaders) {
+    return new NextResponse(null, { status: 403 });
+  }
+
   return new NextResponse(null, {
     status: 204,
     headers: corsHeaders,
@@ -26,6 +27,12 @@ export async function OPTIONS() {
 }
 
 export async function POST(request: NextRequest) {
+  const corsHeaders = getCorsHeaders(request);
+
+  if (!corsHeaders) {
+    return NextResponse.json({ error: "Extension origin is not allowed." }, { status: 403 });
+  }
+
   const rateLimited = enforceRateLimit(request, {
     key: "api:extension-analyze",
     limit: 15,
@@ -115,4 +122,33 @@ function getErrorSummary(error: unknown) {
       : "";
 
   return `${error.message}${status}`;
+}
+
+function getCorsHeaders(request: NextRequest) {
+  const origin = request.headers.get("origin") ?? "";
+  const allowedOrigins = getAllowedExtensionOrigins();
+
+  if (!origin || !allowedOrigins.has(origin)) {
+    return null;
+  }
+
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Cache-Control": "no-store",
+    Vary: "Origin",
+  };
+}
+
+function getAllowedExtensionOrigins() {
+  const configured = [
+    publishedExtensionOrigin,
+    ...(process.env.EXTENSION_ALLOWED_ORIGINS ?? "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  ];
+
+  return new Set(configured);
 }

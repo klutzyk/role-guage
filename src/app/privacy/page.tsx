@@ -6,6 +6,7 @@ const sections = [
     title: "What RoleGuage Collects",
     copy: [
       "RoleGuage collects resume text, job description text, and optional profile details only when you upload, paste, import, save, or analyze that information.",
+      "If you choose to use account sync, RoleGuage stores the resume text, resume filename, candidate details, cover letter style preferences, and example letters that you explicitly save to your account.",
       "The Chrome extension can read the visible job page you are viewing when you open or use the extension. It does not collect your full browsing history.",
     ],
   },
@@ -24,10 +25,31 @@ const sections = [
     ],
   },
   {
+    title: "Account Storage",
+    copy: [
+      "Account sync is optional. If enabled, saved profile data is stored against your signed-in account so you can reuse it across devices and future extension workflows.",
+      "You can load, export, or delete the account copy from the profile page. Deleting the account copy does not automatically remove local browser data on each device, so clear local data separately when needed.",
+    ],
+  },
+  {
     title: "AI Processing",
     copy: [
       "When you request an analysis or cover letter, RoleGuage may send the relevant resume text, job description text, and minimal profile context to AI service providers only to generate the requested output.",
       "We aim to send only the information needed for the specific request.",
+    ],
+  },
+  {
+    title: "Cookies And Similar Storage",
+    copy: [
+      "RoleGuage does not use advertising cookies or third-party analytics cookies in this version.",
+      "Authentication providers may use necessary session storage to keep you signed in. Browser local storage is also used for saved profiles and match history when you use the local-first workflow.",
+    ],
+  },
+  {
+    title: "Retention And Control",
+    copy: [
+      "Local browser data remains on your device until you delete it, clear site data, or uninstall the extension.",
+      "Account profile data remains until you delete the account copy from the profile page or request deletion through support.",
     ],
   },
   {
@@ -59,7 +81,7 @@ export default function PrivacyPage() {
             How RoleGuage handles resume and job data.
           </h1>
           <p className="mt-5 max-w-3xl text-sm leading-7 text-white/82 md:text-base">
-            Last updated: July 4, 2026. This page explains what the website and
+            Last updated: July 10, 2026. This page explains what the website and
             Chrome extension collect, why it is used, and how you can control
             saved data.
           </p>
