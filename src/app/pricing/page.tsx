@@ -1,6 +1,7 @@
 import { Check } from "lucide-react";
 import { SharedFooter } from "../shared-footer";
 import { SharedHeader } from "../shared-header";
+import { SoftPageHero } from "../soft-page-hero";
 
 const plans = [
   {
@@ -28,25 +29,18 @@ const plans = [
 
 export default function PricingPage() {
   return (
-    <main className="min-h-screen bg-[#F8FBFF] text-[#212529]">
+    <main className="min-h-screen bg-[#F0F4FF] text-[#0F1C35]">
       <SharedHeader active="pricing" />
 
-      <section className="bg-[#043873] px-5 py-10 text-white md:px-8 md:py-14 lg:px-10">
-        <div className="mx-auto max-w-7xl">
-          <h1 className="text-4xl font-extrabold leading-tight text-[#A7CEFC] md:text-6xl">Pricing</h1>
-          <p className="mt-4 max-w-4xl text-2xl font-extrabold leading-tight text-white md:text-4xl">
-            Choose the workflow that fits your job search.
-          </p>
-          <p className="mt-5 max-w-3xl text-sm leading-7 text-white/82 md:text-base">
-            Start with fit checks, then upgrade when you want saved reports, profile reuse,
-            and a cleaner application workflow.
-          </p>
-        </div>
-      </section>
+      <SoftPageHero
+        title="Choose the workflow"
+        accent="that fits your search"
+        description="Start with fit checks, then upgrade when you want saved reports, profile reuse, and a cleaner application workflow."
+      />
 
-      <section className="px-5 py-10 md:px-8 md:py-14 lg:px-10">
+      <section className="px-5 py-6 md:px-8 md:py-8 lg:px-10">
         <div className="mx-auto max-w-7xl">
-          <div className="mt-12 grid gap-6 md:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-3">
             {plans.map((plan) => (
               <PricingCard key={plan.name} {...plan} />
             ))}
@@ -76,10 +70,10 @@ function PricingCard({
 
   return (
     <article
-      className={`rounded-md border p-7 shadow-[0_14px_40px_rgba(4,56,115,0.08)] ${
+      className={`rounded-2xl border p-7 shadow-[0_16px_44px_rgba(36,95,234,0.08)] transition hover:-translate-y-1 hover:shadow-[0_22px_58px_rgba(36,95,234,0.14)] ${
         featured
           ? "border-[#043873] bg-[#043873] text-white"
-          : "border-[#FFE492] bg-white text-[#212529]"
+          : "border-[#BFD6FF] bg-white/72 text-[#0F1C35]"
       }`}
     >
       <h2 className="text-2xl font-extrabold">{name}</h2>

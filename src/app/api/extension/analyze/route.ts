@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateFitEnrichment, getAiModel } from "@/lib/ai";
+import { accountProfileFromRow, AccountProfileRow } from "@/lib/account-profile";
 import {
   cleanBoundedText,
   cleanOneLine,
@@ -9,6 +10,11 @@ import {
   maxResumeTextChars,
 } from "@/lib/request-limits";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import {
+  createSupabaseServiceClient,
+  getUserIdFromBearerToken,
+  isSupabaseConfigured,
+} from "@/lib/supabase-server";
 import { analyzeResumeAgainstJob } from "../../analyze/route";
 
 const publishedExtensionOrigin = "chrome-extension://fodmkdebllldfgclbicnjojgenlndlba";
@@ -51,7 +57,24 @@ export async function POST(request: NextRequest) {
     | { resume?: string; job?: string; pageTitle?: string; pageUrl?: string }
     | null;
 
-  const resume = cleanBoundedText(body?.resume, maxResumeTextChars);
+  if (!isSupabaseConfigured()) {
+    return NextResponse.json(
+      { error: "Account sign in is not configured." },
+      { status: 503, headers: corsHeaders },
+    );
+  }
+
+  const userId = await getUserIdFromBearerToken(request.headers.get("authorization"));
+
+  if (!userId) {
+    return NextResponse.json(
+      { error: "Sign in to RoleGuage before analyzing jobs." },
+      { status: 401, headers: corsHeaders },
+    );
+  }
+
+  const accountProfile = await readAccountProfile(userId);
+  const resume = cleanBoundedText(accountProfile?.resumeText || body?.resume, maxResumeTextChars);
   const job = cleanBoundedText(body?.job, maxJobTextChars);
   const pageTitle = cleanOneLine(body?.pageTitle, maxPageTitleChars);
   const pageUrl = cleanPublicUrl(body?.pageUrl);
@@ -63,10 +86,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const analysis = analyzeResumeAgainstJob(resume, job);
+  const analysis = analyzeResumeAgainstJob(resume, job, accountProfile?.candidateProfile);
 
   try {
-    const aiEnrichment = await generateFitEnrichment({ resume, job, analysis });
+    const aiEnrichment = await generateFitEnrichment({
+      resume,
+      job,
+      analysis,
+      coverLetterInstructions: accountProfile?.coverLetterInstructions,
+      coverLetterExamples: accountProfile?.coverLetterExamples,
+    });
 
     return NextResponse.json(
       {
@@ -135,10 +164,27 @@ function getCorsHeaders(request: NextRequest) {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Cache-Control": "no-store",
     Vary: "Origin",
   };
+}
+
+async function readAccountProfile(userId: string) {
+  const client = createSupabaseServiceClient();
+  if (!client) return null;
+
+  const { data, error } = await client
+    .from("user_profiles")
+    .select(
+      "user_id,resume_text,resume_file_name,candidate_profile,cover_letter_instructions,cover_letter_examples,updated_at",
+    )
+    .eq("user_id", userId)
+    .maybeSingle<AccountProfileRow>();
+
+  if (error) return null;
+
+  return accountProfileFromRow(data);
 }
 
 function getAllowedExtensionOrigins() {

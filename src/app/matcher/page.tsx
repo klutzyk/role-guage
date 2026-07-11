@@ -29,6 +29,7 @@ import { readJsonResponse } from "@/lib/http";
 import { getBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { SharedFooter } from "../shared-footer";
 import { SharedHeader } from "../shared-header";
+import { SoftPageHero } from "../soft-page-hero";
 
 type AnalysisResult = {
   score: number;
@@ -452,24 +453,17 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-[#F8FBFF] text-[#212529]">
+    <main className="min-h-screen bg-[#F0F4FF] text-[#0F1C35]">
       <SharedHeader active="matcher" />
 
-      <section className="bg-[#043873] px-5 py-10 text-white md:px-8 md:py-14 lg:px-10">
-        <div className="mx-auto max-w-7xl">
-          <h1 className="text-4xl font-extrabold leading-tight text-[#A7CEFC] md:text-6xl">Resume to Job Matcher</h1>
-          <p className="mt-4 max-w-5xl text-2xl font-extrabold leading-tight text-white md:text-4xl">
-            Check one role before you spend time applying.
-          </p>
-          <p className="mt-5 max-w-3xl text-sm leading-7 text-white/82 md:text-base">
-            Reuse your resume, add the job ad, and get the fit score, blockers, cover letter draft,
-            and next steps for this specific application.
-          </p>
-        </div>
-      </section>
+      <SoftPageHero
+        title="Check the role"
+        accent="before you apply"
+        description="Upload your resume, add the job ad, and get the fit score, blockers, cover letter draft, and next steps for this specific application."
+      />
 
-      <section id="matcher" className="px-5 py-8 md:px-8 lg:px-10">
-        <div className="mx-auto max-w-4xl rounded-md bg-white p-5 shadow-[0_24px_70px_rgba(4,56,115,0.16)] md:p-7">
+      <section id="matcher" className="px-5 py-6 md:px-8 md:py-8 lg:px-10">
+        <div className="mx-auto max-w-4xl rounded-2xl border border-[#BFD6FF] bg-white/72 p-5 shadow-[0_22px_70px_rgba(36,95,234,0.12)] backdrop-blur md:p-7">
           <form onSubmit={analyzeRole}>
             <div>
               <div>
@@ -481,7 +475,7 @@ export default function Home() {
             </div>
 
             <div className="mt-6 grid gap-5">
-              <div className={`rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5 ${resumeFileName ? "grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center" : "text-center"}`}>
+              <div className={`rounded-xl border border-[#BFD6FF] bg-[#F8FBFF]/88 p-5 ${resumeFileName ? "grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center" : "text-center"}`}>
                 {resumeFileName ? (
                   <div className="min-w-0 text-left">
                     <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F9CF9]">Resume uploaded</p>
@@ -495,7 +489,7 @@ export default function Home() {
                 </label>
               </div>
 
-              <div className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-5">
+              <div className="rounded-xl border border-[#BFD6FF] bg-[#F8FBFF]/88 p-5">
                 <p className="flex items-center gap-2 text-sm font-extrabold text-[#212529]">
                   <Link size={17} className="text-[#4F9CF9]" aria-hidden="true" />
                   Paste the URL of the job ad
@@ -545,19 +539,19 @@ export default function Home() {
       {result ? (
         <section id="report" className="px-5 py-10 md:px-8 md:py-14 lg:px-10">
           <div className="mx-auto grid max-w-7xl gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-            <section className="flex flex-col rounded-md bg-white p-5 shadow-[0_18px_60px_rgba(4,56,115,0.1)] md:p-6">
+            <section className="flex flex-col rounded-2xl border border-[#BFD6FF] bg-white/72 p-5 shadow-[0_18px_54px_rgba(36,95,234,0.1)] backdrop-blur md:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-sm font-bold text-[#4F9CF9]">Recommended move</p>
                   <h2 className="mt-2 text-4xl font-extrabold text-[#043873]">{result.decision}</h2>
               <p className="mt-1 text-sm font-semibold text-[#4F5F6F]">{result.level}</p>
                 </div>
-                <div className="grid size-24 place-items-center rounded-md bg-[#FFE492] text-4xl font-extrabold text-[#043873]">
+                <div className="grid size-24 place-items-center rounded-xl border border-[#A7CEFC] bg-[#EAF4FF] text-4xl font-extrabold text-[#043873]">
                   {result.score}
                 </div>
               </div>
 
-              <div className="mt-5 w-fit max-w-full rounded-md border border-[#DDE8F6] bg-white px-3 py-2 text-sm font-bold text-[#043873]">
+              <div className="mt-5 w-fit max-w-full rounded-md border border-[#BFD6FF] bg-white/80 px-3 py-2 text-sm font-bold text-[#043873]">
                 Salary: {result.salary || "Not available"}
               </div>
 
@@ -567,7 +561,7 @@ export default function Home() {
 
               <RequirementAlert findings={result.hardRequirements ?? []} />
 
-              <div className="mt-5 rounded-md border border-[#A7CEFC] bg-[#F8FBFF] p-4">
+              <div className="mt-5 rounded-xl border border-[#A7CEFC] bg-[#F8FBFF]/88 p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#043873]">Next best action</p>
                 <p className="mt-2 text-sm font-bold leading-6 text-[#212529]">
                   {isPreparingReport ? "Reviewing your resume and this job description." : result.nextStep}
@@ -600,13 +594,13 @@ export default function Home() {
               </div>
             </section>
 
-            <section className="rounded-md bg-white p-5 shadow-[0_18px_60px_rgba(4,56,115,0.1)] md:p-6">
+            <section className="rounded-2xl border border-[#BFD6FF] bg-white/72 p-5 shadow-[0_18px_54px_rgba(36,95,234,0.1)] backdrop-blur md:p-6">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-extrabold text-[#212529]">Fit details</h2>
                   <p className="mt-1 text-sm text-[#4F5F6F]">Evidence behind the recommendation.</p>
                 </div>
-                <span className="rounded-md bg-[#FFE492] px-3 py-2 text-sm font-bold text-[#043873]">
+                <span className="rounded-md border border-[#A7CEFC] bg-[#EAF4FF] px-3 py-2 text-sm font-bold text-[#043873]">
                   {result.score}% fit
                 </span>
               </div>
@@ -623,7 +617,7 @@ export default function Home() {
               </div>
 
               {result.fitReasoning?.length ? (
-                <div className="mt-5 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
+                  <div className="mt-5 rounded-xl border border-[#BFD6FF] bg-[#F8FBFF]/88 p-4">
                   <h3 className="text-sm font-bold text-[#212529]">Our reasoning</h3>
                   <ul className="mt-3 grid gap-2 text-sm leading-6 text-[#4F5F6F]">
                     {result.fitReasoning.slice(0, 4).map((item) => (
@@ -641,20 +635,20 @@ export default function Home() {
       ) : null}
 
       {result ? (
-        <section id="application-kit" className="bg-[#043873] px-5 py-10 text-white md:px-8 md:py-14 lg:px-10">
+        <section id="application-kit" className="px-5 py-10 text-[#0F1C35] md:px-8 md:py-14 lg:px-10">
           <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[0.72fr_1.28fr]">
             <div>
-              <p className="text-sm font-bold uppercase text-[#A7CEFC]">Cover letter kit</p>
+              <p className="text-sm font-extrabold uppercase tracking-[0.16em] text-[#4F9CF9]">Cover letter kit</p>
               <h2 className="mt-3 text-4xl font-extrabold leading-tight">
                 Write the cover letter around the strongest evidence.
               </h2>
-              <p className="mt-4 text-sm leading-7 text-white/82">
+              <p className="mt-4 text-sm leading-7 text-[#536C99]">
                 RoleGuage uses the job ad, your resume evidence, and your fit report to draft a plain,
                 role-specific cover letter. Resume bullets and interview notes sit underneath as supporting material.
               </p>
             </div>
             <div className="grid gap-5">
-              <section className="rounded-md border border-[#DDE8F6] bg-white p-5 text-[#212529] shadow-[0_14px_40px_rgba(4,56,115,0.12)]">
+              <section className="rounded-2xl border border-[#BFD6FF] bg-white/72 p-5 text-[#0F1C35] shadow-[0_18px_54px_rgba(36,95,234,0.1)] backdrop-blur">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h3 className="text-xl font-extrabold">Cover letter draft</h3>
                   <div className="flex flex-wrap gap-2">
@@ -691,7 +685,7 @@ export default function Home() {
                     </button>
                   </div>
                 </div>
-                <div className="mt-4 whitespace-pre-line rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 text-[#4F5F6F]">
+                <div className="mt-4 whitespace-pre-line rounded-xl border border-[#BFD6FF] bg-[#F8FBFF]/88 p-4 text-sm leading-7 text-[#4F5F6F]">
                   {isPreparingReport
                     ? "Writing a role-specific cover letter from your resume evidence..."
                     : coverLetter || "The cover letter could not be generated this time. Try generating the report again."}
@@ -736,7 +730,7 @@ function InputPanel({
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={`${compact ? "min-h-44 md:min-h-52" : "min-h-64 md:min-h-80"} resize-y rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 text-sm leading-7 outline-none transition placeholder:text-[#7A8795] focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15`}
+        className={`${compact ? "min-h-44 md:min-h-52" : "min-h-64 md:min-h-80"} resize-y rounded-xl border border-[#BFD6FF] bg-[#F8FBFF]/88 p-4 text-sm leading-7 outline-none transition placeholder:text-[#7A8795] focus:border-[#4F9CF9] focus:bg-white focus:ring-4 focus:ring-[#4F9CF9]/15`}
         placeholder={placeholder}
       />
     </label>
@@ -745,7 +739,7 @@ function InputPanel({
 
 function MiniMetric({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
-    <div className="rounded-md border border-[#DDE8F6] bg-white p-3">
+    <div className="rounded-xl border border-[#BFD6FF] bg-[#F8FBFF]/88 p-3">
       <p className="text-base font-extrabold text-[#043873]">{value}</p>
       <p className="mt-1 text-xs font-bold uppercase text-[#4F5F6F]">{label}</p>
       {detail ? <p className="mt-1 text-xs leading-5 text-[#4F5F6F]">{detail}</p> : null}
@@ -854,7 +848,7 @@ function DetailGroup({
       : "border-[#FFE492] bg-[#FFE492] text-[#043873]";
 
   return (
-    <section className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
+    <section className="rounded-xl border border-[#BFD6FF] bg-[#F8FBFF]/88 p-4">
       <h3 className="flex items-center gap-2 text-sm font-bold text-[#212529]">
         <span className="text-[#043873]">{icon}</span>
         {title}
@@ -867,7 +861,7 @@ function DetailGroup({
             </span>
           ))
         ) : (
-          <span className="rounded-md border border-[#DDE8F6] bg-white px-3 py-1.5 text-xs font-bold text-[#4F5F6F]">
+          <span className="rounded-md border border-[#BFD6FF] bg-white/78 px-3 py-1.5 text-xs font-bold text-[#4F5F6F]">
             None
           </span>
         )}
@@ -878,7 +872,7 @@ function DetailGroup({
 
 function ApplicationKitCard({ title, items }: { title: string; items: string[] }) {
   return (
-    <section className="rounded-md border border-[#DDE8F6] bg-white p-6 shadow-[0_14px_40px_rgba(4,56,115,0.08)]">
+    <section className="rounded-2xl border border-[#BFD6FF] bg-white/72 p-6 shadow-[0_16px_44px_rgba(36,95,234,0.08)] backdrop-blur">
       <h3 className="text-xl font-bold text-[#212529]">{title}</h3>
       <ul className="mt-5 grid gap-3 text-sm leading-6 text-[#4F5F6F]">
         {items.map((item) => (

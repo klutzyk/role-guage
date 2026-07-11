@@ -22,6 +22,7 @@ import { getBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { useAuthSession } from "@/lib/use-auth-session";
 import { SharedFooter } from "../shared-footer";
 import { SharedHeader } from "../shared-header";
+import { SoftPageHero } from "../soft-page-hero";
 
 type AnalysisResult = {
   score: number;
@@ -512,24 +513,18 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#F8FBFF] text-[#212529]">
+    <main className="min-h-screen bg-[#F0F4FF] text-[#0F1C35]">
       <SharedHeader active="profile" />
 
-      <section className="bg-[#043873] px-5 py-10 text-white md:px-8 md:py-14 lg:px-10">
-        <div className="mx-auto max-w-7xl">
-          <h1 className="text-4xl font-extrabold leading-tight text-[#A7CEFC] md:text-6xl">Profile</h1>
-          <p className="mt-4 max-w-4xl text-2xl font-extrabold leading-tight text-white md:text-4xl">
-            Manage your saved resume and past job matches.
-          </p>
-          <p className="mt-5 max-w-3xl text-sm leading-7 text-white/82 md:text-base">
-            Keep your resume, application details, match reports, and cover letter drafts in one place.
-          </p>
-        </div>
-      </section>
+      <SoftPageHero
+        title="Manage your resume"
+        accent="and cover letter preferences"
+        description="Keep your resume, candidate details, writing style, and previous match reports in one place."
+      />
 
-      <section className="px-5 py-8 md:px-8 lg:px-10">
+      <section className="px-5 py-6 md:px-8 md:py-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[240px_1fr]">
-          <aside className="h-fit rounded-md border border-[#DDE8F6] bg-white p-3 shadow-[0_16px_44px_rgba(4,56,115,0.08)]">
+          <aside className="h-fit rounded-2xl border border-[#BFD6FF] bg-white/72 p-3 shadow-[0_16px_44px_rgba(36,95,234,0.08)] backdrop-blur">
             <button
               type="button"
               onClick={() => setActivePanel("details")}
@@ -561,83 +556,7 @@ export default function ProfilePage() {
 
           {activePanel === "details" ? (
             <section className="grid gap-6">
-              <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_16px_44px_rgba(4,56,115,0.08)] md:p-6">
-                <div>
-                  <p className="text-sm font-bold uppercase text-[#4F9CF9]">Account</p>
-                  <h2 className="mt-2 text-2xl font-extrabold text-[#212529]">
-                    {signedInEmail ? "Signed in" : "Sign in to save your profile"}
-                  </h2>
-                </div>
-
-                {!isAccountConfigured ? (
-                  <div className="mt-5 rounded-md border border-dashed border-[#A7CEFC] bg-[#F8FBFF] p-4 text-sm font-semibold leading-6 text-[#4F5F6F]">
-                    Account sign in is not available right now.
-                  </div>
-                ) : isAuthenticated ? (
-                  <div className="mt-5 grid gap-4">
-                    <div className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] px-4 py-3">
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#4F5F6F]">Signed in as</p>
-                      <p className="mt-1 break-all text-sm font-extrabold text-[#043873]">{signedInEmail}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={saveAccountProfile}
-                        disabled={isAccountLoading || isAuthLoading}
-                        className="h-11 cursor-pointer rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Save profile
-                      </button>
-                      <button
-                        type="button"
-                        onClick={loadAccountProfile}
-                        disabled={isAccountLoading || isAuthLoading}
-                        className="h-11 cursor-pointer rounded-md border border-[#A7CEFC] bg-white px-4 text-sm font-bold text-[#043873] transition hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Restore profile
-                      </button>
-                      <button
-                        type="button"
-                        onClick={deleteAccountProfile}
-                        disabled={isAccountLoading || isAuthLoading}
-                        className="h-11 cursor-pointer rounded-md border border-[#B5121B] bg-white px-4 text-sm font-bold text-[#B5121B] transition hover:bg-[#FFF1F2] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Delete saved profile
-                      </button>
-                      <button
-                        type="button"
-                        onClick={exportAccountProfile}
-                        disabled={isAccountLoading || isAuthLoading}
-                        className="h-11 cursor-pointer rounded-md border border-[#A7CEFC] bg-white px-4 text-sm font-bold text-[#043873] transition hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Export data
-                      </button>
-                      <button
-                        type="button"
-                        onClick={signOutAccount}
-                        disabled={isAccountLoading || isAuthLoading}
-                        className="h-11 cursor-pointer rounded-md border border-[#DDE8F6] bg-white px-4 text-sm font-bold text-[#4F5F6F] transition hover:bg-[#F8FBFF] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Sign out
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-5 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
-                    <p className="text-sm font-semibold leading-6 text-[#4F5F6F]">
-                      Sign in to save your resume, preferences, and role history.
-                    </p>
-                    <Link
-                      href="/auth?next=/profile"
-                      className="mt-4 inline-flex h-11 items-center rounded-md bg-[#043873] px-4 text-sm font-bold text-white transition hover:bg-[#0b4c97]"
-                    >
-                      Sign in or create account
-                    </Link>
-                  </div>
-                )}
-              </section>
-
-              <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_16px_44px_rgba(4,56,115,0.08)] md:p-6">
+              <section className="rounded-2xl border border-[#BFD6FF] bg-white/72 p-5 shadow-[0_16px_44px_rgba(36,95,234,0.08)] backdrop-blur md:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-bold uppercase text-[#4F9CF9]">Resume profile</p>
@@ -660,7 +579,7 @@ export default function ProfilePage() {
               </button>
             </div>
 
-            <div className="mt-5 flex flex-col gap-4 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mt-5 flex flex-col gap-4 rounded-xl border border-[#BFD6FF] bg-[#F8FBFF]/88 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <p className="truncate text-sm font-extrabold text-[#043873]">
                   {resume.trim().length >= 80 ? resumeFileName || "Saved resume profile" : "No resume uploaded"}
@@ -680,7 +599,7 @@ export default function ProfilePage() {
             {error ? <p className="mt-4 text-sm font-semibold text-[#b00000]">{error}</p> : null}
               </section>
 
-              <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_16px_44px_rgba(4,56,115,0.08)] md:p-6">
+              <section className="rounded-2xl border border-[#BFD6FF] bg-white/72 p-5 shadow-[0_16px_44px_rgba(36,95,234,0.08)] backdrop-blur md:p-6">
             <div>
               <p className="text-sm font-bold uppercase text-[#4F9CF9]">Candidate details</p>
               <h2 className="mt-2 text-2xl font-extrabold text-[#212529]">Application checks</h2>
@@ -779,7 +698,7 @@ export default function ProfilePage() {
           ) : null}
 
           {activePanel === "coverLetter" ? (
-            <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_16px_44px_rgba(4,56,115,0.08)] md:p-6">
+            <section className="rounded-2xl border border-[#BFD6FF] bg-white/72 p-5 shadow-[0_16px_44px_rgba(36,95,234,0.08)] backdrop-blur md:p-6">
               <div>
                 <p className="text-sm font-bold uppercase text-[#4F9CF9]">Cover letter style</p>
                 <h2 className="mt-2 text-2xl font-extrabold text-[#212529]">Set your writing preferences</h2>
@@ -888,7 +807,7 @@ export default function ProfilePage() {
                     coverLetterExamples.map((example, index) => (
                       <article
                         key={`${index}-${example.slice(0, 20)}`}
-                        className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4"
+                         className="rounded-xl border border-[#BFD6FF] bg-[#F8FBFF]/88 p-4"
                       >
                         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                           <div className="min-w-0">
@@ -917,7 +836,7 @@ export default function ProfilePage() {
                       </article>
                     ))
                   ) : (
-                    <div className="rounded-md border border-dashed border-[#A7CEFC] bg-[#F8FBFF] p-4 text-sm font-semibold text-[#4F5F6F]">
+                     <div className="rounded-xl border border-dashed border-[#A7CEFC] bg-[#F8FBFF]/88 p-4 text-sm font-semibold text-[#4F5F6F]">
                       No examples saved yet.
                     </div>
                   )}
@@ -930,7 +849,7 @@ export default function ProfilePage() {
 
           {activePanel === "history" ? (
             <section className="grid gap-5">
-            <div className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_16px_44px_rgba(4,56,115,0.08)] md:p-6">
+            <div className="rounded-2xl border border-[#BFD6FF] bg-white/72 p-5 shadow-[0_16px_44px_rgba(36,95,234,0.08)] backdrop-blur md:p-6">
               <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                 <div>
                   <p className="text-sm font-bold uppercase text-[#4F9CF9]">History</p>
@@ -957,8 +876,8 @@ export default function ProfilePage() {
                       onClick={() => setSelectedId(item.id)}
                       className={`grid gap-3 rounded-md border p-4 text-left transition sm:grid-cols-[1fr_auto] sm:items-center ${
                         selectedMatch?.id === item.id
-                          ? "border-[#4F9CF9] bg-[#F8FBFF]"
-                          : "border-[#DDE8F6] bg-white hover:border-[#A7CEFC]"
+                          ? "border-[#4F9CF9] bg-[#F8FBFF]/88"
+                          : "border-[#BFD6FF] bg-white/70 hover:border-[#4F9CF9] hover:bg-white"
                       }`}
                     >
                       <span>
@@ -969,13 +888,13 @@ export default function ProfilePage() {
                           {[item.jobMeta.company, item.jobMeta.location].filter(Boolean).join(" | ") || "Job details not provided"}
                         </span>
                       </span>
-                      <span className="rounded-md bg-[#FFE492] px-3 py-2 text-sm font-bold text-[#043873]">
+                      <span className="rounded-md border border-[#A7CEFC] bg-[#EAF4FF] px-3 py-2 text-sm font-bold text-[#043873]">
                         {item.result.score}% fit
                       </span>
                     </button>
                   ))
                 ) : (
-                  <div className="rounded-md border border-dashed border-[#A7CEFC] bg-[#F8FBFF] p-8 text-center">
+                  <div className="rounded-xl border border-dashed border-[#A7CEFC] bg-[#F8FBFF]/88 p-8 text-center">
                     <FileText className="mx-auto text-[#4F9CF9]" size={30} aria-hidden="true" />
                     <p className="mt-3 text-lg font-extrabold text-[#043873]">Generate a fit report first</p>
                     <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#4F5F6F]">
@@ -987,7 +906,7 @@ export default function ProfilePage() {
             </div>
 
             {selectedMatch ? (
-              <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_16px_44px_rgba(4,56,115,0.08)] md:p-6">
+              <section className="rounded-2xl border border-[#BFD6FF] bg-white/72 p-5 shadow-[0_16px_44px_rgba(36,95,234,0.08)] backdrop-blur md:p-6">
                 <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
                   <div>
                     <p className="text-sm font-bold uppercase text-[#4F9CF9]">Selected report</p>
@@ -1023,7 +942,7 @@ export default function ProfilePage() {
                   <HistoryList title="Interview prep" items={selectedMatch.result.interviewPrep} />
                 </div>
 
-                <div className="mt-5 rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
+                <div className="mt-5 rounded-xl border border-[#BFD6FF] bg-[#F8FBFF]/88 p-4">
                   <h3 className="text-lg font-extrabold text-[#212529]">Cover letter</h3>
                   <p className="mt-3 whitespace-pre-line text-sm leading-7 text-[#4F5F6F]">
                     {selectedMatch.result.coverLetter ?? "No cover letter saved for this report."}
@@ -1042,7 +961,7 @@ export default function ProfilePage() {
 
 function ProfileMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-3">
+    <div className="rounded-xl border border-[#BFD6FF] bg-[#F8FBFF]/88 p-3">
       <p className="text-lg font-extrabold text-[#043873]">{value}</p>
       <p className="mt-1 text-xs font-bold uppercase text-[#4F5F6F]">{label}</p>
     </div>
@@ -1051,7 +970,7 @@ function ProfileMetric({ label, value }: { label: string; value: string }) {
 
 function HistoryList({ title, items }: { title: string; items: string[] }) {
   return (
-    <section className="rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-4">
+    <section className="rounded-xl border border-[#BFD6FF] bg-[#F8FBFF]/88 p-4">
       <h3 className="text-sm font-extrabold text-[#212529]">{title}</h3>
       <ul className="mt-3 grid gap-2 text-sm leading-6 text-[#4F5F6F]">
         {items.length ? (

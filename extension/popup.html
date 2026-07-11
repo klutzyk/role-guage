@@ -9,20 +9,29 @@
   <body>
     <main class="shell">
       <header class="hero">
-        <p class="eyebrow">RoleGuage</p>
+        <!-- <p class="eyebrow">RoleGuage</p>
         <h1>Match this job</h1>
-        <p>Analyze the job page you are viewing.</p>
+        <p>Analyze the job page you are viewing.</p> -->
       </header>
 
       <section id="accountGate" class="accountGate hidden">
-        <div class="mark">RoleGuage</div>
-        <h2>Sign in to continue</h2>
-        <p>Use your saved profile for faster role checks.</p>
+        <img class="brandLogo" src="icons/icon-128.png" alt="RoleGuage" />
+        <h2>RoleGuage</h2>
+        <p>Sign in to analyze this job with your saved profile.</p>
+        <label class="authField" for="authEmail">Email</label>
+        <input id="authEmail" class="authInput" type="email" autocomplete="email" placeholder="you@example.com" />
+        <label class="authField" for="authPassword">Password</label>
+        <input id="authPassword" class="authInput" type="password" autocomplete="current-password" placeholder="Password" />
         <button id="extensionSignIn" class="primary" type="button">Sign in</button>
-        <button id="continueGuest" class="linkButton" type="button">Continue without account</button>
+        <button id="extensionSignUp" class="linkButton" type="button">Create account</button>
       </section>
 
-      <section class="panel resumePanel">
+      <section id="signedInBar" class="signedInBar hidden">
+        <span id="signedInEmail"></span>
+        <button id="extensionSignOut" class="linkButton" type="button">Sign out</button>
+      </section>
+
+      <section class="panel resumePanel requiresAccount">
         <div class="sectionHead">
           <div>
             <p class="eyebrow">Resume profile</p>
@@ -52,7 +61,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel requiresAccount">
         <div class="sectionHead">
           <label for="jobText">Job text</label>
           <button id="extractJob" class="secondary compact" type="button">Extract page</button>
@@ -63,7 +72,7 @@
 
       <p id="status" class="status">Ready.</p>
 
-      <section id="result" class="result hidden" aria-live="polite">
+      <section id="result" class="result hidden requiresAccount" aria-live="polite">
         <div class="scoreRow">
           <div>
             <p class="eyebrow">Recommended move</p>

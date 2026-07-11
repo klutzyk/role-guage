@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { getBrowserSupabaseClient, isBrowserSupabaseConfigured } from "@/lib/supabase-browser";
 import { SharedFooter } from "../shared-footer";
 import { SharedHeader } from "../shared-header";
+import { SoftPageHero } from "../soft-page-hero";
 
 type AuthMode = "sign-in" | "sign-up" | "reset" | "update-password";
 
@@ -180,24 +181,18 @@ export default function AuthPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#F8FBFF] text-[#212529]">
+    <main className="min-h-screen bg-[#F0F4FF] text-[#0F1C35]">
       <SharedHeader active="auth" />
 
-      <section className="bg-[#043873] px-5 py-10 text-white md:px-8 md:py-14 lg:px-10">
-        <div className="mx-auto max-w-7xl">
-          <h1 className="text-4xl font-extrabold leading-tight text-[#A7CEFC] md:text-6xl">Account</h1>
-          <p className="mt-4 max-w-4xl text-2xl font-extrabold leading-tight text-white md:text-4xl">
-            Sign in to continue.
-          </p>
-          <p className="mt-5 max-w-3xl text-sm leading-7 text-white/82 md:text-base">
-            Access your saved resume, preferences, and previous role checks.
-          </p>
-        </div>
-      </section>
+      <SoftPageHero
+        title="Sign in"
+        accent="to continue"
+        description="Access your saved resume, preferences, and previous role checks."
+      />
 
-      <section className="px-5 py-10 md:px-8 lg:px-10">
+      <section className="px-5 py-6 md:px-8 md:py-8 lg:px-10">
         <div className="mx-auto max-w-md">
-          <section className="rounded-md border border-[#DDE8F6] bg-white p-5 shadow-[0_16px_44px_rgba(4,56,115,0.08)] md:p-6">
+          <section className="rounded-2xl border border-[#BFD6FF] bg-white/72 p-5 shadow-[0_16px_44px_rgba(36,95,234,0.08)] backdrop-blur md:p-6">
             <div className="flex rounded-md border border-[#DDE8F6] bg-[#F8FBFF] p-1">
               <button
                 type="button"

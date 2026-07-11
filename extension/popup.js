@@ -1,12 +1,17 @@
 const API_BASE = "https://roleguage.com";
 const RESUME_KEYS = ["resume", "resumeFileName", "resumePageCount", "resumeUpdatedAt"];
 const LAST_REPORT_KEY = "lastReportByPage";
-const ACCOUNT_GATE_DISMISSED_KEY = "accountGateDismissed";
+const ACCOUNT_SESSION_KEY = "accountSession";
 
 const elements = {
   accountGate: document.querySelector("#accountGate"),
   extensionSignIn: document.querySelector("#extensionSignIn"),
-  continueGuest: document.querySelector("#continueGuest"),
+  extensionSignUp: document.querySelector("#extensionSignUp"),
+  extensionSignOut: document.querySelector("#extensionSignOut"),
+  authEmail: document.querySelector("#authEmail"),
+  authPassword: document.querySelector("#authPassword"),
+  signedInBar: document.querySelector("#signedInBar"),
+  signedInEmail: document.querySelector("#signedInEmail"),
   resume: document.querySelector("#resume"),
   resumeStateTitle: document.querySelector("#resumeStateTitle"),
   resumeMeta: document.querySelector("#resumeMeta"),
@@ -39,33 +44,50 @@ const elements = {
 };
 
 let lastReport = null;
+let accountSession = null;
 
 init();
 
+function addListener(element, eventName, handler) {
+  if (!element) return;
+  element.addEventListener(eventName, handler);
+}
+
 async function init() {
-  const saved = await chrome.storage.local.get([...RESUME_KEYS, ACCOUNT_GATE_DISMISSED_KEY]);
-  elements.resume.value = saved.resume || "";
-  updateResumeUi(saved);
-  updateAccountGate(saved);
-  const restored = await restoreLastResultForActivePage();
+  const session = await getActiveSession();
+  const saved = await chrome.storage.local.get([...RESUME_KEYS]);
 
-  elements.extensionSignIn.addEventListener("click", openSignIn);
-  elements.continueGuest.addEventListener("click", continueWithoutAccount);
-  elements.uploadResume.addEventListener("click", uploadResumePdf);
-  elements.resumeFile.addEventListener("change", uploadResumePdf);
-  elements.deleteResume.addEventListener("click", clearResume);
-  elements.saveResume.addEventListener("click", saveResume);
-  elements.clearResume.addEventListener("click", clearResume);
-  elements.extractJob.addEventListener("click", extractJobFromActiveTab);
-  elements.analyze.addEventListener("click", analyzeFit);
-  elements.copyResult.addEventListener("click", copyReport);
-  elements.copyCoverLetter.addEventListener("click", copyCoverLetter);
-  elements.exportCoverLetterDocx.addEventListener("click", exportCoverLetterDocx);
-  elements.exportCoverLetterPdf.addEventListener("click", exportCoverLetterPdf);
-  elements.openApp.addEventListener("click", openApp);
+  accountSession = session;
+  if (elements.resume) {
+    elements.resume.value = session?.profile?.resumeText || saved.resume || "";
+  }
+  updateResumeUi(profileToResumeStorage(session?.profile) || saved);
+  updateAccountGate();
+  const restored = accountSession ? await restoreLastResultForActivePage() : false;
 
-  if (!restored) {
+  addListener(elements.extensionSignIn, "click", openSignIn);
+  addListener(elements.extensionSignUp, "click", openSignUp);
+  addListener(elements.extensionSignOut, "click", signOut);
+  addListener(elements.authPassword, "keydown", (event) => {
+    if (event.key === "Enter") openSignIn();
+  });
+  addListener(elements.uploadResume, "click", uploadResumePdf);
+  addListener(elements.resumeFile, "change", uploadResumePdf);
+  addListener(elements.deleteResume, "click", clearResume);
+  addListener(elements.saveResume, "click", saveResume);
+  addListener(elements.clearResume, "click", clearResume);
+  addListener(elements.extractJob, "click", extractJobFromActiveTab);
+  addListener(elements.analyze, "click", analyzeFit);
+  addListener(elements.copyResult, "click", copyReport);
+  addListener(elements.copyCoverLetter, "click", copyCoverLetter);
+  addListener(elements.exportCoverLetterDocx, "click", exportCoverLetterDocx);
+  addListener(elements.exportCoverLetterPdf, "click", exportCoverLetterPdf);
+  addListener(elements.openApp, "click", openApp);
+
+  if (accountSession && !restored) {
     await autoExtractCurrentPage();
+  } else if (!accountSession) {
+    setStatus("Sign in to use RoleGuage.");
   }
 }
 
@@ -110,7 +132,6 @@ async function uploadResumePdf() {
     elements.resume.value = resumeProfile.resume;
     elements.resumeFile.value = "";
     updateResumeUi(resumeProfile);
-    updateAccountGate({ ...resumeProfile, accountGateDismissed: true });
     setStatus("Resume saved. Open a job ad and click Analyze this job.");
   } catch (error) {
     setStatus(error.message || "Could not upload this resume.", true);
@@ -137,48 +158,160 @@ async function saveResume() {
   await chrome.storage.local.set(resumeProfile);
   await chrome.storage.local.remove([LAST_REPORT_KEY]);
   updateResumeUi(resumeProfile);
-  updateAccountGate({ ...resumeProfile, accountGateDismissed: true });
   setStatus("Resume saved. Open a job ad and click Analyze this job.");
 }
 
 async function clearResume() {
-  elements.resume.value = "";
-  elements.resumeFile.value = "";
-  await chrome.storage.local.remove([...RESUME_KEYS, LAST_REPORT_KEY, ACCOUNT_GATE_DISMISSED_KEY]);
+  if (elements.resume) elements.resume.value = "";
+  if (elements.resumeFile) elements.resumeFile.value = "";
+  await chrome.storage.local.remove([...RESUME_KEYS, LAST_REPORT_KEY]);
   updateResumeUi({});
-  updateAccountGate({});
   setStatus("Resume cleared.");
 }
 
 function updateResumeUi(saved) {
-  const resume = (saved.resume || elements.resume.value || "").trim();
+  const resume = (saved.resume || elements.resume?.value || "").trim();
   const hasResume = resume.length >= 80;
   const name = saved.resumeFileName || "Saved resume";
   const pages = saved.resumePageCount ? `${saved.resumePageCount} page${saved.resumePageCount === 1 ? "" : "s"}` : "";
   const chars = hasResume ? `${resume.length.toLocaleString()} characters` : "";
 
-  elements.resumeStateTitle.textContent = hasResume ? "Resume saved" : "Upload resume once";
-  elements.resumeMeta.textContent = hasResume
-    ? [name, pages, chars].filter(Boolean).join(" - ")
-    : "Upload a text-based PDF to start checking roles.";
-  elements.uploadResume.textContent = hasResume ? "Replace Resume PDF" : "Upload Resume PDF";
-  elements.deleteResume.classList.toggle("hidden", !hasResume);
-  elements.resumeEditor.classList.toggle("hidden", hasResume);
+  if (elements.resumeStateTitle) elements.resumeStateTitle.textContent = hasResume ? "Resume saved" : "Upload resume once";
+  if (elements.resumeMeta) {
+    elements.resumeMeta.textContent = hasResume
+      ? [name, pages, chars].filter(Boolean).join(" - ")
+      : "Upload a text-based PDF to start checking roles.";
+  }
+  if (elements.uploadResume) elements.uploadResume.textContent = hasResume ? "Replace Resume PDF" : "Upload Resume PDF";
+  elements.deleteResume?.classList.toggle("hidden", !hasResume);
+  elements.resumeEditor?.classList.toggle("hidden", hasResume);
 }
 
-function updateAccountGate(saved) {
-  const shouldShow = !saved.accountGateDismissed;
+function updateAccountGate() {
+  const isSignedIn = Boolean(accountSession?.accessToken);
+  const gatedElements = document.querySelectorAll(".requiresAccount");
 
-  elements.accountGate.classList.toggle("hidden", !shouldShow);
+  elements.accountGate?.classList.toggle("hidden", isSignedIn);
+  elements.signedInBar?.classList.toggle("hidden", !isSignedIn);
+  if (elements.signedInEmail) elements.signedInEmail.textContent = accountSession?.email || "";
+  gatedElements.forEach((element) => element.classList.toggle("hidden", !isSignedIn));
 }
 
 async function openSignIn() {
+  const email = elements.authEmail?.value.trim() || "";
+  const password = elements.authPassword?.value || "";
+
+  if (!email || !password) {
+    setStatus("Enter your email and password.", true);
+    return;
+  }
+
+  setBusy(true, "Signing in...");
+
+  try {
+    const response = await fetch(`${API_BASE}/api/extension/auth`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await response.json();
+
+    if (!response.ok || !data.session?.accessToken) {
+      throw new Error(data.error || "Could not sign in.");
+    }
+
+    accountSession = {
+      ...data.session,
+      profile: data.profile || null,
+    };
+    await chrome.storage.local.set({ [ACCOUNT_SESSION_KEY]: accountSession });
+    if (elements.authPassword) elements.authPassword.value = "";
+    await applyAccountProfile(accountSession.profile);
+    updateAccountGate();
+    setStatus("Signed in. Open a job ad and analyze it.");
+    await autoExtractCurrentPage().catch(() => undefined);
+  } catch (error) {
+    setStatus(error.message || "Could not sign in.", true);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function openSignUp() {
   await chrome.tabs.create({ url: `${API_BASE}/auth?next=/profile` });
 }
 
-async function continueWithoutAccount() {
-  await chrome.storage.local.set({ [ACCOUNT_GATE_DISMISSED_KEY]: true });
-  updateAccountGate({ accountGateDismissed: true });
+async function signOut() {
+  accountSession = null;
+  lastReport = null;
+  if (elements.resume) elements.resume.value = "";
+  if (elements.jobText) elements.jobText.value = "";
+  elements.result?.classList.add("hidden");
+  await chrome.storage.local.remove([ACCOUNT_SESSION_KEY, ...RESUME_KEYS, LAST_REPORT_KEY]);
+  updateResumeUi({});
+  updateAccountGate();
+  setStatus("Signed out.");
+}
+
+async function getActiveSession() {
+  const saved = await chrome.storage.local.get([ACCOUNT_SESSION_KEY]);
+  const session = saved[ACCOUNT_SESSION_KEY];
+
+  if (!session?.accessToken || !session?.refreshToken) return null;
+
+  const expiresAt = Number(session.expiresAt || 0);
+  const shouldRefresh = expiresAt && expiresAt * 1000 - Date.now() < 120_000;
+
+  if (!shouldRefresh) {
+    return session;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/api/extension/auth`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "refresh", refreshToken: session.refreshToken }),
+    });
+    const data = await response.json();
+
+    if (!response.ok || !data.session?.accessToken) {
+      await chrome.storage.local.remove([ACCOUNT_SESSION_KEY]);
+      return null;
+    }
+
+    const nextSession = {
+      ...data.session,
+      profile: data.profile || session.profile || null,
+    };
+    await chrome.storage.local.set({ [ACCOUNT_SESSION_KEY]: nextSession });
+
+    return nextSession;
+  } catch {
+    return session;
+  }
+}
+
+async function applyAccountProfile(profile) {
+  if (!profile) return;
+
+  const resumeProfile = profileToResumeStorage(profile);
+
+  if (resumeProfile?.resume) {
+    elements.resume.value = resumeProfile.resume;
+    await chrome.storage.local.set(resumeProfile);
+    updateResumeUi(resumeProfile);
+  }
+}
+
+function profileToResumeStorage(profile) {
+  if (!profile?.resumeText) return null;
+
+  return {
+    resume: profile.resumeText,
+    resumeFileName: profile.resumeFileName || "Saved RoleGuage profile",
+    resumePageCount: "",
+    resumeUpdatedAt: new Date().toISOString(),
+  };
 }
 
 async function restoreLastResultForActivePage() {
@@ -252,8 +385,16 @@ async function extractJobFromActiveTab(options = {}) {
 }
 
 async function analyzeFit() {
+  accountSession = await getActiveSession();
+  updateAccountGate();
+
+  if (!accountSession?.accessToken) {
+    setStatus("Sign in to analyze this job.", true);
+    return;
+  }
+
   const saved = await chrome.storage.local.get(["resume"]);
-  const resume = (saved.resume || elements.resume.value || "").trim();
+  const resume = (accountSession.profile?.resumeText || saved.resume || elements.resume.value || "").trim();
   let job = elements.jobText.value.trim();
 
   if (resume.length < 80) {
@@ -273,7 +414,10 @@ async function analyzeFit() {
 
     const response = await fetch(`${API_BASE}/api/extension/analyze`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accountSession.accessToken}`,
+      },
       body: JSON.stringify({
         resume,
         job,

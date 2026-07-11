@@ -1,5 +1,6 @@
 import { SharedFooter } from "../shared-footer";
 import { SharedHeader } from "../shared-header";
+import { SoftPageHero } from "../soft-page-hero";
 
 const sections = [
   {
@@ -69,31 +70,21 @@ const sections = [
 
 export default function PrivacyPage() {
   return (
-    <main className="min-h-screen bg-[#F8FBFF] text-[#212529]">
+    <main className="min-h-screen bg-[#F0F4FF] text-[#0F1C35]">
       <SharedHeader active="privacy" />
 
-      <section className="bg-[#043873] px-5 py-10 text-white md:px-8 md:py-14 lg:px-10">
-        <div className="mx-auto max-w-7xl">
-          <p className="text-4xl font-extrabold leading-tight text-[#A7CEFC] md:text-6xl">
-            Privacy
-          </p>
-          <h1 className="mt-4 max-w-4xl text-2xl font-extrabold leading-tight text-white md:text-4xl">
-            How RoleGuage handles resume and job data.
-          </h1>
-          <p className="mt-5 max-w-3xl text-sm leading-7 text-white/82 md:text-base">
-            Last updated: July 10, 2026. This page explains what the website and
-            Chrome extension collect, why it is used, and how you can control
-            saved data.
-          </p>
-        </div>
-      </section>
+      <SoftPageHero
+        title="How RoleGuage handles"
+        accent="resume and job data"
+        description="Last updated: July 10, 2026. This page explains what RoleGuage collects, why it is used, and how you can control saved data."
+      />
 
-      <section className="px-5 py-10 md:px-8 md:py-14 lg:px-10">
+      <section className="px-5 py-6 md:px-8 md:py-8 lg:px-10">
         <div className="mx-auto grid max-w-5xl gap-5">
           {sections.map((section) => (
             <article
               key={section.title}
-              className="rounded-md border border-[#DDE8F6] bg-white p-6 shadow-[0_14px_40px_rgba(4,56,115,0.06)]"
+              className="rounded-2xl border border-[#BFD6FF] bg-white/72 p-6 shadow-[0_16px_44px_rgba(36,95,234,0.08)] backdrop-blur"
             >
               <h2 className="text-2xl font-extrabold text-[#043873]">{section.title}</h2>
               <div className="mt-4 grid gap-3 text-base leading-8 text-[#536C99]">
