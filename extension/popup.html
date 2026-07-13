@@ -9,14 +9,18 @@
   <body>
     <main class="shell">
       <header class="hero">
-        <!-- <p class="eyebrow">RoleGuage</p>
+        <section id="signedInBar" class="signedInBar hidden">
+          <span id="signedInEmail"></span>
+          <button id="extensionSignOut" class="linkButton" type="button">Sign out</button>
+        </section>
+        <p class="eyebrow">RoleGuage</p>
         <h1>Match this job</h1>
-        <p>Analyze the job page you are viewing.</p> -->
+        <p>Analyze the job page you are viewing.</p>
       </header>
 
       <section id="accountGate" class="accountGate hidden">
         <img class="brandLogo" src="icons/icon-128.png" alt="RoleGuage" />
-        <h2>RoleGuage</h2>
+        <h2>Match this job</h2>
         <p>Sign in to analyze this job with your saved profile.</p>
         <label class="authField" for="authEmail">Email</label>
         <input id="authEmail" class="authInput" type="email" autocomplete="email" placeholder="you@example.com" />
@@ -24,11 +28,6 @@
         <input id="authPassword" class="authInput" type="password" autocomplete="current-password" placeholder="Password" />
         <button id="extensionSignIn" class="primary" type="button">Sign in</button>
         <button id="extensionSignUp" class="linkButton" type="button">Create account</button>
-      </section>
-
-      <section id="signedInBar" class="signedInBar hidden">
-        <span id="signedInEmail"></span>
-        <button id="extensionSignOut" class="linkButton" type="button">Sign out</button>
       </section>
 
       <section class="panel resumePanel requiresAccount">

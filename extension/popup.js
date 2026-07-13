@@ -63,7 +63,7 @@ async function init() {
   }
   updateResumeUi(profileToResumeStorage(session?.profile) || saved);
   updateAccountGate();
-  const restored = accountSession ? await restoreLastResultForActivePage() : false;
+  const restored = accountSession ? await restoreLastJobTextForActivePage() : false;
 
   addListener(elements.extensionSignIn, "click", openSignIn);
   addListener(elements.extensionSignUp, "click", openSignUp);
@@ -314,7 +314,7 @@ function profileToResumeStorage(profile) {
   };
 }
 
-async function restoreLastResultForActivePage() {
+async function restoreLastJobTextForActivePage() {
   const pageKey = await getActivePageKey();
 
   if (!pageKey) return false;
@@ -322,14 +322,13 @@ async function restoreLastResultForActivePage() {
   const saved = await chrome.storage.local.get([LAST_REPORT_KEY]);
   const cached = saved[LAST_REPORT_KEY]?.[pageKey];
 
-  if (!cached?.report) return false;
+  if (!cached?.jobText) return false;
 
-  lastReport = cached.report;
+  lastReport = null;
   elements.jobText.value = cached.jobText || "";
   elements.jobText.dataset.pageTitle = cached.pageTitle || "";
   elements.jobText.dataset.pageUrl = cached.pageUrl || "";
-  renderResult(cached.report);
-  setStatus("Restored the last report for this page.");
+  elements.result?.classList.add("hidden");
   return true;
 }
 
