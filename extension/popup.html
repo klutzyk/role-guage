@@ -71,6 +71,15 @@
 
       <p id="status" class="status">Ready.</p>
 
+      <section id="loadingCard" class="loadingCard hidden requiresAccount" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
+        <div>
+          <p class="eyebrow">Analyzing</p>
+          <h2>Checking this role</h2>
+          <p>Reading the job ad against your saved profile.</p>
+        </div>
+      </section>
+
       <section id="result" class="result hidden requiresAccount" aria-live="polite">
         <div class="scoreRow">
           <div>
@@ -82,6 +91,7 @@
         </div>
 
         <p id="summary" class="summary"></p>
+        <div id="requirementAlert" class="requirementAlert hidden"></div>
 
         <div class="callout">
           <p class="eyebrow">Next best action</p>

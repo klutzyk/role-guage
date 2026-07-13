@@ -1,6 +1,7 @@
 const API_BASE = "https://roleguage.com";
 const RESUME_KEYS = ["resume", "resumeFileName", "resumePageCount", "resumeUpdatedAt"];
 const LAST_REPORT_KEY = "lastReportByPage";
+const LAST_GLOBAL_REPORT_KEY = "lastReportSnapshot";
 const ACCOUNT_SESSION_KEY = "accountSession";
 
 const elements = {
@@ -25,11 +26,13 @@ const elements = {
   extractJob: document.querySelector("#extractJob"),
   analyze: document.querySelector("#analyze"),
   status: document.querySelector("#status"),
+  loadingCard: document.querySelector("#loadingCard"),
   result: document.querySelector("#result"),
   decision: document.querySelector("#decision"),
   level: document.querySelector("#level"),
   score: document.querySelector("#score"),
   summary: document.querySelector("#summary"),
+  requirementAlert: document.querySelector("#requirementAlert"),
   nextStep: document.querySelector("#nextStep"),
   matchedSkills: document.querySelector("#matchedSkills"),
   missingSkills: document.querySelector("#missingSkills"),
@@ -63,7 +66,7 @@ async function init() {
   }
   updateResumeUi(profileToResumeStorage(session?.profile) || saved);
   updateAccountGate();
-  const restored = accountSession ? await restoreLastJobTextForActivePage() : false;
+  const restored = accountSession ? await restoreLastReportSnapshot() : false;
 
   addListener(elements.extensionSignIn, "click", openSignIn);
   addListener(elements.extensionSignUp, "click", openSignUp);
@@ -128,7 +131,7 @@ async function uploadResumePdf() {
     };
 
     await chrome.storage.local.set(resumeProfile);
-    await chrome.storage.local.remove([LAST_REPORT_KEY]);
+    await chrome.storage.local.remove([LAST_REPORT_KEY, LAST_GLOBAL_REPORT_KEY]);
     elements.resume.value = resumeProfile.resume;
     elements.resumeFile.value = "";
     updateResumeUi(resumeProfile);
@@ -156,7 +159,7 @@ async function saveResume() {
   };
 
   await chrome.storage.local.set(resumeProfile);
-  await chrome.storage.local.remove([LAST_REPORT_KEY]);
+  await chrome.storage.local.remove([LAST_REPORT_KEY, LAST_GLOBAL_REPORT_KEY]);
   updateResumeUi(resumeProfile);
   setStatus("Resume saved. Open a job ad and click Analyze this job.");
 }
@@ -164,7 +167,7 @@ async function saveResume() {
 async function clearResume() {
   if (elements.resume) elements.resume.value = "";
   if (elements.resumeFile) elements.resumeFile.value = "";
-  await chrome.storage.local.remove([...RESUME_KEYS, LAST_REPORT_KEY]);
+  await chrome.storage.local.remove([...RESUME_KEYS, LAST_REPORT_KEY, LAST_GLOBAL_REPORT_KEY]);
   updateResumeUi({});
   setStatus("Resume cleared.");
 }
@@ -189,12 +192,16 @@ function updateResumeUi(saved) {
 
 function updateAccountGate() {
   const isSignedIn = Boolean(accountSession?.accessToken);
-  const gatedElements = document.querySelectorAll(".requiresAccount");
+  const gatedElements = document.querySelectorAll(".requiresAccount:not(#loadingCard):not(#result)");
 
   elements.accountGate?.classList.toggle("hidden", isSignedIn);
   elements.signedInBar?.classList.toggle("hidden", !isSignedIn);
   if (elements.signedInEmail) elements.signedInEmail.textContent = accountSession?.email || "";
   gatedElements.forEach((element) => element.classList.toggle("hidden", !isSignedIn));
+  if (!isSignedIn) {
+    elements.loadingCard?.classList.add("hidden");
+    elements.result?.classList.add("hidden");
+  }
 }
 
 async function openSignIn() {
@@ -247,7 +254,7 @@ async function signOut() {
   if (elements.resume) elements.resume.value = "";
   if (elements.jobText) elements.jobText.value = "";
   elements.result?.classList.add("hidden");
-  await chrome.storage.local.remove([ACCOUNT_SESSION_KEY, ...RESUME_KEYS, LAST_REPORT_KEY]);
+  await chrome.storage.local.remove([ACCOUNT_SESSION_KEY, ...RESUME_KEYS, LAST_REPORT_KEY, LAST_GLOBAL_REPORT_KEY]);
   updateResumeUi({});
   updateAccountGate();
   setStatus("Signed out.");
@@ -314,7 +321,20 @@ function profileToResumeStorage(profile) {
   };
 }
 
-async function restoreLastJobTextForActivePage() {
+async function restoreLastReportSnapshot() {
+  const savedSnapshot = await chrome.storage.local.get([LAST_GLOBAL_REPORT_KEY]);
+  const snapshot = savedSnapshot[LAST_GLOBAL_REPORT_KEY];
+
+  if (snapshot?.report) {
+    lastReport = snapshot.report;
+    elements.jobText.value = snapshot.jobText || "";
+    elements.jobText.dataset.pageTitle = snapshot.pageTitle || "";
+    elements.jobText.dataset.pageUrl = snapshot.pageUrl || "";
+    showLoadingCard(false);
+    renderResult(snapshot.report);
+    return true;
+  }
+
   const pageKey = await getActivePageKey();
 
   if (!pageKey) return false;
@@ -403,6 +423,7 @@ async function analyzeFit() {
   }
 
   setBusy(true, "Analyzing this job...");
+  showLoadingCard(true);
 
   try {
     if (job.length < 80) {
@@ -432,6 +453,7 @@ async function analyzeFit() {
     }
 
     lastReport = data;
+    showLoadingCard(false);
     renderResult(data);
     await saveLastResultForActivePage({
       report: data,
@@ -443,6 +465,7 @@ async function analyzeFit() {
   } catch (error) {
     setStatus(error.message || "Could not analyze this job.", true);
   } finally {
+    showLoadingCard(false);
     setBusy(false);
   }
 }
@@ -460,7 +483,13 @@ async function saveLastResultForActivePage(payload) {
   };
 
   const entries = Object.entries(reports).slice(-8);
-  await chrome.storage.local.set({ [LAST_REPORT_KEY]: Object.fromEntries(entries) });
+  await chrome.storage.local.set({
+    [LAST_REPORT_KEY]: Object.fromEntries(entries),
+    [LAST_GLOBAL_REPORT_KEY]: {
+      ...payload,
+      savedAt: new Date().toISOString(),
+    },
+  });
 }
 
 async function getActivePageKey() {
@@ -484,12 +513,60 @@ function renderResult(data) {
   elements.decision.textContent = analysis.decision;
   elements.score.textContent = analysis.score;
   elements.summary.textContent = summary;
+  renderRequirementAlert(elements.requirementAlert, analysis.hardRequirements || []);
   elements.nextStep.textContent = nextStep;
   renderChips(elements.matchedSkills, analysis.matchedSkills);
   renderChips(elements.missingSkills, analysis.missingSkills.length ? analysis.missingSkills : ["None"]);
   renderList(elements.resumeBullets, bullets);
   elements.coverLetterBlock.classList.toggle("hidden", !coverLetter);
   elements.coverLetter.textContent = coverLetter;
+}
+
+function renderRequirementAlert(container, findings) {
+  if (!container) return;
+
+  const visibleFindings = (findings || []).filter((finding) => finding.status !== "matched");
+  const primary = visibleFindings[0];
+
+  container.replaceChildren();
+
+  if (!primary) {
+    container.className = "requirementAlert hidden";
+    return;
+  }
+
+  const isBlocker = primary.status === "blocked";
+  const title = isBlocker
+    ? "Likely blocker"
+    : primary.severity === "hard"
+      ? "Check before applying"
+      : "Requirement to check";
+
+  container.className = `requirementAlert ${isBlocker ? "blocker" : "warningAlert"}`;
+
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = title;
+
+  const message = document.createElement("p");
+  message.className = "requirementMessage";
+  message.textContent = primary.message || "Check this requirement before applying.";
+
+  container.append(eyebrow, message);
+
+  if (primary.jobEvidence) {
+    const evidence = document.createElement("p");
+    evidence.className = "requirementEvidence";
+    evidence.textContent = `Job says: ${primary.jobEvidence}`;
+    container.append(evidence);
+  }
+
+  if (visibleFindings.length > 1) {
+    const extra = document.createElement("p");
+    extra.className = "requirementEvidence";
+    extra.textContent = `${visibleFindings.length - 1} more requirement${visibleFindings.length > 2 ? "s" : ""} to check.`;
+    container.append(extra);
+  }
 }
 
 function renderChips(container, items) {
@@ -822,6 +899,13 @@ function setBusy(isBusy, message) {
 
   if (message) {
     setStatus(message);
+  }
+}
+
+function showLoadingCard(isLoading) {
+  elements.loadingCard?.classList.toggle("hidden", !isLoading);
+  if (isLoading) {
+    elements.result?.classList.add("hidden");
   }
 }
 
