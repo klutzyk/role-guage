@@ -591,14 +591,22 @@ ul {
 }
 
 .coverLetterBlock {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--soft);
-  padding: 11px;
+  border: 1px solid #8fbfff;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(234, 244, 255, 0.9));
+  padding: 13px;
+  box-shadow: 0 14px 34px rgba(36, 95, 234, 0.1);
 }
 
 .compactHead {
-  margin-bottom: 8px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.coverLetterBlock .label {
+  color: var(--blue);
+  font-size: 12.5px;
+  line-height: 1.25;
 }
 
 .coverLetterActions {
@@ -609,15 +617,15 @@ ul {
 }
 
 .coverLetter {
-  max-height: 190px;
+  max-height: 210px;
   overflow: auto;
   white-space: pre-line;
-  border: 1px solid var(--line);
+  border: 1px solid #9fc9ff;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.72);
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.5;
-  padding: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.55;
+  padding: 12px;
 }
 
