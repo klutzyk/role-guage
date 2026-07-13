@@ -146,10 +146,15 @@ async function readAccountProfile(userId: string) {
 }
 
 function getCorsHeaders(request: NextRequest) {
-  const origin = request.headers.get("origin") ?? "";
+  const origin = normalizeExtensionOrigin(request.headers.get("origin") ?? "");
   const allowedOrigins = getAllowedExtensionOrigins();
 
   if (!origin || !allowedOrigins.has(origin)) {
+    console.warn("Extension auth origin rejected", {
+      origin: origin || "missing",
+      allowedOriginCount: allowedOrigins.size,
+      hasConfiguredOrigins: Boolean(process.env.EXTENSION_ALLOWED_ORIGINS),
+    });
     return null;
   }
 
@@ -167,9 +172,16 @@ function getAllowedExtensionOrigins() {
     publishedExtensionOrigin,
     ...(process.env.EXTENSION_ALLOWED_ORIGINS ?? "")
       .split(",")
-      .map((item) => item.trim())
+      .map((item) => normalizeExtensionOrigin(item))
       .filter(Boolean),
   ];
 
   return new Set(configured);
+}
+
+function normalizeExtensionOrigin(value: string) {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  if (/^[a-z]{32}$/.test(trimmed)) return `chrome-extension://${trimmed}`;
+  return trimmed;
 }
