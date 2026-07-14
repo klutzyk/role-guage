@@ -7,7 +7,7 @@ const sections = [
     title: "What RoleGuage Collects",
     copy: [
       "RoleGuage collects resume text, job description text, and optional profile details only when you upload, paste, import, save, or analyze that information.",
-      "If you choose to use account sync, RoleGuage stores the resume text, resume filename, candidate details, cover letter style preferences, and example letters that you explicitly save to your account.",
+      "If you create an account and save your profile, RoleGuage stores the resume text, resume filename, candidate details, cover letter preferences, and example letters that you choose to keep in your account.",
       "The Chrome extension can read the visible job page you are viewing when you open or use the extension. It does not collect your full browsing history.",
     ],
   },
@@ -21,21 +21,22 @@ const sections = [
   {
     title: "Local Browser Storage",
     copy: [
-      "Saved resume, profile details, and match history may be kept in your browser so you can reuse them across role checks.",
-      "You can delete saved resume, profile, and history data from the RoleGuage app or extension.",
+      "On the website, you can use RoleGuage without signing in. In that case, saved resume text, profile details, and match history may be kept only in your browser on that device.",
+      "You can delete locally saved resume, profile, and history data from the RoleGuage app. Clearing browser site data can also remove local copies.",
     ],
   },
   {
     title: "Account Storage",
     copy: [
-      "Account sync is optional. If enabled, saved profile data is stored against your signed-in account so you can reuse it across devices and future extension workflows.",
-      "You can load, export, or delete the account copy from the profile page. Deleting the account copy does not automatically remove local browser data on each device, so clear local data separately when needed.",
+      "An account is optional for using the website, but the Chrome extension requires sign-in so it can use your saved profile when analyzing a job page.",
+      "If you save a profile to your account, you can reuse it after signing in on the website or extension. You can restore, export, or delete the account copy from the profile page.",
+      "Deleting the account copy does not automatically remove local browser data on each device, so clear local data separately when needed.",
     ],
   },
   {
     title: "AI Processing",
     copy: [
-      "When you request an analysis or cover letter, RoleGuage may send the relevant resume text, job description text, and minimal profile context to AI service providers only to generate the requested output.",
+      "When you request an analysis or cover letter, RoleGuage may send the relevant resume text, job description text, cover letter preferences, example letters, and minimal profile context to AI service providers only to generate the requested output.",
       "We aim to send only the information needed for the specific request.",
     ],
   },
@@ -43,7 +44,7 @@ const sections = [
     title: "Cookies And Similar Storage",
     copy: [
       "RoleGuage does not use advertising cookies or third-party analytics cookies in this version.",
-      "Authentication providers may use necessary session storage to keep you signed in. Browser local storage is also used for saved profiles and match history when you use the local-first workflow.",
+      "Authentication providers may use necessary session storage to keep you signed in. Browser local storage is also used for saved profiles, current extension state, and match history when you choose to keep data on a device.",
     ],
   },
   {
@@ -57,7 +58,8 @@ const sections = [
     title: "Chrome Extension Permissions",
     copy: [
       "The extension uses activeTab and scripting permissions to extract visible job description text from the current tab after you open or use the extension.",
-      "The extension uses storage permission to save resume/profile data in your browser.",
+      "The extension uses storage permission to keep your signed-in session and the current job analysis state in your browser.",
+      "The extension sends job text and your saved profile to RoleGuage only when you choose to analyze the current job.",
     ],
   },
   {
