@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateFitEnrichment, getAiModel } from "@/lib/ai";
 import { accountProfileFromRow, AccountProfileRow } from "@/lib/account-profile";
+import { cleanCoverLetterExamples, cleanCoverLetterPreferences } from "@/lib/cover-letter-preferences";
 import {
   cleanBoundedText,
   cleanOneLine,
@@ -87,14 +88,26 @@ export async function POST(request: NextRequest) {
   }
 
   const analysis = analyzeResumeAgainstJob(resume, job, accountProfile?.candidateProfile);
+  const coverLetterInstructions = cleanCoverLetterPreferences(accountProfile?.coverLetterInstructions);
+  const coverLetterExamples = cleanCoverLetterExamples(accountProfile?.coverLetterExamples);
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log("Extension analyze profile context", {
+      profilePresent: Boolean(accountProfile),
+      coverLetterInstructionsLength: coverLetterInstructions.length,
+      coverLetterExamplesCount: coverLetterExamples.length,
+      resumeLength: resume.length,
+      jobLength: job.length,
+    });
+  }
 
   try {
     const aiEnrichment = await generateFitEnrichment({
       resume,
       job,
       analysis,
-      coverLetterInstructions: accountProfile?.coverLetterInstructions,
-      coverLetterExamples: accountProfile?.coverLetterExamples,
+      coverLetterInstructions,
+      coverLetterExamples,
     });
 
     return NextResponse.json(

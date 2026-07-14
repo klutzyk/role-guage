@@ -624,7 +624,7 @@ export async function generateFitEnrichment({
     450,
     "analysis",
   );
-  const writerPacket = buildWriterPacket(job, analysis, narrative);
+  const writerPacket = buildWriterPacket(resume, job, analysis, narrative);
   const guidance = await cachedJsonWithLimit<FitGuidancePayload>(
     [
       "fit-guidance-v2",
@@ -640,6 +640,19 @@ export async function generateFitEnrichment({
     "analysis",
   );
   const roleBrief = formatCoverLetterRoleBrief(job, analysis, writerPacket);
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log("Cover letter writer context", {
+      role: writerPacket.role,
+      projectFacts: writerPacket.verifiedFacts.filter((fact) =>
+        /\b(project|portfolio|platform|app|application|tool|prototype|prediction|automation|llm|ai|machine learning|data pipeline|api)\b/i.test(fact),
+      ),
+      verifiedFactsCount: writerPacket.verifiedFacts.length,
+      hardChecks: writerPacket.hardChecks,
+      coverLetterExamplesCount: cleanedCoverLetterExamples.length,
+    });
+  }
+
   const coverLetterPayload = await cachedJsonWithLimit<CoverLetterOnlyPayload>(
     [
       "cover-letter-writer-v5",
@@ -757,7 +770,7 @@ function cleanEnrichmentPayload(payload: CombinedEnrichmentPayload, analysis: An
   };
 }
 
-function buildWriterPacket(job: string, analysis: AnalysisLike, narrative: CareerNarrativePayload): WriterPacket {
+function buildWriterPacket(resume: string, job: string, analysis: AnalysisLike, narrative: CareerNarrativePayload): WriterPacket {
   const role = extractRoleMeta(job, analysis);
   const hardChecks = (analysis.hardRequirements ?? [])
     .filter((finding) => finding.status !== "matched" && finding.severity !== "info")
@@ -770,17 +783,20 @@ function buildWriterPacket(job: string, analysis: AnalysisLike, narrative: Caree
   if (locationCaution) {
     hardChecks.unshift(locationCaution);
   }
+  const projectFacts = extractProjectFactsForWriter(resume, job, analysis);
   const verifiedFacts = [
     narrative.currentPositioning,
     narrative.careerProgression,
     narrative.roleFit,
     narrative.projectAngle,
+    ...projectFacts,
     ...toTextArray(narrative.relevantEvidence),
   ]
     .map(cleanGeneratedText)
     .filter(Boolean)
     .filter((item) => !looksLikeResumeBullet(item))
-    .slice(0, 6);
+    .filter((item, index, items) => items.findIndex((other) => other.toLowerCase() === item.toLowerCase()) === index)
+    .slice(0, 8);
   const avoidClaims = [
     ...toTextArray(narrative.avoid),
     ...hardChecks.map((finding) => `Do not claim this requirement is satisfied unless verified: ${finding}`),
@@ -1360,6 +1376,28 @@ function validateCoverLetterText(text: string, model: string) {
   }
 }
 
+function extractProjectFactsForWriter(resume: string, job: string, analysis: AnalysisLike) {
+  const isProjectRelevant =
+    roleLikelyBenefitsFromProjects(job, analysis) ||
+    /\b(ai|llm|automation|agent|machine learning|data|pipeline|api|integrat)/i.test(job);
+  if (!isProjectRelevant) return [];
+
+  const profile = buildStructuredProfile(resume);
+  const projectCandidates = profile.projects
+    .map((project) => cleanGeneratedText(project.text))
+    .filter((text) => /\b(project|portfolio|platform|app|application|tool|prototype|built|created|developed|implemented|designed|prediction|llm|ai|automation|pipeline|api|machine learning|data)\b/i.test(text))
+    .map((text) => text.replace(/^[-•]\s*/, ""))
+    .slice(0, 3);
+
+  return projectCandidates.map((fact) => `Project evidence: ${fact}`);
+}
+
+function roleLikelyBenefitsFromProjects(job: string, analysis: AnalysisLike) {
+  const roleText = `${job} ${analysis.roleSignals.join(" ")} ${analysis.missingSkills.join(" ")}`.toLowerCase();
+
+  return /\b(ai|llm|automation|agent|machine learning|data science|data engineer|analytics|pipeline|startup|portfolio|what you.?ve shipped|project|built|builder)\b/.test(roleText);
+}
+
 function validateCriticalCoverLetterText(text: string, model: string) {
   const wordCount = text.split(/\s+/).filter(Boolean).length;
 
@@ -1426,11 +1464,14 @@ function sanitizeCoverLetterStyle(text: string) {
     .replace(/\bwhat stood out\b/gi, "one useful part")
     .replace(/\bI am passionate\b/gi, "I am interested")
     .replace(/\bI thrive\b/gi, "I work well")
+    .replace(/\bI have spent the past\s+four years\s+as\b/gi, "I worked for just over four years as")
+    .replace(/\bI have spent the past\s+four years\s+developing\b/gi, "I worked for just over four years developing")
+    .replace(/\bI have spent the past\s+four years\b/gi, "I worked for just over four years")
     .replace(/\bI have spent the last\s+four years\s+as\b/gi, "I worked for just over four years as")
     .replace(/\bI have spent over\s+four years\s+as\b/gi, "I worked for just over four years as")
     .replace(/\bI have spent the last\s+four years\b/gi, "I worked for just over four years")
     .replace(/\bI have spent over\s+four years\b/gi, "I worked for just over four years")
-    .replace(/\bI have spent\b/gi, "My work has involved")
+    .replace(/\bI have spent\b/gi, "I have worked on")
     .replace(/\bOver the last\s+four years\b/gi, "In recent years")
     .replace(/\bFor the last\s+four years\b/gi, "In recent years")
     .replace(/\bOver the last\b/gi, "Recently")
@@ -1456,6 +1497,7 @@ function sanitizeCoverLetterStyle(text: string) {
 function formatCoverLetterText(text: string) {
   const normalized = text
     .replace(/\r\n/g, "\n")
+    .replace(/\s+(Kind regards|Regards|Sincerely)\b/g, "\n\n$1")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n[ \t]+/g, "\n")
     .replace(/\n{3,}/g, "\n\n")

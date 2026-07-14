@@ -270,7 +270,7 @@ async function getActiveSession() {
   const shouldRefresh = expiresAt && expiresAt * 1000 - Date.now() < 120_000;
 
   if (!shouldRefresh) {
-    return session;
+    return refreshSessionProfile(session);
   }
 
   try {
@@ -288,6 +288,37 @@ async function getActiveSession() {
 
     const nextSession = {
       ...data.session,
+      profile: data.profile || session.profile || null,
+    };
+    await chrome.storage.local.set({ [ACCOUNT_SESSION_KEY]: nextSession });
+
+    return nextSession;
+  } catch {
+    return session;
+  }
+}
+
+async function refreshSessionProfile(session) {
+  try {
+    const response = await fetch(`${API_BASE}/api/extension/auth`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+      },
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        await chrome.storage.local.remove([ACCOUNT_SESSION_KEY]);
+        return null;
+      }
+
+      return session;
+    }
+
+    const nextSession = {
+      ...session,
       profile: data.profile || session.profile || null,
     };
     await chrome.storage.local.set({ [ACCOUNT_SESSION_KEY]: nextSession });
