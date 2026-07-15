@@ -1,5 +1,5 @@
-// const API_BASE = "https://roleguage.com";
-const API_BASE = "http://localhost:3000";
+const API_BASE = "https://roleguage.com";
+// const API_BASE = "http://localhost:3000";
 const RESUME_KEYS = ["resume", "resumeFileName", "resumePageCount", "resumeUpdatedAt"];
 const LAST_REPORT_KEY = "lastReportByPage";
 const LAST_GLOBAL_REPORT_KEY = "lastReportSnapshot";
@@ -32,6 +32,9 @@ const elements = {
   decision: document.querySelector("#decision"),
   level: document.querySelector("#level"),
   score: document.querySelector("#score"),
+  jobMetaCard: document.querySelector("#jobMetaCard"),
+  resultRole: document.querySelector("#resultRole"),
+  resultCompany: document.querySelector("#resultCompany"),
   summary: document.querySelector("#summary"),
   requirementAlert: document.querySelector("#requirementAlert"),
   nextStep: document.querySelector("#nextStep"),
@@ -544,6 +547,7 @@ function renderResult(data) {
   elements.result.classList.remove("hidden");
   elements.decision.textContent = analysis.decision;
   elements.score.textContent = analysis.score;
+  renderJobMeta(lastReport);
   elements.summary.textContent = summary;
   renderRequirementAlert(elements.requirementAlert, analysis.hardRequirements || []);
   elements.nextStep.textContent = nextStep;
@@ -552,6 +556,52 @@ function renderResult(data) {
   renderList(elements.resumeBullets, bullets);
   elements.coverLetterBlock.classList.toggle("hidden", !coverLetter);
   elements.coverLetter.textContent = coverLetter;
+}
+
+function renderJobMeta(report) {
+  const meta = inferReportJobMeta(report);
+  const hasMeta = Boolean(meta.title || meta.company);
+
+  elements.jobMetaCard?.classList.toggle("hidden", !hasMeta);
+  if (!hasMeta) return;
+
+  if (elements.resultRole) {
+    elements.resultRole.textContent = meta.title || "Untitled role";
+  }
+
+  if (elements.resultCompany) {
+    elements.resultCompany.textContent = meta.company || "Not provided";
+  }
+}
+
+function inferReportJobMeta(report) {
+  const text = elements.jobText?.value || "";
+  const titleFromText = matchLineValue(text, /^(?:job\s*)?title\s*:\s*(.+)$/im);
+  const companyFromText = matchLineValue(text, /^company\s*:\s*(.+)$/im);
+  const sourceTitle = cleanUiText(report?.source?.pageTitle || "");
+  const titleFromPage = sourceTitle
+    .replace(/\s+-\s+SEEK$/i, "")
+    .replace(/\s+Job in .+$/i, "")
+    .replace(/\s+\|\s+.+$/i, "")
+    .trim();
+
+  return {
+    title: cleanUiText(titleFromText || titleFromPage).slice(0, 90),
+    company: cleanUiText(companyFromText).slice(0, 90),
+  };
+}
+
+function matchLineValue(text, pattern) {
+  const match = text.match(pattern);
+  return cleanUiText(match?.[1] || "");
+}
+
+function cleanUiText(value) {
+  return String(value || "")
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{2,}/g, " ")
+    .trim();
 }
 
 function renderRequirementAlert(container, findings) {

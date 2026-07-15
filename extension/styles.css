@@ -478,6 +478,27 @@ textarea:focus {
   font-weight: 900;
 }
 
+.jobMetaLine {
+  margin: 14px 0 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jobMetaLine #resultRole {
+  color: var(--blue);
+  font-weight: 850;
+}
+
+.jobMetaDivider {
+  margin: 0 8px;
+  color: #9aa8ba;
+}
+
 .muted,
 .summary {
   color: var(--muted);

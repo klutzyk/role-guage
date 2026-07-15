@@ -551,6 +551,18 @@ export default function Home() {
                 </div>
               </div>
 
+              {(() => {
+                const meta = inferJobMeta(job, jobMeta);
+
+                return (
+                  <p className="mt-4 text-sm font-semibold leading-6 text-[#4F5F6F]">
+                    <span className="text-[#043873]">{meta.title || "Untitled role"}</span>
+                    <span className="mx-2 text-[#A7B4C2]">|</span>
+                    <span>{meta.company || "Company not provided"}</span>
+                  </p>
+                );
+              })()}
+
               <div className="mt-5 w-fit max-w-full rounded-md border border-[#BFD6FF] bg-white/80 px-3 py-2 text-sm font-bold text-[#043873]">
                 Salary: {result.salary || "Not available"}
               </div>
@@ -1028,17 +1040,88 @@ function hasHardBlocker(result: AnalysisResult) {
 }
 
 function inferJobMeta(jobText: string, current: JobMeta): JobMeta {
+  const titleFromText = matchJobMetaLine(jobText, /^(?:job\s*)?title\s*:\s*(.+)$/im);
+  const companyFromText = matchJobMetaLine(jobText, /^company\s*:\s*(.+)$/im);
+  const locationFromText = matchJobMetaLine(jobText, /^location\s*:\s*(.+)$/im);
+  const seekMeta = extractSeekStyleJobMeta(jobText);
   const firstLine = jobText
     .split("\n")
     .map((line) => line.trim())
-    .find(Boolean);
+    .find((line) => line && !/^company\s*:/i.test(line) && !/^location\s*:/i.test(line));
 
   return {
-    title: current.title || firstLine?.slice(0, 90) || "Untitled role",
-    company: current.company,
-    location: current.location,
+    title: current.title || titleFromText || seekMeta.title || firstLine?.slice(0, 90) || "Untitled role",
+    company: current.company || companyFromText || seekMeta.company,
+    location: current.location || locationFromText || seekMeta.location,
     sourceUrl: current.sourceUrl,
   };
+}
+
+function extractSeekStyleJobMeta(text: string) {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => cleanJobMetaValue(line))
+    .filter(Boolean);
+  const viewAllIndex = lines.findIndex((line) => /View all jobs/i.test(line));
+  const lineTitle = viewAllIndex >= 2 ? lines[viewAllIndex - 2].replace(/^Skip to content\s*/i, "") : "";
+  const lineCompany = viewAllIndex >= 2 ? lines[viewAllIndex - 1] : "";
+  const lineLocation =
+    viewAllIndex >= 0
+      ? cleanJobMetaValue(
+          lines
+            .slice(viewAllIndex + 1, viewAllIndex + 4)
+            .join(" ")
+            .match(/\b([A-Z][A-Za-z\s'-]+,\s*(?:Melbourne|Sydney|Brisbane|Perth|Adelaide|Canberra|Hobart|Darwin)[^()]*?)(?:\(|Engineering|Developers|Information|Full time|Part time|$)/i)?.[1] ?? "",
+        )
+      : "";
+
+  if (lineTitle && lineCompany) {
+    return {
+      title: lineTitle.slice(0, 90),
+      company: lineCompany.slice(0, 90),
+      location: lineLocation.slice(0, 90),
+    };
+  }
+
+  const compact = cleanJobMetaValue(text).replace(/^Skip to content(?=\S)/i, "Skip to content ");
+  const prefix = compact.match(/^(?:Skip to content\s*)?(.+?)\s*View all jobs/i)?.[1] ?? "";
+  if (!prefix) return { title: "", company: "", location: "" };
+
+  const separated = prefix.replace(
+    /\b(Engineer|Developer|Analyst|Scientist|Architect|Manager|Consultant|Specialist|Designer|Lead|Intern|Administrator|Product|Graduate)([A-Z])/g,
+    "$1\n$2",
+  );
+  const parts = separated
+    .split("\n")
+    .map((item) => cleanJobMetaValue(item))
+    .filter(Boolean);
+  const location =
+    compact.match(/\b([A-Z][A-Za-z\s'-]+,\s*(?:Melbourne|Sydney|Brisbane|Perth|Adelaide|Canberra|Hobart|Darwin)[^()]*)(?:\(|Engineering|Developers|Information|Full time|Part time)/i)?.[1] ?? "";
+
+  return {
+    title: parts[0]?.slice(0, 90) ?? "",
+    company: cleanSeekCompany(parts.slice(1).join(" ")).slice(0, 90),
+    location: cleanJobMetaValue(location).slice(0, 90),
+  };
+}
+
+function cleanSeekCompany(value: string) {
+  return cleanJobMetaValue(value)
+    .replace(/\s*(?:\d+(?:\.\d+)?\s*)?\d+\s*reviews?.*$/i, "")
+    .replace(/\s*\d+(?:\.\d+)?\s*reviews?.*$/i, "")
+    .replace(/\s*[Â·•].*$/i, "")
+    .trim();
+}
+
+function matchJobMetaLine(text: string, pattern: RegExp) {
+  return cleanJobMetaValue(text.match(pattern)?.[1] ?? "").slice(0, 90);
+}
+
+function cleanJobMetaValue(value: string) {
+  return value
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function cleanImportedTitle(title: string) {

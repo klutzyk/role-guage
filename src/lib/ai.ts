@@ -866,12 +866,17 @@ function cleanLocationName(text: string) {
 }
 
 function extractRoleMeta(job: string, analysis: AnalysisLike) {
+  const seekMeta = extractSeekStyleRoleMeta(job);
+  const titleFromLine = matchRoleMetaLine(job, /^(?:job\s*)?title\s*:\s*(.+)$/im);
+  const companyFromLine = matchRoleMetaLine(job, /^company\s*:\s*(.+)$/im);
   const lines = job
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
-  const title = cleanGeneratedText(lines[0] ?? "the role").slice(0, 90);
-  const company = cleanGeneratedText(lines[1] ?? "the company").slice(0, 90);
+  const title = cleanGeneratedText(seekMeta.title || titleFromLine || stripRoleMetaLabel(lines[0]) || "the role").slice(0, 90);
+  const company = cleanGeneratedText(
+    seekMeta.company || companyFromLine || stripRoleMetaLabel(lines[1]) || "the company",
+  ).slice(0, 90);
   const combined = `${title} ${analysis.roleSignals.join(" ")} ${job.slice(0, 700)}`.toLowerCase();
   const type =
     /machine learning|ai engineer|data scientist|data analyst|analytics|data engineer|automation/.test(combined)
@@ -881,6 +886,57 @@ function extractRoleMeta(job: string, analysis: AnalysisLike) {
         : "general";
 
   return { title, company, type };
+}
+
+function extractSeekStyleRoleMeta(job: string) {
+  const lines = job
+    .split(/\r?\n/)
+    .map((line) => cleanGeneratedText(line))
+    .filter(Boolean);
+  const viewAllIndex = lines.findIndex((line) => /View all jobs/i.test(line));
+  const lineTitle = viewAllIndex >= 2 ? lines[viewAllIndex - 2].replace(/^Skip to content\s*/i, "") : "";
+  const lineCompany = viewAllIndex >= 2 ? lines[viewAllIndex - 1] : "";
+
+  if (lineTitle && lineCompany) {
+    return {
+      title: lineTitle,
+      company: lineCompany,
+    };
+  }
+
+  const compact = cleanGeneratedText(job).replace(/^Skip to content(?=\S)/i, "Skip to content ");
+  const prefix = compact.match(/^(?:Skip to content\s*)?(.+?)\s*View all jobs/i)?.[1] ?? "";
+  if (!prefix) return { title: "", company: "" };
+
+  const separated = prefix.replace(
+    /\b(Engineer|Developer|Analyst|Scientist|Architect|Manager|Consultant|Specialist|Designer|Lead|Intern|Administrator|Product|Graduate)([A-Z])/g,
+    "$1\n$2",
+  );
+  const parts = separated
+    .split("\n")
+    .map((item) => cleanGeneratedText(item))
+    .filter(Boolean);
+
+  return {
+    title: parts[0] ?? "",
+    company: cleanSeekRoleCompany(parts.slice(1).join(" ")),
+  };
+}
+
+function cleanSeekRoleCompany(value: string) {
+  return cleanGeneratedText(value)
+    .replace(/\s*(?:\d+(?:\.\d+)?\s*)?\d+\s*reviews?.*$/i, "")
+    .replace(/\s*\d+(?:\.\d+)?\s*reviews?.*$/i, "")
+    .replace(/\s*[Â·•].*$/i, "")
+    .trim();
+}
+
+function matchRoleMetaLine(text: string, pattern: RegExp) {
+  return stripRoleMetaLabel(cleanGeneratedText(text.match(pattern)?.[1] ?? ""));
+}
+
+function stripRoleMetaLabel(value = "") {
+  return value.replace(/^(?:job\s*)?title\s*:\s*/i, "").replace(/^company\s*:\s*/i, "").trim();
 }
 
 function looksLikeResumeBullet(text: string) {
