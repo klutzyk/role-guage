@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
 import { generateFitEnrichment, getAiModel } from "@/lib/ai";
 import { cleanCandidateProfile } from "@/lib/account-profile";
 import { cleanCoverLetterExamples, cleanCoverLetterPreferences } from "@/lib/cover-letter-preferences";
@@ -44,6 +45,13 @@ export async function POST(request: NextRequest) {
   const analysis = analyzeResumeAgainstJob(resume, job, profile);
   const coverLetterInstructions = cleanCoverLetterPreferences(body?.coverLetterInstructions);
   const coverLetterExamples = cleanCoverLetterExamples(body?.coverLetterExamples);
+  const debugContext = buildDebugContext({
+    resume,
+    job,
+    coverLetterInstructions,
+    coverLetterExamples,
+    profileLocation: profile.location ?? "",
+  });
 
   try {
     const aiEnrichment = await generateFitEnrichment({
@@ -73,6 +81,7 @@ export async function POST(request: NextRequest) {
       ...(aiEnrichment.outreachMessage ? { outreachMessage: aiEnrichment.outreachMessage } : {}),
       ...(aiEnrichment.atsNotes ? { atsNotes: aiEnrichment.atsNotes } : {}),
       ...(aiEnrichment.gapRoadmap ? { gapRoadmap: aiEnrichment.gapRoadmap } : {}),
+      ...(process.env.NODE_ENV !== "production" ? { debugContext } : {}),
     });
   } catch (error) {
     console.error("Fit report enrichment failed", getErrorSummary(error));
@@ -81,8 +90,35 @@ export async function POST(request: NextRequest) {
       aiStatus: "fallback",
       aiModel: getAiModel(),
       ...(process.env.NODE_ENV !== "production" ? { aiError: getErrorSummary(error) } : {}),
+      ...(process.env.NODE_ENV !== "production" ? { debugContext } : {}),
     });
   }
+}
+
+function buildDebugContext({
+  resume,
+  job,
+  coverLetterInstructions,
+  coverLetterExamples,
+  profileLocation,
+}: {
+  resume: string;
+  job: string;
+  coverLetterInstructions: string;
+  coverLetterExamples: string[];
+  profileLocation: string;
+}) {
+  return {
+    resumeHash: hashDebugValue(resume),
+    jobHash: hashDebugValue(job),
+    instructionHash: hashDebugValue(coverLetterInstructions),
+    exampleCount: coverLetterExamples.length,
+    profileLocation,
+  };
+}
+
+function hashDebugValue(value: string) {
+  return createHash("sha256").update(value).digest("hex").slice(0, 10);
 }
 
 function getErrorSummary(error: unknown) {

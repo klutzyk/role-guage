@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
 import { generateFitEnrichment, getAiModel } from "@/lib/ai";
 import { accountProfileFromRow, AccountProfileRow } from "@/lib/account-profile";
 import { cleanCoverLetterExamples, cleanCoverLetterPreferences } from "@/lib/cover-letter-preferences";
@@ -75,7 +76,9 @@ export async function POST(request: NextRequest) {
   }
 
   const accountProfile = await readAccountProfile(userId);
-  const resume = cleanBoundedText(accountProfile?.resumeText || body?.resume, maxResumeTextChars);
+  const submittedResume = cleanBoundedText(body?.resume, maxResumeTextChars);
+  const savedResume = cleanBoundedText(accountProfile?.resumeText, maxResumeTextChars);
+  const resume = submittedResume.length >= 80 ? submittedResume : savedResume;
   const job = cleanBoundedText(body?.job, maxJobTextChars);
   const pageTitle = cleanOneLine(body?.pageTitle, maxPageTitleChars);
   const pageUrl = cleanPublicUrl(body?.pageUrl);
@@ -90,6 +93,13 @@ export async function POST(request: NextRequest) {
   const analysis = analyzeResumeAgainstJob(resume, job, accountProfile?.candidateProfile);
   const coverLetterInstructions = cleanCoverLetterPreferences(accountProfile?.coverLetterInstructions);
   const coverLetterExamples = cleanCoverLetterExamples(accountProfile?.coverLetterExamples);
+  const debugContext = buildDebugContext({
+    resume,
+    job,
+    coverLetterInstructions,
+    coverLetterExamples,
+    profileLocation: accountProfile?.candidateProfile?.location ?? "",
+  });
 
   if (process.env.NODE_ENV !== "production") {
     console.log("Extension analyze profile context", {
@@ -98,6 +108,7 @@ export async function POST(request: NextRequest) {
       coverLetterExamplesCount: coverLetterExamples.length,
       resumeLength: resume.length,
       jobLength: job.length,
+      debugContext,
     });
   }
 
@@ -120,7 +131,7 @@ export async function POST(request: NextRequest) {
         enrichment: aiEnrichment
           ? {
               aiStatus: "generated",
-              aiModel: getAiModel(),
+              aiModel: aiEnrichment.aiModel ?? getAiModel(),
               summary: aiEnrichment.summary,
               nextStep: aiEnrichment.nextStep,
               fitReasoning: aiEnrichment.fitReasoning,
@@ -132,6 +143,7 @@ export async function POST(request: NextRequest) {
               gapRoadmap: aiEnrichment.gapRoadmap ?? [],
             }
           : { aiStatus: "disabled" },
+        ...(process.env.NODE_ENV !== "production" ? { debugContext } : {}),
       },
       { headers: corsHeaders },
     );
@@ -149,10 +161,37 @@ export async function POST(request: NextRequest) {
           aiStatus: "fallback",
           aiModel: getAiModel(),
         },
+        ...(process.env.NODE_ENV !== "production" ? { debugContext } : {}),
       },
       { headers: corsHeaders },
     );
   }
+}
+
+function buildDebugContext({
+  resume,
+  job,
+  coverLetterInstructions,
+  coverLetterExamples,
+  profileLocation,
+}: {
+  resume: string;
+  job: string;
+  coverLetterInstructions: string;
+  coverLetterExamples: string[];
+  profileLocation: string;
+}) {
+  return {
+    resumeHash: hashDebugValue(resume),
+    jobHash: hashDebugValue(job),
+    instructionHash: hashDebugValue(coverLetterInstructions),
+    exampleCount: coverLetterExamples.length,
+    profileLocation: profileLocation ? cleanOneLine(profileLocation, 80) : "",
+  };
+}
+
+function hashDebugValue(value: string) {
+  return createHash("sha256").update(value).digest("hex").slice(0, 10);
 }
 
 function getErrorSummary(error: unknown) {

@@ -100,9 +100,17 @@ type WriterPacket = {
     type: string;
   };
   careerNarrative: CareerNarrativePayload;
+  projectFacts: ProjectFact[];
   verifiedFacts: string[];
   hardChecks: string[];
   avoidClaims: string[];
+};
+
+type ProjectFact = {
+  name: string;
+  summary: string;
+  technologies: string[];
+  evidence: string[];
 };
 
 type AiTask = "analysis" | "coverLetter" | "repair";
@@ -390,6 +398,10 @@ function inferRoleWorkingStyle(job: string, analysis: AnalysisLike) {
 function inferCoverLetterFocus(job: string, analysis: AnalysisLike, roleType: string) {
   const text = `${job} ${analysis.roleSignals.join(" ")}`.toLowerCase();
 
+  if (roleType === "data_ai_or_automation") {
+    return "Lead with software engineering foundation plus data, automation, or AI project direction. Clearly separate project/study experience from commercial experience.";
+  }
+  
   if (/technical lead|lead developer|cto|technical direction|shape the technical|owning the platform|ownership from day one/.test(text)) {
     return "Lead with end-to-end product engineering, ownership, and building real products. Be honest if formal technical-lead or CTO responsibility is not directly evidenced. Do not lead with a technology list.";
   }
@@ -414,9 +426,6 @@ function inferCoverLetterFocus(job: string, analysis: AnalysisLike, roleType: st
     return "Lead with improving workflows, building internal tools, and connecting software to practical business needs.";
   }
 
-  if (roleType === "data_ai_or_automation") {
-    return "Lead with software engineering foundation plus data, automation, or AI project direction. Clearly separate project/study experience from commercial experience.";
-  }
 
   if (/government|clearance|citizen|public sector|security/.test(text)) {
     return "Lead with steady software engineering experience, reliability, communication, and learning. Avoid company praise or mission language.";
@@ -459,6 +468,7 @@ Non-negotiable rules:
 - Do not imply the candidate was senior for their entire career unless verifiedFacts says that exact thing. Prefer "worked for just over four years as a software engineer" over "four years as a Senior Software Engineer".
 - Do not turn a listed skill into a responsibility. If WRITER PACKET says AWS or Azure is a skill, do not claim the candidate hosted, deployed, operated, or managed backends on AWS/Azure unless that exact responsibility is verified.
 - If WRITER PACKET contains named projects, prefer mentioning the project name and exact verified angle over vague phrases like "personal projects" or combining tools into unsupported solution claims.
+- Use WRITER PACKET projectFacts when they are relevant to the role. Mention project names only when they come from projectFacts; otherwise describe project work generically.
 - Treat ROLE BRIEF recommended_focus as the main cover-letter angle. Do not lead with a list of technologies unless recommended_focus says technical stack is the main hiring signal.
 - Use workingStyle, careerDirection, and stretchFraming as the main source of human context. These should guide the letter more than individual skills.
 - If stretchFraming says the role is a stretch, do not imply the candidate already has lead, CTO, architecture ownership, or strategy experience. Frame the application around growth, ownership mindset, and transferable software engineering experience.
@@ -644,9 +654,7 @@ export async function generateFitEnrichment({
   if (process.env.NODE_ENV !== "production") {
     console.log("Cover letter writer context", {
       role: writerPacket.role,
-      projectFacts: writerPacket.verifiedFacts.filter((fact) =>
-        /\b(project|portfolio|platform|app|application|tool|prototype|prediction|automation|llm|ai|machine learning|data pipeline|api)\b/i.test(fact),
-      ),
+      projectFacts: writerPacket.projectFacts,
       verifiedFactsCount: writerPacket.verifiedFacts.length,
       hardChecks: writerPacket.hardChecks,
       coverLetterExamplesCount: cleanedCoverLetterExamples.length,
@@ -784,12 +792,13 @@ function buildWriterPacket(resume: string, job: string, analysis: AnalysisLike, 
     hardChecks.unshift(locationCaution);
   }
   const projectFacts = extractProjectFactsForWriter(resume, job, analysis);
+  const projectFactText = projectFacts.map(formatProjectFactForWriter);
   const verifiedFacts = [
     narrative.currentPositioning,
     narrative.careerProgression,
     narrative.roleFit,
     narrative.projectAngle,
-    ...projectFacts,
+    ...projectFactText,
     ...toTextArray(narrative.relevantEvidence),
   ]
     .map(cleanGeneratedText)
@@ -818,6 +827,7 @@ function buildWriterPacket(resume: string, job: string, analysis: AnalysisLike, 
       projectAngle: cleanGeneratedText(narrative.projectAngle),
       avoid: avoidClaims,
     },
+    projectFacts,
     verifiedFacts,
     hardChecks,
     avoidClaims,
@@ -1376,26 +1386,165 @@ function validateCoverLetterText(text: string, model: string) {
   }
 }
 
-function extractProjectFactsForWriter(resume: string, job: string, analysis: AnalysisLike) {
+function extractProjectFactsForWriter(resume: string, job: string, analysis: AnalysisLike): ProjectFact[] {
   const isProjectRelevant =
     roleLikelyBenefitsFromProjects(job, analysis) ||
     /\b(ai|llm|automation|agent|machine learning|data|pipeline|api|integrat)/i.test(job);
   if (!isProjectRelevant) return [];
 
+  const namedProjects = extractNamedProjectFacts(resume, job);
+  if (namedProjects.length) return namedProjects;
+
   const profile = buildStructuredProfile(resume);
   const projectCandidates = profile.projects
     .map((project) => cleanGeneratedText(project.text))
     .filter((text) => /\b(project|portfolio|platform|app|application|tool|prototype|built|created|developed|implemented|designed|prediction|llm|ai|automation|pipeline|api|machine learning|data)\b/i.test(text))
-    .map((text) => text.replace(/^[-•]\s*/, ""))
+    .map((text) => text.replace(/^[-\u2022]\s*/, ""))
     .slice(0, 3);
 
-  return projectCandidates.map((fact) => `Project evidence: ${fact}`);
+  return projectCandidates.map((fact, index) => ({
+    name: `Project ${index + 1}`,
+    summary: fact.slice(0, 240),
+    technologies: extractKnownTechnologies(fact).slice(0, 8),
+    evidence: [fact.slice(0, 260)],
+  }));
 }
 
 function roleLikelyBenefitsFromProjects(job: string, analysis: AnalysisLike) {
   const roleText = `${job} ${analysis.roleSignals.join(" ")} ${analysis.missingSkills.join(" ")}`.toLowerCase();
 
   return /\b(ai|llm|automation|agent|machine learning|data science|data engineer|analytics|pipeline|startup|portfolio|what you.?ve shipped|project|built|builder)\b/.test(roleText);
+}
+
+function extractNamedProjectFacts(resume: string, job: string): ProjectFact[] {
+  const lines = resume
+    .split(/\r?\n/)
+    .map((line) => cleanGeneratedText(line).replace(/^[-\u2022]\s*/, "").trim())
+    .filter(Boolean);
+  const projects: ProjectFact[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!looksLikeProjectHeading(line, lines[index + 1] ?? "")) continue;
+
+    const block: string[] = [line];
+    for (let cursor = index + 1; cursor < lines.length && block.length < 8; cursor += 1) {
+      const next = lines[cursor];
+      if (cursor > index + 1 && looksLikeMajorResumeHeading(next)) break;
+      if (cursor > index + 1 && looksLikeProjectHeading(next, lines[cursor + 1] ?? "")) break;
+      block.push(next);
+    }
+
+    const evidenceText = block.join(" ");
+    const name = cleanProjectName(line);
+    if (!name || projects.some((project) => project.name.toLowerCase() === name.toLowerCase())) continue;
+
+    projects.push({
+      name,
+      summary: evidenceText.slice(0, 260),
+      technologies: extractKnownTechnologies(evidenceText).slice(0, 10),
+      evidence: block.slice(1, 5).map((item) => item.slice(0, 220)).filter(Boolean),
+    });
+  }
+
+  const jobTerms = new Set(tokenizeForProjectMatch(job));
+  return projects
+    .map((project) => ({
+      project,
+      score: scoreProjectFact(project, jobTerms),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map((item) => item.project);
+}
+
+function looksLikeProjectHeading(line: string, nextLine: string) {
+  if (line.length < 3 || line.length > 180) return false;
+  if (looksLikeMajorResumeHeading(line)) return false;
+  if (/^(built|developed|designed|implemented|created|managed|led|worked|used|evaluated)\b/i.test(line)) return false;
+
+  const hasProjectMarker =
+    /\b(project|platform|app|application|tool|system|dashboard|predict|prediction|automation|ai|ml|machine learning|data|api|portfolio)\b/i.test(line) ||
+    /\s[-\u2013\u2014]\s/.test(line) ||
+    /https?:\/\//i.test(line);
+  const nextHasEvidence =
+    /\b(built|developed|designed|implemented|created|used|integrated|automated|pipeline|api|model|llm|data|react|python|typescript|sql|fastapi|node|\.net|c#)\b/i.test(nextLine);
+
+  return hasProjectMarker && nextHasEvidence;
+}
+
+function looksLikeMajorResumeHeading(line: string) {
+  return /^(selected\s+)?(projects?|applied ai work|experience|professional experience|work experience|employment|education|skills|technical skills|certifications?|summary|profile|references?)$/i.test(line.trim());
+}
+
+function cleanProjectName(line: string) {
+  const withoutUrl = line.replace(/\(?https?:\/\/[^\s)]+\)?/gi, "").trim();
+  const [name] = withoutUrl.split(/\s[-\u2013\u2014]\s/);
+  return name
+    .replace(/\b(project|platform|application|app|tool)\b\s*$/i, "")
+    .replace(/[|:;,]+$/g, "")
+    .trim()
+    .slice(0, 80);
+}
+
+function extractKnownTechnologies(text: string) {
+  const candidates = [
+    "Python",
+    "FastAPI",
+    "React",
+    "TypeScript",
+    "JavaScript",
+    "Node.js",
+    "SQL",
+    "PostgreSQL",
+    "SQLAlchemy",
+    "pandas",
+    "NumPy",
+    "XGBoost",
+    "LLM",
+    "AI",
+    "Machine learning",
+    "NLP",
+    "AWS",
+    "Azure",
+    "Vercel",
+    "Chrome Extension",
+    "Next.js",
+    "C#",
+    ".NET",
+    "Oracle",
+    "SQL Server",
+    "Docker",
+  ];
+  const normalized = text.toLowerCase();
+
+  return candidates.filter((candidate) => normalized.includes(candidate.toLowerCase()));
+}
+
+function scoreProjectFact(project: ProjectFact, jobTerms: Set<string>) {
+  const text = `${project.name} ${project.summary} ${project.technologies.join(" ")}`.toLowerCase();
+  const terms = tokenizeForProjectMatch(text);
+  let score = project.name.startsWith("Project ") ? 0 : 2;
+
+  for (const term of terms) {
+    if (jobTerms.has(term)) score += term.length > 6 ? 2 : 1;
+  }
+
+  return score;
+}
+
+function tokenizeForProjectMatch(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9+#.]+/g, " ")
+    .split(/\s+/)
+    .filter((term) => term.length > 2 && !["and", "the", "for", "with", "from", "that", "this", "you", "your"].includes(term));
+}
+
+function formatProjectFactForWriter(project: ProjectFact) {
+  const tech = project.technologies.length ? ` Tech: ${project.technologies.join(", ")}.` : "";
+  const evidence = project.evidence.length ? ` Evidence: ${project.evidence.join(" ")}` : "";
+  return `Named project: ${project.name}. ${project.summary}${tech}${evidence}`;
 }
 
 function validateCriticalCoverLetterText(text: string, model: string) {
