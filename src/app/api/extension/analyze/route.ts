@@ -82,8 +82,18 @@ export async function POST(request: NextRequest) {
   }
 
   const accountProfile = await readAccountProfile(userId);
+  if (!accountProfile) {
+    return NextResponse.json(
+      {
+        error: "Your RoleGuage profile could not be loaded. Open RoleGuage, save your profile, then try again.",
+        code: "PROFILE_NOT_FOUND",
+      },
+      { status: 409, headers: corsHeaders },
+    );
+  }
+
   const submittedResume = cleanBoundedText(body?.resume, maxResumeTextChars);
-  const savedResume = cleanBoundedText(accountProfile?.resumeText, maxResumeTextChars);
+  const savedResume = cleanBoundedText(accountProfile.resumeText, maxResumeTextChars);
   const resume = savedResume.length >= 80 ? savedResume : submittedResume;
   const resumeSource = savedResume.length >= 80 ? "account" : "extension";
   const job = cleanBoundedText(body?.job, maxJobTextChars);
@@ -97,23 +107,23 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const analysis = analyzeResumeAgainstJob(resume, job, accountProfile?.candidateProfile);
-  const coverLetterInstructions = cleanCoverLetterPreferences(accountProfile?.coverLetterInstructions);
-  const coverLetterExamples = cleanCoverLetterExamples(accountProfile?.coverLetterExamples);
+  const analysis = analyzeResumeAgainstJob(resume, job, accountProfile.candidateProfile);
+  const coverLetterInstructions = cleanCoverLetterPreferences(accountProfile.coverLetterInstructions);
+  const coverLetterExamples = cleanCoverLetterExamples(accountProfile.coverLetterExamples);
   const debugContext = buildDebugContext({
     resume,
     job,
     coverLetterInstructions,
     coverLetterExamples,
-    profileLocation: accountProfile?.candidateProfile?.location ?? "",
+    profileLocation: accountProfile.candidateProfile?.location ?? "",
     resumeSource,
-    profileUpdatedAt: accountProfile?.updatedAt ?? "",
+    profileUpdatedAt: accountProfile.updatedAt ?? "",
   });
 
   if (process.env.NODE_ENV !== "production") {
     console.log("Extension analyze profile context", {
       profilePresent: Boolean(accountProfile),
-      profileUpdatedAt: accountProfile?.updatedAt ?? "",
+      profileUpdatedAt: accountProfile.updatedAt ?? "",
       coverLetterInstructionsLength: coverLetterInstructions.length,
       coverLetterExamplesCount: coverLetterExamples.length,
       resumeLength: resume.length,
@@ -121,8 +131,8 @@ export async function POST(request: NextRequest) {
       submittedResumeLength: submittedResume.length,
       resumeSource,
       jobLength: job.length,
-      resumeHasRoleGuage: /\bRoleGuage\b/i.test(resume),
-      resumeHasGamblr: /\bGamblr\b/i.test(resume),
+      namedProjectCount: countNamedProjectSignals(resume),
+      hasCoverLetterInstructions: coverLetterInstructions.length > 0,
       firstExamplePreview: coverLetterExamples[0]?.slice(0, 150) ?? "",
       instructionsPreview: coverLetterInstructions.slice(0, 150),
       debugContext,
@@ -210,10 +220,17 @@ function buildDebugContext({
     profileLocation: profileLocation ? cleanOneLine(profileLocation, 80) : "",
     profileUpdatedAt: profileUpdatedAt ? cleanOneLine(profileUpdatedAt, 80) : "",
     resumeSource,
-    resumeHasRoleGuage: /\bRoleGuage\b/i.test(resume),
-    resumeHasGamblr: /\bGamblr\b/i.test(resume),
+    namedProjectCount: countNamedProjectSignals(resume),
+    hasCoverLetterInstructions: coverLetterInstructions.length > 0,
     firstExampleHash: hashDebugValue(coverLetterExamples[0] ?? ""),
   };
+}
+
+function countNamedProjectSignals(resume: string) {
+  return resume
+    .split(/\n+/)
+    .filter((line) => /\b(project|platform|app|application|tool|system|dashboard|prediction|automation|ai|ml)\b/i.test(line))
+    .slice(0, 20).length;
 }
 
 function hashDebugValue(value: string) {

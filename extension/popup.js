@@ -135,6 +135,7 @@ async function uploadResumePdf() {
       resumeUpdatedAt: new Date().toISOString(),
     };
 
+    await saveResumeToAccount(resumeProfile);
     await chrome.storage.local.set(resumeProfile);
     await chrome.storage.local.remove([LAST_REPORT_KEY, LAST_GLOBAL_REPORT_KEY]);
     elements.resume.value = resumeProfile.resume;
@@ -163,6 +164,7 @@ async function saveResume() {
     resumeUpdatedAt: new Date().toISOString(),
   };
 
+  await saveResumeToAccount(resumeProfile);
   await chrome.storage.local.set(resumeProfile);
   await chrome.storage.local.remove([LAST_REPORT_KEY, LAST_GLOBAL_REPORT_KEY]);
   updateResumeUi(resumeProfile);
@@ -172,9 +174,54 @@ async function saveResume() {
 async function clearResume() {
   if (elements.resume) elements.resume.value = "";
   if (elements.resumeFile) elements.resumeFile.value = "";
+  await saveResumeToAccount({
+    resume: "",
+    resumeFileName: "",
+    resumePageCount: "",
+    resumeUpdatedAt: new Date().toISOString(),
+  });
   await chrome.storage.local.remove([...RESUME_KEYS, LAST_REPORT_KEY, LAST_GLOBAL_REPORT_KEY]);
   updateResumeUi({});
   setStatus("Resume cleared.");
+}
+
+async function saveResumeToAccount(resumeProfile) {
+  accountSession = await getActiveSession();
+  if (!accountSession?.accessToken) {
+    throw new Error("Sign in before updating your resume profile.");
+  }
+
+  const currentProfile = accountSession.profile || {};
+  const profile = {
+    ...currentProfile,
+    resumeText: resumeProfile.resume || "",
+    resumeFileName: resumeProfile.resumeFileName || "",
+    candidateProfile: currentProfile.candidateProfile || {},
+    coverLetterInstructions: currentProfile.coverLetterInstructions || "",
+    coverLetterExamples: Array.isArray(currentProfile.coverLetterExamples)
+      ? currentProfile.coverLetterExamples
+      : [],
+  };
+
+  const response = await fetch(`${API_BASE}/api/account/profile`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accountSession.accessToken}`,
+    },
+    body: JSON.stringify({ profile }),
+  });
+  const data = await response.json();
+
+  if (!response.ok || !data.profile) {
+    throw new Error(data.error || "Could not update your account profile.");
+  }
+
+  accountSession = {
+    ...accountSession,
+    profile: data.profile,
+  };
+  await chrome.storage.local.set({ [ACCOUNT_SESSION_KEY]: accountSession });
 }
 
 function updateResumeUi(saved) {

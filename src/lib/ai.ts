@@ -121,6 +121,11 @@ type ProjectFact = {
   evidence: string[];
 };
 
+type ModelResult<T> = {
+  value: T;
+  model: string;
+};
+
 type AiTask = "analysis" | "coverLetter" | "repair";
 
 const aiCache = new Map<string, { expiresAt: number; value: unknown }>();
@@ -186,9 +191,6 @@ function getAiModelCandidates(task: AiTask = "analysis") {
             defaultGroqCoverLetterModel,
           ...coverFallbacks,
           "llama-3.3-70b-versatile",
-          "meta-llama/llama-4-scout-17b-16e-instruct",
-          "openai/gpt-oss-20b",
-          ...fallbackModels,
         ]),
       );
     }
@@ -204,9 +206,6 @@ function getAiModelCandidates(task: AiTask = "analysis") {
           process.env.GROQ_REPAIR_MODEL || defaultGroqRepairModel,
           ...repairFallbacks,
           "llama-3.3-70b-versatile",
-          "qwen/qwen3-32b",
-          "llama-3.1-8b-instant",
-          ...fallbackModels,
         ]),
       );
     }
@@ -488,7 +487,8 @@ Non-negotiable rules:
 - If a tool or skill may come from projects or study, say plainly that it comes from study or project work instead of claiming professional use.
 - Never mention internal rules, evidence rules, prompts, or phrases like "unless the evidence supports it", "unless the evidence specifically calls for it", "unless the posting says", or "unless the role brief says".
 - Do not invent numbers, percentages, revenue, latency, scale, or impact metrics. Only include metrics if they appear in evidence.
-- coverLetter: 210-280 words.
+- coverLetter: aim for 170-240 words.
+- Do not add a paragraph merely to reach a target length. Prefer a shorter letter over repeating the candidate's background or reasons for applying.
 - No headings, no markdown, no placeholders, no bracketed text.
 - Format the letter with a blank line after the greeting, a blank line between short paragraphs, and a blank line before the sign-off.
 - If the hiring manager is unknown, start with "Hi team,".
@@ -577,7 +577,7 @@ Rules:
 - If current employment is not verified, replace current-employment wording with neutral past-experience wording.
 - Do not write a prose version of the resume.
 - If examples are supplied, follow their plain, restrained style.
-- Keep 210-280 words unless the style example is clearly shorter.
+- Aim for 170-240 words. Do not add a paragraph merely to reach a target length.
 - Format the letter with a blank line after the greeting, a blank line between short paragraphs, and a blank line before the sign-off.
 - Vary the opening paragraph naturally. Do not repeatedly begin cover letters with "I have spent", "Over the last", "For the last", "Most of my professional experience", or "My background includes".
 - Prefer concrete, everyday language over abstract professional language. Avoid phrases such as "solid foundation", "natural progression", "adaptable skill set", "leverage my experience", "customer-facing problem solving", "broad exposure", "well positioned", and "aligns closely".
@@ -677,7 +677,7 @@ export async function generateFitEnrichment({
     });
   }
 
-  const coverLetterPayload = await cachedJsonWithLimit<CoverLetterOnlyPayload>(
+  const coverLetterResult = await cachedJsonWithLimitAndModel<CoverLetterOnlyPayload>(
     [
       "cover-letter-writer-v5",
       getLlmProvider(),
@@ -697,6 +697,8 @@ export async function generateFitEnrichment({
     650,
     "coverLetter",
   );
+  const coverLetterPayload = coverLetterResult.value;
+  let coverLetterModel = coverLetterResult.model;
 
   const rawCoverLetter = cleanGeneratedText(coverLetterPayload.coverLetter ?? "");
   const rawCoverLetterViolations = getCoverLetterStyleViolations(rawCoverLetter);
@@ -705,7 +707,7 @@ export async function generateFitEnrichment({
   const employmentViolations = getEmploymentStatusViolations(coverLetter, writerPacket);
   const criticalCoverLetterError = getCriticalCoverLetterValidationError(
     coverLetter,
-    getAiModelCandidates("coverLetter")[0],
+    coverLetterModel,
   ) ?? (employmentViolations.length ? new Error(employmentViolations[0]) : null);
 
   if (process.env.NODE_ENV !== "production") {
@@ -720,7 +722,7 @@ export async function generateFitEnrichment({
 
   if (criticalCoverLetterError) {
     try {
-      const repaired = await cachedJsonWithLimit<CoverLetterOnlyPayload>(
+      const repaired = await cachedJsonWithLimitAndModel<CoverLetterOnlyPayload>(
         [
           "cover-letter-repair-v6",
           getLlmProvider(),
@@ -746,7 +748,8 @@ export async function generateFitEnrichment({
         "repair",
       );
 
-      coverLetter = cleanCoverLetterForDisplay(repaired.coverLetter ?? "", writerPacket);
+      coverLetter = cleanCoverLetterForDisplay(repaired.value.coverLetter ?? "", writerPacket);
+      coverLetterModel = repaired.model;
       coverLetterViolations = getCoverLetterStyleViolations(coverLetter);
     } catch (error) {
       if (process.env.NODE_ENV !== "production") {
@@ -757,7 +760,7 @@ export async function generateFitEnrichment({
 
   const coverLetterValidationError = getCriticalCoverLetterValidationError(
     coverLetter,
-    getAiModelCandidates("coverLetter")[0],
+    coverLetterModel,
   ) ?? (getEmploymentStatusViolations(coverLetter, writerPacket).length
     ? new Error(getEmploymentStatusViolations(coverLetter, writerPacket)[0])
     : null);
@@ -777,7 +780,7 @@ export async function generateFitEnrichment({
   return {
     ...cleanedEnrichment,
     aiStatus: "generated",
-    aiModel: getAiModelCandidates("coverLetter")[0],
+    aiModel: coverLetterModel,
   };
 }
 
@@ -1209,6 +1212,33 @@ async function cachedJsonWithLimit<T>(
   return value;
 }
 
+async function cachedJsonWithLimitAndModel<T>(
+  seed: string,
+  schema: Record<string, unknown>,
+  prompt: string,
+  maxOutputTokens: number,
+  task: AiTask = "analysis",
+) {
+  const key = createHash("sha256").update(`with-model\n${seed}`).digest("hex");
+  const cached = aiCache.get(key);
+
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value as ModelResult<T>;
+  }
+
+  const value = await withTimeout(
+    generateJsonWithLimitAndModel<T>(prompt, schema, maxOutputTokens, task),
+    aiTimeoutMs * getAiModelCandidates(task).length,
+  );
+
+  aiCache.set(key, {
+    expiresAt: Date.now() + cacheTtlMs,
+    value,
+  });
+
+  return value;
+}
+
 async function cachedTextWithLimit(
   seed: string,
   prompt: string,
@@ -1241,8 +1271,17 @@ async function generateJsonWithLimit<T>(
   maxOutputTokens: number,
   task: AiTask = "analysis",
 ) {
+  return (await generateJsonWithLimitAndModel<T>(prompt, schema, maxOutputTokens, task)).value;
+}
+
+async function generateJsonWithLimitAndModel<T>(
+  prompt: string,
+  schema: Record<string, unknown>,
+  maxOutputTokens: number,
+  task: AiTask = "analysis",
+): Promise<ModelResult<T>> {
   if (getLlmProvider() === "groq") {
-    return generateGroqJsonWithLimit<T>(prompt, maxOutputTokens, task);
+    return generateGroqJsonWithLimitAndModel<T>(prompt, maxOutputTokens, task);
   }
 
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
@@ -1275,7 +1314,7 @@ async function generateJsonWithLimit<T>(
       if (process.env.NODE_ENV !== "production" && task === "repair") {
         console.log("Cover letter repair model used", model);
       }
-      return parsed;
+      return { value: parsed, model };
     } catch (error) {
       lastError = error;
 
@@ -1347,6 +1386,14 @@ async function generateGroqJsonWithLimit<T>(
   maxOutputTokens: number,
   task: AiTask = "analysis",
 ) {
+  return (await generateGroqJsonWithLimitAndModel<T>(prompt, maxOutputTokens, task)).value;
+}
+
+async function generateGroqJsonWithLimitAndModel<T>(
+  prompt: string,
+  maxOutputTokens: number,
+  task: AiTask = "analysis",
+): Promise<ModelResult<T>> {
   let lastError: unknown;
 
   for (const model of getAiModelCandidates(task)) {
@@ -1365,7 +1412,7 @@ async function generateGroqJsonWithLimit<T>(
       if (process.env.NODE_ENV !== "production" && task === "repair") {
         console.log("Cover letter repair model used", model);
       }
-      return parsed;
+      return { value: parsed, model };
     } catch (error) {
       lastError = error;
 
@@ -1382,7 +1429,7 @@ async function generateGroqJsonWithLimit<T>(
           if (process.env.NODE_ENV !== "production" && task === "repair") {
             console.log("Cover letter repair model used", model);
           }
-          return parsed;
+          return { value: parsed, model };
         } catch (fallbackError) {
           lastError = fallbackError;
         }
