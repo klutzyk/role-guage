@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   ClipboardCheck,
   FileText,
-  Globe,
   Shield,
   Sparkles,
   Target,
@@ -13,6 +12,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { SharedFooter } from "./shared-footer";
 import { SharedHeader } from "./shared-header";
+import { TrackedExtensionLink } from "./tracked-extension-link";
 
 const features: Array<{ title: string; copy: string; icon: LucideIcon }> = [
   {
@@ -84,15 +84,11 @@ export default function Home() {
               Try Now - it&apos;s free
               <ArrowRight size={18} aria-hidden="true" />
             </a>
-            <a
+            <TrackedExtensionLink
               href={chromeExtensionUrl}
-              target="_blank"
-              rel="noreferrer"
+              location="hero"
               className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-[#A7CEFC] bg-white/54 px-6 text-sm font-extrabold text-[#245FEA] transition hover:bg-white"
-            >
-              <Globe size={18} aria-hidden="true" />
-              Get the Extension
-            </a>
+            />
           </div>
           <p className="mt-5 text-xs font-medium text-[#8BA1C8]/75">
             No sign-up required to try &middot; Works with LinkedIn, Indeed, Greenhouse &amp; more
@@ -172,15 +168,11 @@ export default function Home() {
               Try Now - Free
               <ArrowRight size={18} aria-hidden="true" />
             </a>
-            <a
+            <TrackedExtensionLink
               href={chromeExtensionUrl}
-              target="_blank"
-              rel="noreferrer"
+              location="cta"
               className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-[#A7CEFC] bg-white/48 px-6 text-sm font-extrabold text-[#245FEA] transition hover:bg-white"
-            >
-              <Globe size={18} aria-hidden="true" />
-              Get the Extension
-            </a>
+            />
           </div>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-4 text-sm font-semibold text-[#8BA1C8]">
             {["No credit card", "Free to start", "Built for real job ads"].map((item) => (
