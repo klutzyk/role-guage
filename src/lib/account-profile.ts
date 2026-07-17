@@ -14,6 +14,7 @@ export type AccountProfile = {
   candidateProfile: CandidateProfile;
   coverLetterInstructions: string;
   coverLetterExamples: string[];
+  updatedAt?: string;
 };
 
 export type AccountProfileRow = {
@@ -36,6 +37,7 @@ export function cleanAccountProfile(value: unknown): AccountProfile {
     coverLetterInstructions:
       cleanCoverLetterPreferences(record.coverLetterInstructions) || defaultCoverLetterPreferences,
     coverLetterExamples: cleanCoverLetterExamples(record.coverLetterExamples),
+    updatedAt: cleanOneLine(record.updatedAt, 80) || undefined,
   };
 }
 
@@ -48,6 +50,7 @@ export function accountProfileFromRow(row: AccountProfileRow | null): AccountPro
     candidateProfile: row.candidate_profile ?? {},
     coverLetterInstructions: row.cover_letter_instructions ?? "",
     coverLetterExamples: row.cover_letter_examples ?? [],
+    updatedAt: row.updated_at ?? "",
   });
 }
 

@@ -499,6 +499,13 @@ textarea:focus {
   color: #9aa8ba;
 }
 
+.resultMeta {
+  margin: -2px 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .muted,
 .summary {
   color: var(--muted);

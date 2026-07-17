@@ -1,5 +1,5 @@
-const API_BASE = "https://roleguage.com";
-// const API_BASE = "http://localhost:3000";
+// const API_BASE = "https://roleguage.com";
+const API_BASE = "http://localhost:3000";
 const RESUME_KEYS = ["resume", "resumeFileName", "resumePageCount", "resumeUpdatedAt"];
 const LAST_REPORT_KEY = "lastReportByPage";
 const LAST_GLOBAL_REPORT_KEY = "lastReportSnapshot";
@@ -35,6 +35,7 @@ const elements = {
   jobMetaCard: document.querySelector("#jobMetaCard"),
   resultRole: document.querySelector("#resultRole"),
   resultCompany: document.querySelector("#resultCompany"),
+  resultMeta: document.querySelector("#resultMeta"),
   summary: document.querySelector("#summary"),
   requirementAlert: document.querySelector("#requirementAlert"),
   nextStep: document.querySelector("#nextStep"),
@@ -337,6 +338,13 @@ async function applyAccountProfile(profile) {
   if (!profile) return;
 
   const resumeProfile = profileToResumeStorage(profile);
+  const stored = await chrome.storage.local.get([LAST_GLOBAL_REPORT_KEY]);
+  const currentFingerprint = getProfileFingerprint(profile);
+  const cachedFingerprint = stored[LAST_GLOBAL_REPORT_KEY]?.profileFingerprint || "";
+
+  if (cachedFingerprint && currentFingerprint && cachedFingerprint !== currentFingerprint) {
+    await chrome.storage.local.remove([LAST_REPORT_KEY, LAST_GLOBAL_REPORT_KEY]);
+  }
 
   if (resumeProfile?.resume) {
     elements.resume.value = resumeProfile.resume;
@@ -359,15 +367,30 @@ function profileToResumeStorage(profile) {
 async function restoreLastReportSnapshot() {
   const savedSnapshot = await chrome.storage.local.get([LAST_GLOBAL_REPORT_KEY]);
   const snapshot = savedSnapshot[LAST_GLOBAL_REPORT_KEY];
+  const currentFingerprint = getProfileFingerprint(accountSession?.profile);
 
   if (snapshot?.report) {
-    lastReport = snapshot.report;
+    if (snapshot.profileFingerprint && currentFingerprint && snapshot.profileFingerprint !== currentFingerprint) {
+      await chrome.storage.local.remove([LAST_GLOBAL_REPORT_KEY]);
+    } else {
+      lastReport = {
+        ...snapshot.report,
+        cachedResult: true,
+        cachedAt: snapshot.savedAt || "",
+      };
+      elements.jobText.value = snapshot.jobText || "";
+      elements.jobText.dataset.pageTitle = snapshot.pageTitle || "";
+      elements.jobText.dataset.pageUrl = snapshot.pageUrl || "";
+      showLoadingCard(false);
+      renderResult(lastReport);
+      return true;
+    }
+  }
+
+  if (snapshot?.jobText) {
     elements.jobText.value = snapshot.jobText || "";
     elements.jobText.dataset.pageTitle = snapshot.pageTitle || "";
     elements.jobText.dataset.pageUrl = snapshot.pageUrl || "";
-    showLoadingCard(false);
-    renderResult(snapshot.report);
-    return true;
   }
 
   const pageKey = await getActivePageKey();
@@ -467,6 +490,21 @@ async function analyzeFit() {
       job = payload.jobText.trim();
     }
 
+    console.debug("RoleGuage extension analyze input", {
+      resumeLength: resume.length,
+      jobLength: job.length,
+      profileFingerprint: getProfileFingerprint(accountSession.profile),
+      profileUpdatedAt: accountSession.profile?.updatedAt || "",
+      coverLetterInstructionsLength: (accountSession.profile?.coverLetterInstructions || "").length,
+      coverLetterExamplesCount: Array.isArray(accountSession.profile?.coverLetterExamples)
+        ? accountSession.profile.coverLetterExamples.length
+        : 0,
+      resumeHash: simpleHash(resume),
+      jobHash: simpleHash(job),
+      instructionHash: simpleHash(accountSession.profile?.coverLetterInstructions || ""),
+      firstExampleHash: simpleHash(accountSession.profile?.coverLetterExamples?.[0] || ""),
+    });
+
     const response = await fetch(`${API_BASE}/api/extension/analyze`, {
       method: "POST",
       headers: {
@@ -487,11 +525,18 @@ async function analyzeFit() {
       throw new Error(data.error || "Analysis failed.");
     }
 
-    lastReport = data;
+    if (data.debugContext) {
+      console.debug("RoleGuage extension analyze backend context", data.debugContext);
+    }
+
+    lastReport = {
+      ...data,
+      generatedAt: new Date().toISOString(),
+    };
     showLoadingCard(false);
-    renderResult(data);
+    renderResult(lastReport);
     await saveLastResultForActivePage({
-      report: data,
+      report: lastReport,
       jobText: job,
       pageTitle: elements.jobText.dataset.pageTitle || "",
       pageUrl: elements.jobText.dataset.pageUrl || "",
@@ -515,6 +560,7 @@ async function saveLastResultForActivePage(payload) {
   reports[pageKey] = {
     ...payload,
     savedAt: new Date().toISOString(),
+    profileFingerprint: getProfileFingerprint(accountSession?.profile),
   };
 
   const entries = Object.entries(reports).slice(-8);
@@ -523,6 +569,7 @@ async function saveLastResultForActivePage(payload) {
     [LAST_GLOBAL_REPORT_KEY]: {
       ...payload,
       savedAt: new Date().toISOString(),
+      profileFingerprint: getProfileFingerprint(accountSession?.profile),
     },
   });
 }
@@ -548,6 +595,7 @@ function renderResult(data) {
   elements.decision.textContent = analysis.decision;
   elements.score.textContent = analysis.score;
   renderJobMeta(lastReport);
+  renderResultMeta(data);
   elements.summary.textContent = summary;
   renderRequirementAlert(elements.requirementAlert, analysis.hardRequirements || []);
   elements.nextStep.textContent = nextStep;
@@ -556,6 +604,58 @@ function renderResult(data) {
   renderList(elements.resumeBullets, bullets);
   elements.coverLetterBlock.classList.toggle("hidden", !coverLetter);
   elements.coverLetter.textContent = coverLetter;
+}
+
+function renderResultMeta(data) {
+  if (!elements.resultMeta) return;
+
+  const timestamp = data.cachedAt || data.generatedAt || "";
+  if (!timestamp) {
+    elements.resultMeta.classList.add("hidden");
+    elements.resultMeta.textContent = "";
+    return;
+  }
+
+  const label = data.cachedResult ? "Restored" : "Generated";
+  elements.resultMeta.textContent = `${label} ${formatTimestamp(timestamp)}`;
+  elements.resultMeta.classList.remove("hidden");
+}
+
+function formatTimestamp(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function getProfileFingerprint(profile) {
+  if (!profile) return "";
+
+  return simpleHash(
+    [
+      profile.updatedAt || "",
+      profile.resumeText || "",
+      profile.coverLetterInstructions || "",
+      ...(Array.isArray(profile.coverLetterExamples) ? profile.coverLetterExamples : []),
+      JSON.stringify(profile.candidateProfile || {}),
+    ].join("\n"),
+  );
+}
+
+function simpleHash(value) {
+  let hash = 0;
+  const text = String(value || "");
+
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) | 0;
+  }
+
+  return Math.abs(hash).toString(16);
 }
 
 function renderJobMeta(report) {

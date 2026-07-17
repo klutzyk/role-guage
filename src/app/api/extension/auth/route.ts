@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
 import { accountProfileFromRow, AccountProfileRow } from "@/lib/account-profile";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import {
@@ -98,6 +99,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Please sign in again." }, { status: 401, headers: corsHeaders });
   }
 
+  if (process.env.NODE_ENV !== "production") {
+    console.log("Extension auth authenticated user", {
+      userHash: hashDebugValue(userId),
+    });
+  }
+
   const profile = await readAccountProfile(userId);
 
   return NextResponse.json({ profile }, { headers: corsHeaders });
@@ -112,6 +119,13 @@ async function sessionResponse(
   },
   headers: Record<string, string>,
 ) {
+  if (process.env.NODE_ENV !== "production" && session.user?.id) {
+    console.log("Extension auth session user", {
+      userHash: hashDebugValue(session.user.id),
+      emailPresent: Boolean(session.user.email),
+    });
+  }
+
   const profile = session.user?.id ? await readAccountProfile(session.user.id) : null;
 
   return NextResponse.json(
@@ -130,7 +144,10 @@ async function sessionResponse(
 
 async function readAccountProfile(userId: string) {
   const client = createSupabaseServiceClient();
-  if (!client) return null;
+  if (!client) {
+    console.error("Extension auth profile read failed: service client unavailable");
+    return null;
+  }
 
   const { data, error } = await client
     .from("user_profiles")
@@ -140,9 +157,40 @@ async function readAccountProfile(userId: string) {
     .eq("user_id", userId)
     .maybeSingle<AccountProfileRow>();
 
-  if (error) return null;
+  if (error) {
+    console.error("Extension auth profile read failed", {
+      userHash: hashDebugValue(userId),
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
+    return null;
+  }
+
+  if (!data) {
+    console.warn("Extension auth profile row not found", {
+      userHash: hashDebugValue(userId),
+    });
+    return null;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log("Extension auth profile row loaded", {
+      userHash: hashDebugValue(userId),
+      rowUserHash: hashDebugValue(data.user_id),
+      updatedAt: data.updated_at,
+      hasResume: Boolean(data.resume_text),
+      instructionLength: data.cover_letter_instructions?.length ?? 0,
+      exampleCount: data.cover_letter_examples?.length ?? 0,
+    });
+  }
 
   return accountProfileFromRow(data);
+}
+
+function hashDebugValue(value: string) {
+  return createHash("sha256").update(value).digest("hex").slice(0, 10);
 }
 
 function getCorsHeaders(request: NextRequest) {

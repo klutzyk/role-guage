@@ -5,6 +5,7 @@ import { enforceRateLimit } from "@/lib/rate-limit";
 export const runtime = "nodejs";
 
 const maxResumePdfBytes = 4 * 1024 * 1024;
+const publishedExtensionOrigin = "chrome-extension://fodmkdebllldfgclbicnjojgenlndlba";
 
 class PdfPageLimitError extends Error {
   constructor() {
@@ -74,73 +75,96 @@ function ensurePdfJsServerGlobals() {
 }
 
 export async function POST(request: NextRequest) {
+  const corsHeaders = getOptionalCorsHeaders(request);
   const rateLimited = enforceRateLimit(request, {
     key: "api:extract-resume",
     limit: 15,
     windowMs: 60_000,
   });
 
-  if (rateLimited) return rateLimited;
+  if (rateLimited) {
+    addCorsHeaders(rateLimited, corsHeaders);
+    return rateLimited;
+  }
 
   const formData = await request.formData().catch(() => null);
   const file = formData?.get("resume");
 
   if (!(file instanceof File)) {
-    return NextResponse.json({ error: "Upload a PDF resume file." }, { status: 400 });
+    return jsonWithCors({ error: "Upload a PDF resume file." }, { status: 400 }, corsHeaders);
   }
 
   if (file.type !== "application/pdf") {
-    return NextResponse.json({ error: "Only PDF resumes are supported right now." }, { status: 400 });
+    return jsonWithCors({ error: "Only PDF resumes are supported right now." }, { status: 400 }, corsHeaders);
   }
 
   if (!file.name.toLowerCase().endsWith(".pdf")) {
-    return NextResponse.json({ error: "Resume file must use a .pdf extension." }, { status: 400 });
+    return jsonWithCors({ error: "Resume file must use a .pdf extension." }, { status: 400 }, corsHeaders);
   }
 
   if (file.size > maxResumePdfBytes) {
-    return NextResponse.json({ error: "Resume PDF must be smaller than 4 MB." }, { status: 400 });
+    return jsonWithCors({ error: "Resume PDF must be smaller than 4 MB." }, { status: 400 }, corsHeaders);
   }
 
   try {
     const data = new Uint8Array(await file.arrayBuffer());
 
     if (!hasPdfHeader(data)) {
-      return NextResponse.json({ error: "Uploaded file is not a valid PDF." }, { status: 400 });
+      return jsonWithCors({ error: "Uploaded file is not a valid PDF." }, { status: 400 }, corsHeaders);
     }
 
     const parsed = await extractPdfText(data);
     const text = cleanText(parsed.text);
 
     if (text.length < 80) {
-      return NextResponse.json(
+      return jsonWithCors(
         {
           error:
             "Could not extract enough text from this PDF. Try a text-based resume or paste your resume manually.",
         },
         { status: 422 },
+        corsHeaders,
       );
     }
 
-    return NextResponse.json({
-      filename: file.name,
-      pages: parsed.pages,
-      text: text.length > 10000 ? `${text.slice(0, 10000)}...` : text,
-    });
+    return jsonWithCors(
+      {
+        filename: file.name,
+        pages: parsed.pages,
+        text: text.length > 10000 ? `${text.slice(0, 10000)}...` : text,
+      },
+      undefined,
+      corsHeaders,
+    );
   } catch (error) {
     console.error("Resume PDF extraction failed", getErrorSummary(error));
 
     if (error instanceof PdfPageLimitError) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return jsonWithCors({ error: error.message }, { status: 400 }, corsHeaders);
     }
 
-    return NextResponse.json(
+    return jsonWithCors(
       {
         error:
           "Could not read this PDF. Try exporting the resume again or paste the text manually.",
       },
       { status: 422 },
+      corsHeaders,
     );
   }
+}
+
+export async function OPTIONS(request: NextRequest) {
+  const corsHeaders = getOptionalCorsHeaders(request);
+
+  if (!corsHeaders) {
+    return new NextResponse(null, { status: 204 });
+  }
+
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
 }
 
 async function extractPdfText(data: Uint8Array) {
@@ -200,4 +224,57 @@ function cleanText(value: string) {
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function jsonWithCors(
+  body: unknown,
+  init?: ResponseInit,
+  corsHeaders?: Record<string, string> | null,
+) {
+  const response = NextResponse.json(body, init);
+  addCorsHeaders(response, corsHeaders);
+  return response;
+}
+
+function addCorsHeaders(response: NextResponse, corsHeaders?: Record<string, string> | null) {
+  if (!corsHeaders) return;
+
+  for (const [key, value] of Object.entries(corsHeaders)) {
+    response.headers.set(key, value);
+  }
+}
+
+function getOptionalCorsHeaders(request: NextRequest) {
+  const origin = normalizeExtensionOrigin(request.headers.get("origin") ?? "");
+  if (!origin) return null;
+
+  const allowedOrigins = getAllowedExtensionOrigins();
+  if (!allowedOrigins.has(origin)) return null;
+
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Cache-Control": "no-store",
+    Vary: "Origin",
+  };
+}
+
+function getAllowedExtensionOrigins() {
+  const configured = [
+    publishedExtensionOrigin,
+    ...(process.env.EXTENSION_ALLOWED_ORIGINS ?? "")
+      .split(",")
+      .map((item) => normalizeExtensionOrigin(item))
+      .filter(Boolean),
+  ];
+
+  return new Set(configured);
+}
+
+function normalizeExtensionOrigin(value: string) {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  if (/^[a-z]{32}$/.test(trimmed)) return `chrome-extension://${trimmed}`;
+  return trimmed;
 }

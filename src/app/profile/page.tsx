@@ -189,33 +189,48 @@ export default function ProfilePage() {
       window.localStorage.setItem(resumeProfileNameStorageKey, data.filename ?? file.name);
       setResumeFileName(data.filename ?? file.name);
       setMessage(`Resume saved from ${data.filename ?? file.name}.`);
+      await persistAccountProfile({
+        ...buildAccountProfileSnapshot(),
+        resumeText: data.text,
+        resumeFileName: data.filename ?? file.name,
+      });
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Could not read this PDF.");
     }
   }
 
-  function saveResume() {
+  async function saveResume() {
     if (resume.trim().length < 80) {
       setError("Add resume text before saving.");
       return;
     }
 
+    const nextFileName = resumeFileName || "Saved resume text";
     window.localStorage.setItem(resumeProfileStorageKey, resume);
     if (!resumeFileName) {
-      window.localStorage.setItem(resumeProfileNameStorageKey, "Saved resume text");
-      setResumeFileName("Saved resume text");
+      window.localStorage.setItem(resumeProfileNameStorageKey, nextFileName);
+      setResumeFileName(nextFileName);
     }
     setError("");
     setMessage("Resume profile saved.");
+    await persistAccountProfile({
+      ...buildAccountProfileSnapshot(),
+      resumeFileName: nextFileName,
+    });
   }
 
-  function deleteResume() {
+  async function deleteResume() {
     window.localStorage.removeItem(resumeProfileStorageKey);
     window.localStorage.removeItem(resumeProfileNameStorageKey);
     window.localStorage.removeItem(legacyResumeProfileStorageKey);
     setResume("");
     setResumeFileName("");
     setMessage("Resume profile deleted.");
+    await persistAccountProfile({
+      ...buildAccountProfileSnapshot(),
+      resumeText: "",
+      resumeFileName: "",
+    });
   }
 
   function updateCandidateProfile(field: keyof CandidateProfile, value: string) {
@@ -225,10 +240,11 @@ export default function ProfilePage() {
     }));
   }
 
-  function saveCandidateProfile() {
+  async function saveCandidateProfile() {
     window.localStorage.setItem(candidateProfileStorageKey, JSON.stringify(candidateProfile));
     setError("");
     setMessage("Candidate details saved.");
+    await persistAccountProfile(buildAccountProfileSnapshot());
   }
 
   function clearCandidateProfile() {
@@ -237,13 +253,17 @@ export default function ProfilePage() {
     setMessage("Candidate details cleared.");
   }
 
-  function saveCoverLetterPreferences() {
+  async function saveCoverLetterPreferences() {
     const cleaned = cleanCoverLetterPreferences(coverLetterPreferences) || defaultCoverLetterPreferences;
 
     window.localStorage.setItem(coverLetterPreferencesStorageKey, cleaned);
     setCoverLetterPreferences(cleaned);
     setError("");
     setMessage("Cover letter style saved.");
+    await persistAccountProfile({
+      ...buildAccountProfileSnapshot(),
+      coverLetterInstructions: cleaned,
+    });
   }
 
   function resetCoverLetterPreferences() {
@@ -258,6 +278,10 @@ export default function ProfilePage() {
 
     setCoverLetterExamples(cleaned);
     window.localStorage.setItem(coverLetterExamplesStorageKey, JSON.stringify(cleaned));
+    void persistAccountProfile({
+      ...buildAccountProfileSnapshot(),
+      coverLetterExamples: cleaned,
+    });
   }
 
   function addOrUpdateCoverLetterExample() {
@@ -496,6 +520,29 @@ export default function ProfilePage() {
       coverLetterInstructions: coverLetterPreferences,
       coverLetterExamples,
     };
+  }
+
+  async function persistAccountProfile(profile: AccountProfile) {
+    if (!isAuthenticated || isAuthLoading) return;
+
+    const token = await getAccountAccessToken();
+    if (!token) return;
+
+    try {
+      const response = await fetch("/api/account/profile", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ profile }),
+      });
+      const data = await readJsonResponse<{ profile?: AccountProfile; error?: string }>(response);
+
+      if (!response.ok) throw new Error(data.error ?? "Could not save account profile.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not save account profile.");
+    }
   }
 
   function applyAccountProfile(profile: AccountProfile) {

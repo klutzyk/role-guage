@@ -915,7 +915,15 @@ function extractEmploymentFactsForWriter(resume: string): EmploymentFact[] {
 }
 
 function looksLikeEmploymentLine(line: string, nearby: string) {
-  if (looksLikeMajorResumeHeading(line) || looksLikeProjectHeading(line, "")) return false;
+  if (
+    looksLikeMajorResumeHeading(line) ||
+    looksLikeProjectHeading(line, "") ||
+    looksLikeContactOrProfileLine(line) ||
+    /^personal software projects\b/i.test(line)
+  ) {
+    return false;
+  }
+
   const hasRole =
     /\b(software engineer|senior software engineer|developer|analyst|data scientist|data engineer|machine learning engineer|full stack|backend|frontend|intern|graduate)\b/i.test(
       line,
@@ -924,7 +932,16 @@ function looksLikeEmploymentLine(line: string, nearby: string) {
     /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{4}\b/i.test(nearby) ||
     /\b\d{4}\s*(?:-|–|—|to)\s*(?:\d{4}|present|current|now)\b/i.test(nearby);
 
-  return hasRole && hasDate;
+  if (!hasRole || !hasDate) return false;
+
+  const dateIndex = nearby.search(
+    /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{4}\b|\b\d{4}\s*(?:-|â€“|â€”|to)\s*(?:\d{4}|present|current|now)\b/i,
+  );
+  const roleIndex = nearby.search(
+    /\b(software engineer|senior software engineer|developer|analyst|data scientist|data engineer|machine learning engineer|full stack|backend|frontend|intern|graduate)\b/i,
+  );
+
+  return dateIndex >= 0 && roleIndex >= 0 && Math.abs(dateIndex - roleIndex) < 220;
 }
 
 function extractEmploymentDateText(text: string) {
@@ -940,6 +957,8 @@ function extractEmploymentDateText(text: string) {
 
 function splitEmploymentLine(line: string) {
   const cleaned = cleanGeneratedText(line).replace(/^[-\u2022]\s*/, "");
+  if (looksLikeContactOrProfileLine(cleaned)) return { title: "", employer: "" };
+
   const parts = cleaned
     .split(/\s[-\u2013\u2014|]\s|\s{2,}/)
     .map((part) => part.trim())
@@ -950,6 +969,10 @@ function splitEmploymentLine(line: string) {
   }
 
   return { title: cleaned, employer: "" };
+}
+
+function looksLikeContactOrProfileLine(line: string) {
+  return /@|https?:\/\/|linkedin|github|portfolio|\b\d{3,}[\s-]?\d{3,}\b|\bmelbourne\b|\bsydney\b|\bvic\b|\bnsw\b/i.test(line);
 }
 
 function formatEmploymentFactsForWriter(facts: EmploymentFact[]) {
@@ -1570,19 +1593,7 @@ function extractProjectFactsForWriter(resume: string, job: string, analysis: Ana
   const namedProjects = extractNamedProjectFacts(resume, job);
   if (namedProjects.length) return namedProjects;
 
-  const profile = buildStructuredProfile(resume);
-  const projectCandidates = profile.projects
-    .map((project) => cleanGeneratedText(project.text))
-    .filter((text) => /\b(project|portfolio|platform|app|application|tool|prototype|built|created|developed|implemented|designed|prediction|llm|ai|automation|pipeline|api|machine learning|data)\b/i.test(text))
-    .map((text) => text.replace(/^[-\u2022]\s*/, ""))
-    .slice(0, 3);
-
-  return projectCandidates.map((fact, index) => ({
-    name: `Project ${index + 1}`,
-    summary: fact.slice(0, 240),
-    technologies: extractKnownTechnologies(fact).slice(0, 8),
-    evidence: [fact.slice(0, 260)],
-  }));
+  return [];
 }
 
 function roleLikelyBenefitsFromProjects(job: string, analysis: AnalysisLike) {
@@ -1636,6 +1647,8 @@ function extractNamedProjectFacts(resume: string, job: string): ProjectFact[] {
 function looksLikeProjectHeading(line: string, nextLine: string) {
   if (line.length < 3 || line.length > 180) return false;
   if (looksLikeMajorResumeHeading(line)) return false;
+  if (looksLikeContactOrProfileLine(line)) return false;
+  if (/^(technical skills|skills|summary|profile|education|experience|professional experience|work experience)\b/i.test(line)) return false;
   if (/^(built|developed|designed|implemented|created|managed|led|worked|used|evaluated)\b/i.test(line)) return false;
 
   const hasProjectMarker =
@@ -1645,7 +1658,7 @@ function looksLikeProjectHeading(line: string, nextLine: string) {
   const nextHasEvidence =
     /\b(built|developed|designed|implemented|created|used|integrated|automated|pipeline|api|model|llm|data|react|python|typescript|sql|fastapi|node|\.net|c#)\b/i.test(nextLine);
 
-  return hasProjectMarker && nextHasEvidence;
+  return hasProjectMarker && nextHasEvidence && !looksLikeMajorResumeHeading(nextLine);
 }
 
 function looksLikeMajorResumeHeading(line: string) {
@@ -1655,11 +1668,22 @@ function looksLikeMajorResumeHeading(line: string) {
 function cleanProjectName(line: string) {
   const withoutUrl = line.replace(/\(?https?:\/\/[^\s)]+\)?/gi, "").trim();
   const [name] = withoutUrl.split(/\s[-\u2013\u2014]\s/);
-  return name
+  const cleaned = name
     .replace(/\b(project|platform|application|app|tool)\b\s*$/i, "")
     .replace(/[|:;,]+$/g, "")
     .trim()
     .slice(0, 80);
+
+  if (
+    !cleaned ||
+    looksLikeMajorResumeHeading(cleaned) ||
+    looksLikeContactOrProfileLine(cleaned) ||
+    /^(technical skills|skills|summary|profile|education|experience|professional experience|work experience)\b/i.test(cleaned)
+  ) {
+    return "";
+  }
+
+  return cleaned;
 }
 
 function extractKnownTechnologies(text: string) {
@@ -1768,7 +1792,7 @@ function sanitizeCoverLetterStyle(text: string, removeCurrentEmploymentClaims = 
     .replace(/\bHi\s+\[[^\]]+\]\s*,?/gi, "Hi team,")
     .replace(/\[[^\]]+\]/g, "")
     .replace(/\bplaceholder\b/gi, "")
-    .replace(/\bI look forward to (?:discussing|speaking|hearing|the opportunity to discuss)[^.]*\.\s*/gi, "")
+    .replace(/\bI look forward to (?:the possibility of )?(?:discussing|speaking|hearing|the opportunity to discuss)[^.]*\.\s*/gi, "")
     .replace(/\bI am excited about\b/gi, "I am interested in")
     .replace(/\bI'm excited about\b/gi, "I am interested in")
     .replace(/\bI am excited to\b/gi, "I am applying to")

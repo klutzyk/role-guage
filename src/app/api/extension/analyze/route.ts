@@ -75,6 +75,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (process.env.NODE_ENV !== "production") {
+    console.log("Extension analyze authenticated user", {
+      userHash: hashDebugValue(userId),
+    });
+  }
+
   const accountProfile = await readAccountProfile(userId);
   const submittedResume = cleanBoundedText(body?.resume, maxResumeTextChars);
   const savedResume = cleanBoundedText(accountProfile?.resumeText, maxResumeTextChars);
@@ -101,11 +107,13 @@ export async function POST(request: NextRequest) {
     coverLetterExamples,
     profileLocation: accountProfile?.candidateProfile?.location ?? "",
     resumeSource,
+    profileUpdatedAt: accountProfile?.updatedAt ?? "",
   });
 
   if (process.env.NODE_ENV !== "production") {
     console.log("Extension analyze profile context", {
       profilePresent: Boolean(accountProfile),
+      profileUpdatedAt: accountProfile?.updatedAt ?? "",
       coverLetterInstructionsLength: coverLetterInstructions.length,
       coverLetterExamplesCount: coverLetterExamples.length,
       resumeLength: resume.length,
@@ -184,6 +192,7 @@ function buildDebugContext({
   coverLetterExamples,
   profileLocation,
   resumeSource,
+  profileUpdatedAt,
 }: {
   resume: string;
   job: string;
@@ -191,6 +200,7 @@ function buildDebugContext({
   coverLetterExamples: string[];
   profileLocation: string;
   resumeSource: string;
+  profileUpdatedAt: string;
 }) {
   return {
     resumeHash: hashDebugValue(resume),
@@ -198,6 +208,7 @@ function buildDebugContext({
     instructionHash: hashDebugValue(coverLetterInstructions),
     exampleCount: coverLetterExamples.length,
     profileLocation: profileLocation ? cleanOneLine(profileLocation, 80) : "",
+    profileUpdatedAt: profileUpdatedAt ? cleanOneLine(profileUpdatedAt, 80) : "",
     resumeSource,
     resumeHasRoleGuage: /\bRoleGuage\b/i.test(resume),
     resumeHasGamblr: /\bGamblr\b/i.test(resume),
@@ -244,7 +255,10 @@ function getCorsHeaders(request: NextRequest) {
 
 async function readAccountProfile(userId: string) {
   const client = createSupabaseServiceClient();
-  if (!client) return null;
+  if (!client) {
+    console.error("Extension analyze profile read failed: service client unavailable");
+    return null;
+  }
 
   const { data, error } = await client
     .from("user_profiles")
@@ -254,7 +268,34 @@ async function readAccountProfile(userId: string) {
     .eq("user_id", userId)
     .maybeSingle<AccountProfileRow>();
 
-  if (error) return null;
+  if (error) {
+    console.error("Extension analyze profile read failed", {
+      userHash: hashDebugValue(userId),
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
+    return null;
+  }
+
+  if (!data) {
+    console.warn("Extension analyze profile row not found", {
+      userHash: hashDebugValue(userId),
+    });
+    return null;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log("Extension analyze profile row loaded", {
+      userHash: hashDebugValue(userId),
+      rowUserHash: hashDebugValue(data.user_id),
+      updatedAt: data.updated_at,
+      hasResume: Boolean(data.resume_text),
+      instructionLength: data.cover_letter_instructions?.length ?? 0,
+      exampleCount: data.cover_letter_examples?.length ?? 0,
+    });
+  }
 
   return accountProfileFromRow(data);
 }
