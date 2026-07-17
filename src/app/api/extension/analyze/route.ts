@@ -78,7 +78,8 @@ export async function POST(request: NextRequest) {
   const accountProfile = await readAccountProfile(userId);
   const submittedResume = cleanBoundedText(body?.resume, maxResumeTextChars);
   const savedResume = cleanBoundedText(accountProfile?.resumeText, maxResumeTextChars);
-  const resume = submittedResume.length >= 80 ? submittedResume : savedResume;
+  const resume = savedResume.length >= 80 ? savedResume : submittedResume;
+  const resumeSource = savedResume.length >= 80 ? "account" : "extension";
   const job = cleanBoundedText(body?.job, maxJobTextChars);
   const pageTitle = cleanOneLine(body?.pageTitle, maxPageTitleChars);
   const pageUrl = cleanPublicUrl(body?.pageUrl);
@@ -99,6 +100,7 @@ export async function POST(request: NextRequest) {
     coverLetterInstructions,
     coverLetterExamples,
     profileLocation: accountProfile?.candidateProfile?.location ?? "",
+    resumeSource,
   });
 
   if (process.env.NODE_ENV !== "production") {
@@ -107,7 +109,14 @@ export async function POST(request: NextRequest) {
       coverLetterInstructionsLength: coverLetterInstructions.length,
       coverLetterExamplesCount: coverLetterExamples.length,
       resumeLength: resume.length,
+      savedResumeLength: savedResume.length,
+      submittedResumeLength: submittedResume.length,
+      resumeSource,
       jobLength: job.length,
+      resumeHasRoleGuage: /\bRoleGuage\b/i.test(resume),
+      resumeHasGamblr: /\bGamblr\b/i.test(resume),
+      firstExamplePreview: coverLetterExamples[0]?.slice(0, 150) ?? "",
+      instructionsPreview: coverLetterInstructions.slice(0, 150),
       debugContext,
     });
   }
@@ -174,12 +183,14 @@ function buildDebugContext({
   coverLetterInstructions,
   coverLetterExamples,
   profileLocation,
+  resumeSource,
 }: {
   resume: string;
   job: string;
   coverLetterInstructions: string;
   coverLetterExamples: string[];
   profileLocation: string;
+  resumeSource: string;
 }) {
   return {
     resumeHash: hashDebugValue(resume),
@@ -187,6 +198,10 @@ function buildDebugContext({
     instructionHash: hashDebugValue(coverLetterInstructions),
     exampleCount: coverLetterExamples.length,
     profileLocation: profileLocation ? cleanOneLine(profileLocation, 80) : "",
+    resumeSource,
+    resumeHasRoleGuage: /\bRoleGuage\b/i.test(resume),
+    resumeHasGamblr: /\bGamblr\b/i.test(resume),
+    firstExampleHash: hashDebugValue(coverLetterExamples[0] ?? ""),
   };
 }
 

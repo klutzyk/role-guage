@@ -53,6 +53,21 @@ export async function POST(request: NextRequest) {
     profileLocation: profile.location ?? "",
   });
 
+  if (process.env.NODE_ENV !== "production") {
+    console.log("Site enrich profile context", {
+      profilePresent: Boolean(body?.profile),
+      coverLetterInstructionsLength: coverLetterInstructions.length,
+      coverLetterExamplesCount: coverLetterExamples.length,
+      resumeLength: resume.length,
+      jobLength: job.length,
+      resumeHasRoleGuage: /\bRoleGuage\b/i.test(resume),
+      resumeHasGamblr: /\bGamblr\b/i.test(resume),
+      firstExamplePreview: coverLetterExamples[0]?.slice(0, 150) ?? "",
+      instructionsPreview: coverLetterInstructions.slice(0, 150),
+      debugContext,
+    });
+  }
+
   try {
     const aiEnrichment = await generateFitEnrichment({
       resume,
@@ -114,6 +129,9 @@ function buildDebugContext({
     instructionHash: hashDebugValue(coverLetterInstructions),
     exampleCount: coverLetterExamples.length,
     profileLocation,
+    resumeHasRoleGuage: /\bRoleGuage\b/i.test(resume),
+    resumeHasGamblr: /\bGamblr\b/i.test(resume),
+    firstExampleHash: hashDebugValue(coverLetterExamples[0] ?? ""),
   };
 }
 

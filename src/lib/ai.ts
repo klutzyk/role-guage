@@ -101,9 +101,17 @@ type WriterPacket = {
   };
   careerNarrative: CareerNarrativePayload;
   projectFacts: ProjectFact[];
+  employmentFacts: EmploymentFact[];
   verifiedFacts: string[];
   hardChecks: string[];
   avoidClaims: string[];
+};
+
+type EmploymentFact = {
+  employer: string;
+  title: string;
+  dateText: string;
+  isCurrent: boolean;
 };
 
 type ProjectFact = {
@@ -466,6 +474,10 @@ Non-negotiable rules:
 - Do not infer specific stakeholder groups, architecture involvement, security work, scale, partners, or integrations unless those exact ideas are present in WRITER PACKET verifiedFacts.
 - Do not upgrade broad resume wording into stronger claims. If the evidence says "product teams", do not write "product owners"; if it says "domain specialists", do not write "architects"; if it says "business requirements", do not write "complex requirements".
 - Do not imply the candidate was senior for their entire career unless verifiedFacts says that exact thing. Prefer "worked for just over four years as a software engineer" over "four years as a Senior Software Engineer".
+- Never describe an employer, position, responsibility, or project as current unless WRITER PACKET employmentFacts explicitly marks it as current.
+- Do not write "my current employer", "my current role", "I currently work", "in my present position", or similar wording unless current employment is verified.
+- If the latest employment has an end date and is not marked Present or Current, refer to it as a previous role, former role, or past experience.
+- When current employment status is unknown, avoid any wording that implies the candidate is currently employed.
 - Do not turn a listed skill into a responsibility. If WRITER PACKET says AWS or Azure is a skill, do not claim the candidate hosted, deployed, operated, or managed backends on AWS/Azure unless that exact responsibility is verified.
 - If WRITER PACKET contains named projects, prefer mentioning the project name and exact verified angle over vague phrases like "personal projects" or combining tools into unsupported solution claims.
 - Use WRITER PACKET projectFacts when they are relevant to the role. Mention project names only when they come from projectFacts; otherwise describe project work generically.
@@ -561,6 +573,8 @@ Rules:
 - If WRITER PACKET says the candidate location conflicts with a job location requirement, include one cautious plain sentence such as "I am currently based in [candidate location], so I would need to confirm whether the [job location] location requirement is flexible before applying." Do not mention remote work unless ROLE BRIEF explicitly says remote is allowed.
 - Do not mention the candidate's location at all unless WRITER PACKET contains a Location caution.
 - Do not turn listed skills into responsibilities. Skills can be mentioned as background, not as claims of hosting, deployment, ownership, or delivery unless verified.
+- Never describe an employer, position, responsibility, or project as current unless WRITER PACKET employmentFacts explicitly marks it as current.
+- If current employment is not verified, replace current-employment wording with neutral past-experience wording.
 - Do not write a prose version of the resume.
 - If examples are supplied, follow their plain, restrained style.
 - Keep 210-280 words unless the style example is clearly shorter.
@@ -655,6 +669,8 @@ export async function generateFitEnrichment({
     console.log("Cover letter writer context", {
       role: writerPacket.role,
       projectFacts: writerPacket.projectFacts,
+      employmentFacts: writerPacket.employmentFacts,
+      hasCurrentEmployment: writerPacket.employmentFacts.some((employment) => employment.isCurrent),
       verifiedFactsCount: writerPacket.verifiedFacts.length,
       hardChecks: writerPacket.hardChecks,
       coverLetterExamplesCount: cleanedCoverLetterExamples.length,
@@ -684,18 +700,20 @@ export async function generateFitEnrichment({
 
   const rawCoverLetter = cleanGeneratedText(coverLetterPayload.coverLetter ?? "");
   const rawCoverLetterViolations = getCoverLetterStyleViolations(rawCoverLetter);
-  let coverLetter = cleanCoverLetterForDisplay(rawCoverLetter);
+  let coverLetter = cleanCoverLetterForDisplay(rawCoverLetter, writerPacket);
   let coverLetterViolations = getCoverLetterStyleViolations(coverLetter);
+  const employmentViolations = getEmploymentStatusViolations(coverLetter, writerPacket);
   const criticalCoverLetterError = getCriticalCoverLetterValidationError(
     coverLetter,
     getAiModelCandidates("coverLetter")[0],
-  );
+  ) ?? (employmentViolations.length ? new Error(employmentViolations[0]) : null);
 
   if (process.env.NODE_ENV !== "production") {
     console.log("Cover letter style check", {
       originalViolations: rawCoverLetterViolations,
       localCleanupResolved: rawCoverLetterViolations.length > 0 && coverLetterViolations.length === 0,
       remainingViolations: coverLetterViolations,
+      employmentViolations,
       repairRequired: Boolean(criticalCoverLetterError),
     });
   }
@@ -728,7 +746,7 @@ export async function generateFitEnrichment({
         "repair",
       );
 
-      coverLetter = cleanCoverLetterForDisplay(repaired.coverLetter ?? "");
+      coverLetter = cleanCoverLetterForDisplay(repaired.coverLetter ?? "", writerPacket);
       coverLetterViolations = getCoverLetterStyleViolations(coverLetter);
     } catch (error) {
       if (process.env.NODE_ENV !== "production") {
@@ -740,7 +758,9 @@ export async function generateFitEnrichment({
   const coverLetterValidationError = getCriticalCoverLetterValidationError(
     coverLetter,
     getAiModelCandidates("coverLetter")[0],
-  );
+  ) ?? (getEmploymentStatusViolations(coverLetter, writerPacket).length
+    ? new Error(getEmploymentStatusViolations(coverLetter, writerPacket)[0])
+    : null);
   if (coverLetterValidationError) {
     if (process.env.NODE_ENV !== "production") {
       console.warn("Cover letter dropped", coverLetterValidationError.message);
@@ -792,12 +812,16 @@ function buildWriterPacket(resume: string, job: string, analysis: AnalysisLike, 
     hardChecks.unshift(locationCaution);
   }
   const projectFacts = extractProjectFactsForWriter(resume, job, analysis);
+  const employmentFacts = extractEmploymentFactsForWriter(resume);
+  const hasCurrentEmployment = employmentFacts.some((employment) => employment.isCurrent);
   const projectFactText = projectFacts.map(formatProjectFactForWriter);
+  const employmentFactText = formatEmploymentFactsForWriter(employmentFacts);
   const verifiedFacts = [
     narrative.currentPositioning,
     narrative.careerProgression,
     narrative.roleFit,
     narrative.projectAngle,
+    employmentFactText,
     ...projectFactText,
     ...toTextArray(narrative.relevantEvidence),
   ]
@@ -807,12 +831,18 @@ function buildWriterPacket(resume: string, job: string, analysis: AnalysisLike, 
     .filter((item, index, items) => items.findIndex((other) => other.toLowerCase() === item.toLowerCase()) === index)
     .slice(0, 8);
   const avoidClaims = [
+    ...(hasCurrentEmployment
+      ? []
+      : [
+          "Do not imply current employment. No current employer is verified.",
+          "Do not write my current employer, my current role, I currently work, or in my present position.",
+        ]),
     ...toTextArray(narrative.avoid),
     ...hardChecks.map((finding) => `Do not claim this requirement is satisfied unless verified: ${finding}`),
     "Do not say product owners unless explicitly verified.",
     "Do not mention mission, national security objectives, or company praise unless explicitly requested.",
     "Do not describe REST API authentication/versioning unless it is central to the role.",
-  ].slice(0, 10);
+  ].slice(0, 12);
 
   return {
     role,
@@ -828,6 +858,7 @@ function buildWriterPacket(resume: string, job: string, analysis: AnalysisLike, 
       avoid: avoidClaims,
     },
     projectFacts,
+    employmentFacts,
     verifiedFacts,
     hardChecks,
     avoidClaims,
@@ -847,6 +878,94 @@ function buildLocationCoverLetterCaution(findings: RequirementFinding[]) {
   if (!candidateLocation || !jobLocation) return "";
 
   return `Location caution: Candidate is currently based in ${candidateLocation}. Job requires ${jobLocation}. If writing a cover letter, include: "I am currently based in ${candidateLocation}, so I would need to confirm whether the ${jobLocation} location requirement is flexible before applying."`;
+}
+
+function extractEmploymentFactsForWriter(resume: string): EmploymentFact[] {
+  const lines = resume
+    .split(/\r?\n/)
+    .map((line) => cleanGeneratedText(line))
+    .filter(Boolean);
+  const facts: EmploymentFact[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const nearby = [lines[index - 1], line, lines[index + 1], lines[index + 2]]
+      .filter(Boolean)
+      .join(" ");
+
+    if (!looksLikeEmploymentLine(line, nearby)) continue;
+
+    const dateText = extractEmploymentDateText(nearby);
+    const isCurrent = /\b(?:present|current|now)\b/i.test(dateText || nearby);
+    const { title, employer } = splitEmploymentLine(line);
+
+    if (!title && !employer) continue;
+
+    facts.push({
+      title: title.slice(0, 80),
+      employer: employer.slice(0, 80),
+      dateText: dateText.slice(0, 80),
+      isCurrent,
+    });
+
+    if (facts.length >= 4) break;
+  }
+
+  return facts;
+}
+
+function looksLikeEmploymentLine(line: string, nearby: string) {
+  if (looksLikeMajorResumeHeading(line) || looksLikeProjectHeading(line, "")) return false;
+  const hasRole =
+    /\b(software engineer|senior software engineer|developer|analyst|data scientist|data engineer|machine learning engineer|full stack|backend|frontend|intern|graduate)\b/i.test(
+      line,
+    );
+  const hasDate =
+    /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{4}\b/i.test(nearby) ||
+    /\b\d{4}\s*(?:-|–|—|to)\s*(?:\d{4}|present|current|now)\b/i.test(nearby);
+
+  return hasRole && hasDate;
+}
+
+function extractEmploymentDateText(text: string) {
+  return (
+    text.match(
+      /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{4}\s*(?:-|–|—|to)\s*(?:present|current|now|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{4}|\d{4})\b/i,
+    )?.[0] ??
+    text.match(/\b\d{4}\s*(?:-|–|—|to)\s*(?:present|current|now|\d{4})\b/i)?.[0] ??
+    text.match(/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{4}\b/i)?.[0] ??
+    ""
+  );
+}
+
+function splitEmploymentLine(line: string) {
+  const cleaned = cleanGeneratedText(line).replace(/^[-\u2022]\s*/, "");
+  const parts = cleaned
+    .split(/\s[-\u2013\u2014|]\s|\s{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    return { title: parts[0], employer: parts[1] };
+  }
+
+  return { title: cleaned, employer: "" };
+}
+
+function formatEmploymentFactsForWriter(facts: EmploymentFact[]) {
+  if (!facts.length) return "Current employment status is not stated. Do not imply current employment.";
+
+  const hasCurrent = facts.some((fact) => fact.isCurrent);
+  const latest = facts[0];
+  const latestText = [latest.title, latest.employer, latest.dateText].filter(Boolean).join(" | ");
+
+  if (hasCurrent) {
+    return `Current employment is verified from resume dates. Employment evidence: ${facts
+      .map((fact) => [fact.title, fact.employer, fact.dateText, fact.isCurrent ? "current" : "past"].filter(Boolean).join(" | "))
+      .join("; ")}`;
+  }
+
+  return `No current employer is verified in the resume. Latest detected employment appears to be past employment: ${latestText}. Do not imply current employment.`;
 }
 
 function extractRequirementLocation(text: string) {
@@ -1624,12 +1743,27 @@ function getCriticalCoverLetterValidationError(text: string, model: string) {
   }
 }
 
-function cleanCoverLetterForDisplay(text: string) {
-  return formatCoverLetterText(sanitizeCoverLetterStyle(cleanGeneratedText(text)));
+function cleanCoverLetterForDisplay(text: string, writerPacket?: WriterPacket) {
+  const hasVerifiedCurrentRole = Boolean(
+    writerPacket?.employmentFacts.some((employment) => employment.isCurrent),
+  );
+
+  return formatCoverLetterText(sanitizeCoverLetterStyle(cleanGeneratedText(text), !hasVerifiedCurrentRole));
 }
 
-function sanitizeCoverLetterStyle(text: string) {
-  return text
+function sanitizeCoverLetterStyle(text: string, removeCurrentEmploymentClaims = false) {
+  const currentEmploymentSafeText = removeCurrentEmploymentClaims
+    ? text
+        .replace(/\bat my current employer\b/gi, "in my previous role")
+        .replace(/\bwith my current employer\b/gi, "in my previous role")
+        .replace(/\bin my current role\b/gi, "in my previous role")
+        .replace(/\bin my current position\b/gi, "in my previous position")
+        .replace(/\bi currently work as\b/gi, "I previously worked as")
+        .replace(/\bi am currently employed as\b/gi, "I previously worked as")
+        .replace(/\bi'm currently employed as\b/gi, "I previously worked as")
+    : text;
+
+  return currentEmploymentSafeText
     .replace(/\bDear\s+\[[^\]]+\]\s*,?/gi, "Hi team,")
     .replace(/\bHi\s+\[[^\]]+\]\s*,?/gi, "Hi team,")
     .replace(/\[[^\]]+\]/g, "")
@@ -1676,7 +1810,6 @@ function sanitizeCoverLetterStyle(text: string) {
     .replace(/\bI have spent over\s+four years\s+as\b/gi, "I worked for just over four years as")
     .replace(/\bI have spent the last\s+four years\b/gi, "I worked for just over four years")
     .replace(/\bI have spent over\s+four years\b/gi, "I worked for just over four years")
-    .replace(/\bI have spent\b/gi, "I have worked on")
     .replace(/\bOver the last\s+four years\b/gi, "In recent years")
     .replace(/\bFor the last\s+four years\b/gi, "In recent years")
     .replace(/\bOver the last\b/gi, "Recently")
@@ -1697,6 +1830,27 @@ function sanitizeCoverLetterStyle(text: string) {
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function getEmploymentStatusViolations(text: string, writerPacket: WriterPacket) {
+  const hasVerifiedCurrentRole = writerPacket.employmentFacts.some((employment) => employment.isCurrent);
+  if (hasVerifiedCurrentRole) return [];
+
+  const patterns = [
+    /\bmy current employer\b/i,
+    /\bwith my current employer\b/i,
+    /\bmy current role\b/i,
+    /\bin my current position\b/i,
+    /\bi currently work\b/i,
+    /\bi am currently employed\b/i,
+    /\bi'm currently employed\b/i,
+    /\bat my present employer\b/i,
+    /\bin my present role\b/i,
+  ];
+
+  return patterns.some((pattern) => pattern.test(text))
+    ? ["Do not imply current employment; no current role is verified."]
+    : [];
 }
 
 function formatCoverLetterText(text: string) {
@@ -1776,7 +1930,6 @@ function getCoverLetterStyleViolations(text: string) {
     "I thrive",
     "I have spent the last",
     "I have spent over",
-    "I have spent",
     "Over the last",
     "For the last",
     "Most of my professional experience",
@@ -1799,7 +1952,6 @@ function getCoverLetterStyleViolations(text: string) {
     .filter((phrase) => lowerText.includes(phrase.toLowerCase()))
     .map((phrase) => `Remove banned phrase "${phrase}"`);
   const resumeSummaryOpeners = [
-    /^I have spent\b/im,
     /^Over the last\b/im,
     /^For the last\b/im,
     /^Most of my professional experience\b/im,
