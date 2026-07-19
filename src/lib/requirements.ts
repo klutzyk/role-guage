@@ -366,9 +366,21 @@ function addLocationFindings(
 
   if (!onsiteEvidence) return;
 
+  const normalizedEvidence = normalize(onsiteEvidence);
+  const describesFlexibleWork =
+    /\b(?:wfh|work from home|remote|day-to-day|outcomes? (?:that )?matter|not hours at a desk)\b/.test(
+      normalizedEvidence,
+    );
+  const hasExplicitLocationRequirement =
+    /\b(?:must|required to|needs? to) be based in\b|\bbased in (?:melbourne|sydney|brisbane|perth|adelaide|canberra)\b/.test(
+      normalizedEvidence,
+    );
+
+  if (describesFlexibleWork && !hasExplicitLocationRequirement) return;
+
   const candidateLocation = normalize(candidate.location);
   const jobCities = ["melbourne", "sydney", "brisbane", "perth", "adelaide", "canberra"].filter((city) =>
-    normalizedJob.includes(city),
+    normalizedEvidence.includes(city),
   );
   const cityMismatch = candidateLocation && jobCities.length && !jobCities.some((city) => candidateLocation.includes(city));
 

@@ -1,5 +1,5 @@
-const API_BASE = "https://roleguage.com";
-// const API_BASE = "http://localhost:3000";
+// const API_BASE = "https://roleguage.com";
+const API_BASE = "http://localhost:3000";
 const RESUME_KEYS = ["resume", "resumeFileName", "resumePageCount", "resumeUpdatedAt"];
 const LAST_REPORT_KEY = "lastReportByPage";
 const LAST_GLOBAL_REPORT_KEY = "lastReportSnapshot";

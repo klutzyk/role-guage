@@ -912,7 +912,7 @@ function buildLocationCoverLetterCaution(findings: RequirementFinding[]) {
 }
 
 function extractEmploymentFactsForWriter(resume: string): EmploymentFact[] {
-  const lines = resume
+  const lines = normalizeResumeStructure(resume)
     .split(/\r?\n/)
     .map((line) => cleanGeneratedText(line))
     .filter(Boolean);
@@ -930,7 +930,7 @@ function extractEmploymentFactsForWriter(resume: string): EmploymentFact[] {
     const isCurrent = /\b(?:present|current|now)\b/i.test(dateText || nearby);
     const { title, employer } = splitEmploymentLine(line);
 
-    if (!title && !employer) continue;
+    if (!title || !employer) continue;
 
     facts.push({
       title: title.slice(0, 80),
@@ -950,6 +950,7 @@ function looksLikeEmploymentLine(line: string, nearby: string) {
     looksLikeMajorResumeHeading(line) ||
     looksLikeProjectHeading(line, "") ||
     looksLikeContactOrProfileLine(line) ||
+    /^(?:tech(?:nologies)?(?:\s+used)?|technology stack|stack)\s*:/i.test(line) ||
     /^personal software projects\b/i.test(line)
   ) {
     return false;
@@ -990,6 +991,20 @@ function splitEmploymentLine(line: string) {
   const cleaned = cleanGeneratedText(line).replace(/^[-\u2022]\s*/, "");
   if (looksLikeContactOrProfileLine(cleaned)) return { title: "", employer: "" };
 
+  const dateMatch = cleaned.match(
+    /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{4}\s*(?:-|to)\s*(?:present|current|now|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{4}|\d{4})\b/i,
+  );
+  const rolePattern =
+    /\b(?:senior\s+)?(?:software|full[ -]?stack|backend|frontend|data|machine learning)\s+(?:engineer|developer|analyst|scientist)|\b(?:developer|analyst|intern|graduate)\b/i;
+
+  if (dateMatch?.index !== undefined) {
+    const employer = cleaned.slice(0, dateMatch.index).trim();
+    const afterDate = cleaned.slice(dateMatch.index + dateMatch[0].length).trim();
+    const title = afterDate.match(rolePattern)?.[0] ?? cleaned.match(rolePattern)?.[0] ?? "";
+
+    if (employer || title) return { title, employer };
+  }
+
   const parts = cleaned
     .split(/\s[-\u2013\u2014|]\s|\s{2,}/)
     .map((part) => part.trim())
@@ -1003,7 +1018,16 @@ function splitEmploymentLine(line: string) {
 }
 
 function looksLikeContactOrProfileLine(line: string) {
-  return /@|https?:\/\/|linkedin|github|portfolio|\b\d{3,}[\s-]?\d{3,}\b|\bmelbourne\b|\bsydney\b|\bvic\b|\bnsw\b/i.test(line);
+  const cleaned = line.trim();
+  const hasEmail = /@/.test(cleaned);
+  const hasPhone = /\b(?:\+?\d[\s-]?){7,}\b/.test(cleaned);
+  const isSocialProfile = /\b(?:linkedin|github|portfolio)\b/i.test(cleaned);
+  const isLocationOnly =
+    /^(?:melbourne|sydney|brisbane|perth|adelaide|canberra)(?:,\s*(?:vic|nsw|qld|wa|sa|act))?$/i.test(
+      cleaned,
+    );
+
+  return hasEmail || hasPhone || isSocialProfile || isLocationOnly;
 }
 
 function formatEmploymentFactsForWriter(facts: EmploymentFact[]) {
@@ -1024,7 +1048,7 @@ function formatEmploymentFactsForWriter(facts: EmploymentFact[]) {
 
 function extractRequirementLocation(text: string) {
   const city = text.match(/\b(Melbourne|Sydney|Brisbane|Perth|Adelaide|Canberra)\b/i)?.[1];
-  return city ?? text;
+  return city ?? "";
 }
 
 function cleanLocationName(text: string) {
@@ -1678,7 +1702,7 @@ function roleLikelyBenefitsFromProjects(job: string, analysis: AnalysisLike) {
 }
 
 function extractNamedProjectFacts(resume: string, job: string): ProjectFact[] {
-  const lines = resume
+  const lines = normalizeResumeStructure(resume)
     .split(/\r?\n/)
     .map((line) => cleanGeneratedText(line).replace(/^[-\u2022]\s*/, "").trim())
     .filter(Boolean);
@@ -1719,12 +1743,42 @@ function extractNamedProjectFacts(resume: string, job: string): ProjectFact[] {
     .map((item) => item.project);
 }
 
+function normalizeResumeStructure(resume: string) {
+  const majorHeadingPattern =
+    "(?:SELECTED\\s+PROJECTS(?:\\s*&\\s*APPLIED\\s+AI\\s+WORK)?|GRADUATE\\s+PROJECTS|APPLIED\\s+AI\\s+WORK|PROFESSIONAL\\s+EXPERIENCE|WORK\\s+EXPERIENCE|EMPLOYMENT|EDUCATION|TECHNICAL\\s+SKILLS|SKILLS|CERTIFICATIONS?|REFERENCES?)";
+
+  return resume
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u2022\u25cf\u25aa\u25e6]/g, "\n")
+    .replace(new RegExp(`\\s+(${majorHeadingPattern})(?=\\s+)`, "gi"), "\n$1\n")
+    .replace(
+      /\s+([A-Z][A-Za-z0-9.+&']{2,60})\s+(https?:\/\/[^\s)]+)/g,
+      "\n$1 $2",
+    )
+    // PDF extraction can append the next URL-bearing project heading to the
+    // previous technology line. Restore that boundary before parsing blocks.
+    .replace(
+      /\s+([A-Z][A-Za-z0-9.+&']{2,60}\s+[-\u2013\u2014]\s+[^\n]{2,120}?\(\s*https?:\/\/[^\s)]+\s*\))/g,
+      "\n$1",
+    );
+}
+
 function looksLikeProjectHeading(line: string, nextLine: string) {
   if (line.length < 3 || line.length > 180) return false;
   if (looksLikeMajorResumeHeading(line)) return false;
   if (looksLikeContactOrProfileLine(line)) return false;
+  if (looksLikeSkillsCategoryLine(line)) return false;
+  if (
+    /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{4}\s*[-\u2013\u2014]\s*(?:present|current|now|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{4}|\d{4})\b/i.test(
+      line,
+    )
+  ) return false;
   if (/^(technical skills|skills|summary|profile|education|experience|professional experience|work experience)\b/i.test(line)) return false;
-  if (/^(built|developed|designed|implemented|created|managed|led|worked|used|evaluated)\b/i.test(line)) return false;
+  if (
+    /^(built|developed|designed|implemented|created|managed|led|worked|used|evaluated|combined|reduced|added|deployed|automated|integrated|maintained|delivered)\b/i.test(
+      line,
+    )
+  ) return false;
 
   const hasProjectMarker =
     /\b(project|platform|app|application|tool|system|dashboard|predict|prediction|automation|ai|ml|machine learning|data|api|portfolio)\b/i.test(line) ||
@@ -1753,12 +1807,22 @@ function cleanProjectName(line: string) {
     !cleaned ||
     looksLikeMajorResumeHeading(cleaned) ||
     looksLikeContactOrProfileLine(cleaned) ||
+    looksLikeSkillsCategoryLine(cleaned) ||
     /^(technical skills|skills|summary|profile|education|experience|professional experience|work experience)\b/i.test(cleaned)
   ) {
     return "";
   }
 
   return cleaned;
+}
+
+function looksLikeSkillsCategoryLine(line: string) {
+  const cleaned = line.trim();
+  if (/^(?:tech(?:nologies)?(?:\s+used)?|technology stack|stack)\s*:/i.test(cleaned)) return true;
+  if (/^(?:languages|frameworks|ai engineering|ai & llm engineering|data & ml|cloud & tools|tools)\s*:/i.test(cleaned)) return true;
+
+  const knownTechMatches = extractKnownTechnologies(cleaned).length;
+  return /^[A-Za-z][A-Za-z &/+.-]{2,40}:\s+/.test(cleaned) && knownTechMatches >= 4;
 }
 
 function extractKnownTechnologies(text: string) {
