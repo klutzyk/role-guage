@@ -31,12 +31,16 @@ type RoleFit = {
 
 const skillTaxonomy: SkillDefinition[] = [
   { name: "Python", category: "Language", weight: 9, aliases: ["python", "pandas", "numpy"] },
+  { name: "Java", category: "Language", weight: 10, aliases: ["java"] },
   { name: "SQL", category: "Data", weight: 9, aliases: ["sql", "mysql", "postgres", "postgresql", "sql queries"] },
   { name: "TypeScript", category: "Language", weight: 7, aliases: ["typescript", "ts"] },
   { name: "JavaScript", category: "Language", weight: 6, aliases: ["javascript"] },
   { name: "React", category: "Frontend", weight: 7, aliases: ["react", "react.js", "reactjs"] },
   { name: "Next.js", category: "Frontend", weight: 6, aliases: ["next.js", "nextjs", "next js"] },
   { name: "Node.js", category: "Backend", weight: 7, aliases: ["node.js", "nodejs", "node js", "nestjs", "nest.js"] },
+  { name: "Spring Boot", category: "Backend", weight: 9, aliases: ["spring boot", "springboot"] },
+  { name: "Microservices", category: "Backend", weight: 8, aliases: ["microservices", "microservice"] },
+  { name: "Kafka", category: "Backend", weight: 8, aliases: ["kafka", "messaging", "streaming", "event-driven", "event driven"] },
   { name: "PostgreSQL", category: "Backend", weight: 6, aliases: ["postgresql", "postgres"] },
   { name: "Machine learning", category: "Data", weight: 8, aliases: ["machine learning", "ml", "predictive modelling", "predictive modeling"] },
   { name: "NLP", category: "Data", weight: 6, aliases: ["nlp", "natural language processing", "text classification"] },
@@ -48,6 +52,7 @@ const skillTaxonomy: SkillDefinition[] = [
   { name: "Azure", category: "Cloud", weight: 6, aliases: ["azure"] },
   { name: "GCP", category: "Cloud", weight: 6, aliases: ["gcp", "google cloud"] },
   { name: "Docker", category: "Cloud", weight: 5, aliases: ["docker", "container"] },
+  { name: "CI/CD", category: "Cloud", weight: 6, aliases: ["ci/cd", "cicd", "ci cd", "continuous integration", "continuous delivery", "jenkins", "ansible"] },
   { name: "REST APIs", category: "Backend", weight: 7, aliases: ["rest api", "rest apis", "backend api", "backend apis", "building apis"] },
   { name: "LLM tools", category: "Product", weight: 5, aliases: ["llm", "large language model", "openai", "gemini", "generative ai"] },
   { name: "Experimentation", category: "Product", weight: 5, aliases: ["experiment", "experimentation", "a/b", "ab test"] },
@@ -100,6 +105,12 @@ const mustHavePatterns = [
   "you will need",
   "minimum",
   "strong experience",
+  "experience with",
+  "solid understanding",
+  "working knowledge",
+  "exposure to",
+  "what you'll bring",
+  "what you will bring",
 ];
 
 const seniorRolePatterns = [
