@@ -137,6 +137,10 @@ const defaultGroqCoverLetterModel = "openai/gpt-oss-120b";
 const defaultGroqRepairModel = "llama-3.3-70b-versatile";
 const aiTimeoutMs = getConfiguredTimeout();
 const cacheTtlMs = 1000 * 60 * 60 * 12;
+const deprecatedGroqModels = new Set([
+  "meta-llama/llama-4-scout-17b-16e-instruct",
+  "qwen/qwen3-32b",
+]);
 
 export function isAiConfigured() {
   return Boolean(
@@ -184,7 +188,7 @@ function getAiModelCandidates(task: AiTask = "analysis") {
         process.env.GROQ_COVER_LETTER_FALLBACK_MODELS,
       ]);
 
-      return Array.from(
+      return filterAvailableModelCandidates(Array.from(
         new Set([
           process.env.GROQ_COVER_LETTER_MODEL ||
             process.env.GROQ_MODEL ||
@@ -192,7 +196,7 @@ function getAiModelCandidates(task: AiTask = "analysis") {
           ...coverFallbacks,
           "llama-3.3-70b-versatile",
         ]),
-      );
+      ));
     }
 
     if (task === "repair") {
@@ -201,16 +205,16 @@ function getAiModelCandidates(task: AiTask = "analysis") {
         process.env.GROQ_REPAIR_FALLBACK_MODELS,
       ]);
 
-      return Array.from(
+      return filterAvailableModelCandidates(Array.from(
         new Set([
           process.env.GROQ_REPAIR_MODEL || defaultGroqRepairModel,
           ...repairFallbacks,
           "llama-3.3-70b-versatile",
         ]),
-      );
+      ));
     }
 
-    return Array.from(
+    return filterAvailableModelCandidates(Array.from(
       new Set([
         process.env.GROQ_ANALYSIS_MODEL || defaultGroqAnalysisModel,
         ...parseModelList([
@@ -222,7 +226,7 @@ function getAiModelCandidates(task: AiTask = "analysis") {
         "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
       ]),
-    );
+    ));
   }
 
   const configuredModel = getAiModel();
@@ -781,6 +785,19 @@ export async function generateFitEnrichment({
     aiStatus: "generated",
     aiModel: coverLetterModel,
   };
+}
+
+function filterAvailableModelCandidates(models: string[]) {
+  const filtered = models.filter((model) => !deprecatedGroqModels.has(model));
+
+  if (process.env.NODE_ENV !== "production") {
+    const removed = models.filter((model) => deprecatedGroqModels.has(model));
+    if (removed.length) {
+      console.warn("Ignoring deprecated Groq model configuration", Array.from(new Set(removed)));
+    }
+  }
+
+  return filtered.length ? filtered : [defaultGroqAnalysisModel];
 }
 
 function cleanEnrichmentPayload(payload: CombinedEnrichmentPayload, analysis: AnalysisLike, sourceText: string): CombinedEnrichmentPayload {

@@ -10,12 +10,15 @@ import {
 } from "@/lib/supabase-server";
 
 const publishedExtensionOrigin = "chrome-extension://fodmkdebllldfgclbicnjojgenlndlba";
+const noStoreHeaders = {
+  "Cache-Control": "no-store",
+};
 
 export async function OPTIONS(request: NextRequest) {
   const corsHeaders = getCorsHeaders(request);
 
   if (!corsHeaders) {
-    return new NextResponse(null, { status: 403 });
+    return new NextResponse(null, { status: 403, headers: noStoreHeaders });
   }
 
   return new NextResponse(null, {
@@ -28,7 +31,10 @@ export async function POST(request: NextRequest) {
   const corsHeaders = getCorsHeaders(request);
 
   if (!corsHeaders) {
-    return NextResponse.json({ error: "Extension origin is not allowed." }, { status: 403 });
+    return NextResponse.json(
+      { error: "Extension origin is not allowed." },
+      { status: 403, headers: noStoreHeaders },
+    );
   }
 
   if (!isSupabaseConfigured()) {
@@ -90,7 +96,10 @@ export async function GET(request: NextRequest) {
   const corsHeaders = getCorsHeaders(request);
 
   if (!corsHeaders) {
-    return NextResponse.json({ error: "Extension origin is not allowed." }, { status: 403 });
+    return NextResponse.json(
+      { error: "Extension origin is not allowed." },
+      { status: 403, headers: noStoreHeaders },
+    );
   }
 
   const userId = await getUserIdFromBearerToken(request.headers.get("authorization"));
