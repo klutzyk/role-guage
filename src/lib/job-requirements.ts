@@ -43,14 +43,14 @@ export async function extractDynamicJobRequirements(
   if (!process.env.GROQ_API_KEY) return null;
 
   const cacheKey = createHash("sha256")
-    .update(["dynamic-job-requirements-v1", resume, job].join("\n"))
+    .update(["dynamic-job-requirements-v2", resume, job].join("\n"))
     .digest("hex");
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
 
   try {
     const raw = await extractRawRequirements(job);
-    const report = buildDynamicRequirementReport(raw, resume);
+    const report = buildDynamicRequirementReport(raw, resume, job);
 
     cache.set(cacheKey, {
       expiresAt: Date.now() + cacheTtlMs,
@@ -72,11 +72,11 @@ export async function extractDynamicJobRequirements(
   }
 }
 
-function buildDynamicRequirementReport(raw: RawRequirementPayload, resume: string): DynamicRequirementReport {
+function buildDynamicRequirementReport(raw: RawRequirementPayload, resume: string, job: string): DynamicRequirementReport {
   const roleSummary = cleanOneLine(raw.roleSummary).slice(0, 180);
   const expectedWork = toCleanArray(raw.expectedWork).slice(0, 5);
   const requirements = (raw.requirements ?? [])
-    .map((item) => normalizeRequirement(item, resume))
+    .map((item) => normalizeRequirement(item, resume, job))
     .filter((item): item is DynamicRequirement => Boolean(item))
     .filter((item, index, items) => {
       const key = item.requirement.toLowerCase();
@@ -93,9 +93,10 @@ function buildDynamicRequirementReport(raw: RawRequirementPayload, resume: strin
   };
 }
 
-function normalizeRequirement(item: RawRequirement, resume: string): DynamicRequirement | null {
+function normalizeRequirement(item: RawRequirement, resume: string, job: string): DynamicRequirement | null {
   const requirement = cleanOneLine(item.requirement).slice(0, 90);
   if (!requirement || requirement.length < 2) return null;
+  if (isInventedYearsRequirement(requirement, job)) return null;
 
   const rawPriority = item.priority === "must_have" || item.priority === "important" || item.priority === "nice_to_have"
     ? item.priority
@@ -201,6 +202,8 @@ Rules:
 - Do not mark soft traits such as communication, curiosity, mindset, collaboration, or problem-solving as must_have unless they are explicit screening criteria.
 - If the ad says the candidate can obtain a licence/check after applying, mark it important rather than must_have.
 - Include experience years, core technologies, work rights, location constraints, and role expectations.
+- Employer questions such as "How many years' experience..." are questions, not minimum requirements. Do not convert them into "3+ years" or any other number unless the job ad states that exact minimum outside the question.
+- Never infer numeric years. If the ad does not state a number, write "experience with..." without years.
 - Do not include company benefits, culture praise, application instructions, or generic traits unless they are clearly selection criteria.
 - Keep requirements concise.
 
@@ -303,6 +306,14 @@ function adjustRequirementPriority(
   }
 
   return priority;
+}
+
+function isInventedYearsRequirement(requirement: string, job: string) {
+  const requiredYears = Array.from(requirement.matchAll(/\b(\d{1,2})\+?\s+years?\b/gi)).map((match) => match[1]);
+  if (!requiredYears.length) return false;
+
+  const normalizedJob = normalize(job);
+  return requiredYears.some((years) => !new RegExp(`\\b${years}\\+?\\s+years?\\b`, "i").test(normalizedJob));
 }
 
 function isKnownCategory(value: unknown): value is DynamicRequirement["category"] {

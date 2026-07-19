@@ -411,6 +411,10 @@ function matchRequirementWithStructuredProfile(
     };
   }
 
+  if (requiredYears && isSpecialistExperienceRequirement(normalizedRequirement)) {
+    return requirement;
+  }
+
   if (
     /\b(?:software developer|software engineer|developer|commercial|professional experience)\b/.test(normalizedRequirement) &&
     profile.totalCommercialExperienceYears >= 1 &&
@@ -509,6 +513,12 @@ function isTemporaryWorkRights(workRights: string) {
 
 function isEducationRequirement(normalizedRequirement: string) {
   return /\b(?:tertiary qualification|degree|computer science|software development|programming|related field|data science)\b/.test(
+    normalizedRequirement,
+  );
+}
+
+function isSpecialistExperienceRequirement(normalizedRequirement: string) {
+  return /\b(?:artificial intelligence developer|ai developer|data scientist|machine learning engineer|ml engineer|data engineer)\b/.test(
     normalizedRequirement,
   );
 }
