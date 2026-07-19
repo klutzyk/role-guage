@@ -5,11 +5,15 @@ create table if not exists public.user_profiles (
   resume_text text,
   resume_file_name text,
   candidate_profile jsonb not null default '{}'::jsonb,
+  structured_resume_profile jsonb,
   cover_letter_instructions text,
   cover_letter_examples jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.user_profiles
+add column if not exists structured_resume_profile jsonb;
 
 alter table public.user_profiles enable row level security;
 

@@ -6,6 +6,7 @@ import {
   AccountProfileRow,
 } from "@/lib/account-profile";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { extractStructuredResumeProfile } from "@/lib/resume-profile";
 import {
   createSupabaseServiceClient,
   getUserIdFromBearerToken,
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await client
     .from("user_profiles")
     .select(
-      "user_id,resume_text,resume_file_name,candidate_profile,cover_letter_instructions,cover_letter_examples,updated_at",
+      "user_id,resume_text,resume_file_name,candidate_profile,structured_resume_profile,cover_letter_instructions,cover_letter_examples,updated_at",
     )
     .eq("user_id", blocked.userId)
     .maybeSingle<AccountProfileRow>();
@@ -69,16 +70,24 @@ export async function PUT(request: NextRequest) {
 
   const body = await request.json().catch(() => null);
   const profile = cleanAccountProfile(body?.profile);
+  const structuredResumeProfile =
+    profile.resumeText.length >= 80
+      ? await extractStructuredResumeProfile(profile.resumeText)
+      : null;
+  const profileToSave = {
+    ...profile,
+    structuredResumeProfile,
+  };
 
   const { error } = await client
     .from("user_profiles")
-    .upsert(accountProfileToRow(profile, blocked.userId), { onConflict: "user_id" });
+    .upsert(accountProfileToRow(profileToSave, blocked.userId), { onConflict: "user_id" });
 
   if (error) return serverErrorResponse(corsHeaders);
 
   return NextResponse.json(
     {
-      profile,
+      profile: profileToSave,
     },
     { headers: buildResponseHeaders(corsHeaders) },
   );

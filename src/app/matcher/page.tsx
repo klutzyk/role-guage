@@ -202,6 +202,7 @@ export default function Home() {
   const [jobMeta, setJobMeta] = useState<JobMeta>(emptyJobMeta);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [resumeFileName, setResumeFileName] = useState("");
+  const [structuredResumeProfile, setStructuredResumeProfile] = useState<AccountProfile["structuredResumeProfile"]>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isEnrichingReport, setIsEnrichingReport] = useState(false);
   const [isImportingJob, setIsImportingJob] = useState(false);
@@ -245,7 +246,7 @@ export default function Home() {
 
         if (!mounted || !response.ok || !payload.profile) return;
 
-        applyAccountProfileToLocalState(payload.profile, setResume, setResumeFileName);
+        applyAccountProfileToLocalState(payload.profile, setResume, setResumeFileName, setStructuredResumeProfile);
       } catch {
         // Keep the current profile if account loading is unavailable.
       }
@@ -280,7 +281,12 @@ export default function Home() {
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resume: resumeText, job: jobText, profile: readCandidateProfile() }),
+        body: JSON.stringify({
+          resume: resumeText,
+          job: jobText,
+          profile: readCandidateProfile(),
+          structuredResumeProfile,
+        }),
       });
 
       if (!response.ok) throw new Error("Analysis failed");
@@ -311,6 +317,7 @@ export default function Home() {
           resume: resumeText,
           job: jobText,
           profile: readCandidateProfile(),
+          structuredResumeProfile,
           analysis: baseResult,
           coverLetterInstructions: readCoverLetterPreferences(),
           coverLetterExamples: readCoverLetterExamples(),
@@ -1083,7 +1090,10 @@ function applyAccountProfileToLocalState(
   profile: AccountProfile,
   setResume: (value: string) => void,
   setResumeFileName: (value: string) => void,
+  setStructuredResumeProfile: (value: AccountProfile["structuredResumeProfile"]) => void,
 ) {
+  setStructuredResumeProfile(profile.structuredResumeProfile ?? null);
+
   if (profile.resumeText) {
     setResume(profile.resumeText);
     window.localStorage.setItem(resumeProfileStorageKey, profile.resumeText);

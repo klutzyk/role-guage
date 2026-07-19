@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { generateFitEnrichment, getAiModel } from "@/lib/ai";
 import { cleanCandidateProfile } from "@/lib/account-profile";
+import { StructuredResumeProfile, extractStructuredResumeProfile } from "@/lib/resume-profile";
 import { cleanCoverLetterExamples, cleanCoverLetterPreferences } from "@/lib/cover-letter-preferences";
 import {
   cleanBoundedText,
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest) {
         profile?: CandidateProfile;
         coverLetterInstructions?: string;
         coverLetterExamples?: string[];
+        structuredResumeProfile?: StructuredResumeProfile | null;
       }
     | null;
 
@@ -42,7 +44,8 @@ export async function POST(request: NextRequest) {
   }
 
   const profile = cleanCandidateProfile(body?.profile);
-  const analysis = await analyzeResumeAgainstJobWithRequirements(resume, job, profile);
+  const structuredResumeProfile = body?.structuredResumeProfile ?? (await extractStructuredResumeProfile(resume));
+  const analysis = await analyzeResumeAgainstJobWithRequirements(resume, job, profile, structuredResumeProfile);
   const coverLetterInstructions = cleanCoverLetterPreferences(body?.coverLetterInstructions);
   const coverLetterExamples = cleanCoverLetterExamples(body?.coverLetterExamples);
   const debugContext = buildDebugContext({

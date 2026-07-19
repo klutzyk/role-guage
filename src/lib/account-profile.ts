@@ -4,6 +4,7 @@ import {
   defaultCoverLetterPreferences,
 } from "@/lib/cover-letter-preferences";
 import { CandidateProfile } from "@/lib/requirements";
+import { StructuredResumeProfile, cleanStructuredResumeProfile } from "@/lib/resume-profile";
 import { cleanBoundedText, cleanOneLine, maxResumeTextChars } from "@/lib/request-limits";
 
 export const accountProfileMaxResumeNameChars = 180;
@@ -12,6 +13,7 @@ export type AccountProfile = {
   resumeText: string;
   resumeFileName: string;
   candidateProfile: CandidateProfile;
+  structuredResumeProfile?: StructuredResumeProfile | null;
   coverLetterInstructions: string;
   coverLetterExamples: string[];
   updatedAt?: string;
@@ -22,6 +24,7 @@ export type AccountProfileRow = {
   resume_text: string | null;
   resume_file_name: string | null;
   candidate_profile: CandidateProfile | null;
+  structured_resume_profile: StructuredResumeProfile | null;
   cover_letter_instructions: string | null;
   cover_letter_examples: string[] | null;
   updated_at: string;
@@ -34,6 +37,7 @@ export function cleanAccountProfile(value: unknown): AccountProfile {
     resumeText: cleanBoundedText(record.resumeText, maxResumeTextChars),
     resumeFileName: cleanOneLine(record.resumeFileName, accountProfileMaxResumeNameChars),
     candidateProfile: cleanCandidateProfile(record.candidateProfile),
+    structuredResumeProfile: cleanStructuredResumeProfile(record.structuredResumeProfile),
     coverLetterInstructions:
       cleanCoverLetterPreferences(record.coverLetterInstructions) || defaultCoverLetterPreferences,
     coverLetterExamples: cleanCoverLetterExamples(record.coverLetterExamples),
@@ -48,6 +52,7 @@ export function accountProfileFromRow(row: AccountProfileRow | null): AccountPro
     resumeText: row.resume_text ?? "",
     resumeFileName: row.resume_file_name ?? "",
     candidateProfile: row.candidate_profile ?? {},
+    structuredResumeProfile: row.structured_resume_profile ?? null,
     coverLetterInstructions: row.cover_letter_instructions ?? "",
     coverLetterExamples: row.cover_letter_examples ?? [],
     updatedAt: row.updated_at ?? "",
@@ -60,6 +65,7 @@ export function accountProfileToRow(profile: AccountProfile, userId: string) {
     resume_text: profile.resumeText || null,
     resume_file_name: profile.resumeFileName || null,
     candidate_profile: profile.candidateProfile,
+    structured_resume_profile: profile.structuredResumeProfile ?? null,
     cover_letter_instructions: profile.coverLetterInstructions,
     cover_letter_examples: profile.coverLetterExamples,
     updated_at: new Date().toISOString(),

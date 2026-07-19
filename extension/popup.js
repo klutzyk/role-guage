@@ -727,6 +727,7 @@ function getProfileFingerprint(profile) {
       profile.coverLetterInstructions || "",
       ...(Array.isArray(profile.coverLetterExamples) ? profile.coverLetterExamples : []),
       JSON.stringify(profile.candidateProfile || {}),
+      JSON.stringify(profile.structuredResumeProfile || {}),
     ].join("\n"),
   );
 }

@@ -7,6 +7,7 @@ import {
 } from "@/lib/request-limits";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { DynamicRequirement, DynamicRequirementReport, extractDynamicJobRequirements } from "@/lib/job-requirements";
+import { StructuredResumeProfile, extractStructuredResumeProfile, formatStructuredResumeForMatching } from "@/lib/resume-profile";
 import { CandidateProfile, checkHardRequirements } from "@/lib/requirements";
 
 type SkillDefinition = {
@@ -173,7 +174,7 @@ export async function POST(request: NextRequest) {
   if (rateLimited) return rateLimited;
 
   const body = (await request.json().catch(() => null)) as
-    | { resume?: string; job?: string; profile?: CandidateProfile }
+    | { resume?: string; job?: string; profile?: CandidateProfile; structuredResumeProfile?: StructuredResumeProfile | null }
     | null;
 
   const resume = cleanBoundedText(body?.resume, maxResumeTextChars);
@@ -187,7 +188,12 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({
-    ...(await analyzeResumeAgainstJobWithRequirements(resume, job, cleanCandidateProfile(body?.profile))),
+    ...(await analyzeResumeAgainstJobWithRequirements(
+      resume,
+      job,
+      cleanCandidateProfile(body?.profile),
+      body?.structuredResumeProfile ?? (await extractStructuredResumeProfile(resume)),
+    )),
     aiStatus: "disabled",
   });
 }
@@ -196,12 +202,13 @@ export async function analyzeResumeAgainstJobWithRequirements(
   resume: string,
   job: string,
   profile: CandidateProfile = {},
+  structuredResumeProfile?: StructuredResumeProfile | null,
 ) {
   const baseAnalysis = analyzeResumeAgainstJob(resume, job, profile);
   const dynamicRequirements = await extractDynamicJobRequirements(resume, job);
 
   return dynamicRequirements
-    ? applyDynamicRequirements(baseAnalysis, dynamicRequirements)
+    ? applyDynamicRequirements(baseAnalysis, dynamicRequirements, structuredResumeProfile)
     : baseAnalysis;
 }
 
@@ -301,13 +308,15 @@ export function analyzeResumeAgainstJob(resume: string, job: string, profile: Ca
 function applyDynamicRequirements(
   analysis: ReturnType<typeof analyzeResumeAgainstJob>,
   dynamicRequirements: DynamicRequirementReport,
+  structuredResumeProfile?: StructuredResumeProfile | null,
 ) {
-  const dynamicMustMissing = dynamicRequirements.mustHave.filter((item) => !item.matched);
-  const dynamicImportantMissing = dynamicRequirements.important.filter((item) => !item.matched);
+  const enhancedRequirements = enhanceRequirementsWithStructuredProfile(dynamicRequirements, structuredResumeProfile);
+  const dynamicMustMissing = enhancedRequirements.mustHave.filter((item) => !item.matched);
+  const dynamicImportantMissing = enhancedRequirements.important.filter((item) => !item.matched);
   const dynamicMatched = [
-    ...dynamicRequirements.mustHave,
-    ...dynamicRequirements.important,
-    ...dynamicRequirements.niceToHave,
+    ...enhancedRequirements.mustHave,
+    ...enhancedRequirements.important,
+    ...enhancedRequirements.niceToHave,
   ].filter((item) => item.matched);
   const matchedSkills = mergeLabels(
     analysis.matchedSkills,
@@ -342,7 +351,7 @@ function applyDynamicRequirements(
     confidence: dynamicMustMissing.length ? "Medium" : recommendation.confidence,
     matchedSkills,
     missingSkills,
-    dynamicRequirements,
+    dynamicRequirements: enhancedRequirements,
     scoreBreakdown: updateScoreBreakdown(analysis.scoreBreakdown, dynamicMustMissing, dynamicImportantMissing),
     skillGroups: {
       ...analysis.skillGroups,
@@ -356,10 +365,64 @@ function applyDynamicRequirements(
       headline: matchedSkills.slice(0, 3).join(" + ") || analysis.keywordPlan.headline,
     },
     resumeBullets: buildDynamicResumeBullets(analysis.resumeBullets, dynamicMustMissing, dynamicImportantMissing),
-    interviewPrep: buildDynamicInterviewPrep(analysis.interviewPrep, dynamicRequirements),
+    interviewPrep: buildDynamicInterviewPrep(analysis.interviewPrep, enhancedRequirements),
     atsNotes: buildDynamicAtsNotes(analysis.atsNotes, dynamicMustMissing),
-    summary: buildDynamicSummary(analysis.summary, dynamicRequirements, score),
+    summary: buildDynamicSummary(analysis.summary, enhancedRequirements, score),
   };
+}
+
+function enhanceRequirementsWithStructuredProfile(
+  dynamicRequirements: DynamicRequirementReport,
+  structuredResumeProfile?: StructuredResumeProfile | null,
+): DynamicRequirementReport {
+  if (!structuredResumeProfile) return dynamicRequirements;
+
+  const evidenceText = formatStructuredResumeForMatching(structuredResumeProfile);
+  if (!evidenceText) return dynamicRequirements;
+
+  return {
+    ...dynamicRequirements,
+    mustHave: dynamicRequirements.mustHave.map((item) => matchRequirementWithStructuredProfile(item, evidenceText, structuredResumeProfile)),
+    important: dynamicRequirements.important.map((item) => matchRequirementWithStructuredProfile(item, evidenceText, structuredResumeProfile)),
+    niceToHave: dynamicRequirements.niceToHave.map((item) => matchRequirementWithStructuredProfile(item, evidenceText, structuredResumeProfile)),
+  };
+}
+
+function matchRequirementWithStructuredProfile(
+  requirement: DynamicRequirement,
+  evidenceText: string,
+  profile: StructuredResumeProfile,
+): DynamicRequirement {
+  if (requirement.matched) return requirement;
+
+  const normalizedRequirement = normalize(requirement.requirement);
+  const normalizedEvidence = normalize(evidenceText);
+  const keywordMatch = requirement.keywords.find((keyword) => hasAlias(normalizedEvidence, keyword));
+
+  if (keywordMatch) {
+    return {
+      ...requirement,
+      matched: true,
+      evidence: `Structured resume profile includes ${keywordMatch}.`,
+    };
+  }
+
+  if (
+    /\b(?:software developer|software engineer|developer|commercial|professional experience)\b/.test(normalizedRequirement) &&
+    profile.totalCommercialExperienceYears >= 1 &&
+    hasAlias(normalizedEvidence, "software")
+  ) {
+    const requiredYears = extractExperienceYears(normalizedRequirement);
+    if (!requiredYears || profile.totalCommercialExperienceYears >= requiredYears) {
+      return {
+        ...requirement,
+        matched: true,
+        evidence: `${profile.totalCommercialExperienceYears} years commercial software experience extracted from resume.`,
+      };
+    }
+  }
+
+  return requirement;
 }
 
 function mergeLabels(primary: string[], secondary: string[], limit: number) {

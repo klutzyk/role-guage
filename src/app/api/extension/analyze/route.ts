@@ -17,6 +17,7 @@ import {
   getUserIdFromBearerToken,
   isSupabaseConfigured,
 } from "@/lib/supabase-server";
+import { extractStructuredResumeProfile } from "@/lib/resume-profile";
 import { analyzeResumeAgainstJobWithRequirements } from "../../analyze/route";
 
 const publishedExtensionOrigin = "chrome-extension://fodmkdebllldfgclbicnjojgenlndlba";
@@ -107,7 +108,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const analysis = await analyzeResumeAgainstJobWithRequirements(resume, job, accountProfile.candidateProfile);
+  const structuredResumeProfile =
+    accountProfile.structuredResumeProfile ?? (await extractStructuredResumeProfile(resume));
+  const analysis = await analyzeResumeAgainstJobWithRequirements(
+    resume,
+    job,
+    accountProfile.candidateProfile,
+    structuredResumeProfile,
+  );
   const coverLetterInstructions = cleanCoverLetterPreferences(accountProfile.coverLetterInstructions);
   const coverLetterExamples = cleanCoverLetterExamples(accountProfile.coverLetterExamples);
   const debugContext = buildDebugContext({
@@ -133,6 +141,7 @@ export async function POST(request: NextRequest) {
       jobLength: job.length,
       namedProjectCount: countNamedProjectSignals(resume),
       hasCoverLetterInstructions: coverLetterInstructions.length > 0,
+      structuredResumeProfilePresent: Boolean(structuredResumeProfile),
       firstExamplePreview: coverLetterExamples[0]?.slice(0, 150) ?? "",
       instructionsPreview: coverLetterInstructions.slice(0, 150),
       debugContext,
@@ -280,7 +289,7 @@ async function readAccountProfile(userId: string) {
   const { data, error } = await client
     .from("user_profiles")
     .select(
-      "user_id,resume_text,resume_file_name,candidate_profile,cover_letter_instructions,cover_letter_examples,updated_at",
+      "user_id,resume_text,resume_file_name,candidate_profile,structured_resume_profile,cover_letter_instructions,cover_letter_examples,updated_at",
     )
     .eq("user_id", userId)
     .maybeSingle<AccountProfileRow>();

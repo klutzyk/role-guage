@@ -161,7 +161,7 @@ async function readAccountProfile(userId: string) {
   const { data, error } = await client
     .from("user_profiles")
     .select(
-      "user_id,resume_text,resume_file_name,candidate_profile,cover_letter_instructions,cover_letter_examples,updated_at",
+      "user_id,resume_text,resume_file_name,candidate_profile,structured_resume_profile,cover_letter_instructions,cover_letter_examples,updated_at",
     )
     .eq("user_id", userId)
     .maybeSingle<AccountProfileRow>();
