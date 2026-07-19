@@ -63,6 +63,24 @@ type AnalysisResult = {
   coverLetter?: string;
   salary?: string | null;
   hardRequirements?: RequirementFinding[];
+  dynamicRequirements?: DynamicRequirementReport;
+};
+
+type DynamicRequirementReport = {
+  roleSummary: string;
+  expectedWork: string[];
+  mustHave: DynamicRequirement[];
+  important: DynamicRequirement[];
+  niceToHave: DynamicRequirement[];
+};
+
+type DynamicRequirement = {
+  requirement: string;
+  priority: "must_have" | "important" | "nice_to_have";
+  category: string;
+  keywords: string[];
+  matched: boolean;
+  evidence: string;
 };
 
 type RequirementFinding = {
@@ -628,6 +646,26 @@ export default function Home() {
                 <DetailGroup title="Gaps to cover" icon={<Target size={16} />} items={result.missingSkills} tone="gap" />
               </div>
 
+              {result.dynamicRequirements ? (
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  <RequirementGroup
+                    title="Main requirements"
+                    items={result.dynamicRequirements.mustHave}
+                  />
+                  <RequirementGroup
+                    title="Expected work"
+                    items={result.dynamicRequirements.expectedWork.map((item) => ({
+                      requirement: item,
+                      priority: "important" as const,
+                      category: "other",
+                      keywords: [],
+                      matched: false,
+                      evidence: "",
+                    }))}
+                  />
+                </div>
+              ) : null}
+
               {result.fitReasoning?.length ? (
                   <div className="mt-5 rounded-xl border border-[#BFD6FF] bg-[#F8FBFF]/88 p-4">
                   <h3 className="text-sm font-bold text-[#212529]">Our reasoning</h3>
@@ -878,6 +916,34 @@ function DetailGroup({
           </span>
         )}
       </div>
+    </section>
+  );
+}
+
+function RequirementGroup({ title, items }: { title: string; items: DynamicRequirement[] }) {
+  return (
+    <section className="rounded-xl border border-[#BFD6FF] bg-[#F8FBFF]/88 p-4">
+      <h3 className="text-sm font-bold text-[#212529]">{title}</h3>
+      <ul className="mt-3 grid gap-2 text-sm leading-6 text-[#4F5F6F]">
+        {items.length ? (
+          items.slice(0, 5).map((item) => (
+            <li key={item.requirement} className="flex gap-2">
+              <span
+                className={`mt-2 size-2 shrink-0 rounded-full ${
+                  item.matched ? "bg-[#4F9CF9]" : "bg-[#D9A500]"
+                }`}
+                aria-hidden="true"
+              />
+              <span>
+                {item.requirement}
+                {item.evidence ? <span className="text-[#7A8795]"> - found</span> : null}
+              </span>
+            </li>
+          ))
+        ) : (
+          <li>No clear items extracted.</li>
+        )}
+      </ul>
     </section>
   );
 }
@@ -1155,6 +1221,18 @@ function buildReportText(result: AnalysisResult, meta: JobMeta) {
     "Gaps To Cover",
     result.missingSkills.length ? result.missingSkills.map((item) => `- ${item}`).join("\n") : "- None detected",
     "",
+    ...(result.dynamicRequirements
+      ? [
+          "Main Requirements",
+          ...result.dynamicRequirements.mustHave.slice(0, 7).map((item) => `- ${item.requirement}${item.matched ? " (found)" : ""}`),
+          "",
+          "Expected Work",
+          ...(result.dynamicRequirements.expectedWork.length
+            ? result.dynamicRequirements.expectedWork.slice(0, 5).map((item) => `- ${item}`)
+            : ["- Not extracted"]),
+          "",
+        ]
+      : []),
     "Resume Bullet Ideas",
     ...result.resumeBullets.map((item) => `- ${item}`),
     "",

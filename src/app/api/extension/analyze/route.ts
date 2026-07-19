@@ -17,7 +17,7 @@ import {
   getUserIdFromBearerToken,
   isSupabaseConfigured,
 } from "@/lib/supabase-server";
-import { analyzeResumeAgainstJob } from "../../analyze/route";
+import { analyzeResumeAgainstJobWithRequirements } from "../../analyze/route";
 
 const publishedExtensionOrigin = "chrome-extension://fodmkdebllldfgclbicnjojgenlndlba";
 
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const analysis = analyzeResumeAgainstJob(resume, job, accountProfile.candidateProfile);
+  const analysis = await analyzeResumeAgainstJobWithRequirements(resume, job, accountProfile.candidateProfile);
   const coverLetterInstructions = cleanCoverLetterPreferences(accountProfile.coverLetterInstructions);
   const coverLetterExamples = cleanCoverLetterExamples(accountProfile.coverLetterExamples);
   const debugContext = buildDebugContext({

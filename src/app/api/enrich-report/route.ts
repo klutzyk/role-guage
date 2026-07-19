@@ -10,7 +10,7 @@ import {
 } from "@/lib/request-limits";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { CandidateProfile } from "@/lib/requirements";
-import { analyzeResumeAgainstJob } from "../analyze/route";
+import { analyzeResumeAgainstJobWithRequirements } from "../analyze/route";
 
 export async function POST(request: NextRequest) {
   const rateLimited = enforceRateLimit(request, {
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
   }
 
   const profile = cleanCandidateProfile(body?.profile);
-  const analysis = analyzeResumeAgainstJob(resume, job, profile);
+  const analysis = await analyzeResumeAgainstJobWithRequirements(resume, job, profile);
   const coverLetterInstructions = cleanCoverLetterPreferences(body?.coverLetterInstructions);
   const coverLetterExamples = cleanCoverLetterExamples(body?.coverLetterExamples);
   const debugContext = buildDebugContext({

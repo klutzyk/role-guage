@@ -41,6 +41,9 @@ const elements = {
   nextStep: document.querySelector("#nextStep"),
   matchedSkills: document.querySelector("#matchedSkills"),
   missingSkills: document.querySelector("#missingSkills"),
+  dynamicRequirementsBlock: document.querySelector("#dynamicRequirementsBlock"),
+  dynamicMustHave: document.querySelector("#dynamicMustHave"),
+  dynamicExpectedWork: document.querySelector("#dynamicExpectedWork"),
   resumeBullets: document.querySelector("#resumeBullets"),
   coverLetterBlock: document.querySelector("#coverLetterBlock"),
   coverLetter: document.querySelector("#coverLetter"),
@@ -648,9 +651,43 @@ function renderResult(data) {
   elements.nextStep.textContent = nextStep;
   renderChips(elements.matchedSkills, analysis.matchedSkills);
   renderChips(elements.missingSkills, analysis.missingSkills.length ? analysis.missingSkills : ["None"]);
+  renderDynamicRequirements(analysis.dynamicRequirements);
   renderList(elements.resumeBullets, bullets);
   elements.coverLetterBlock.classList.toggle("hidden", !coverLetter);
   elements.coverLetter.textContent = coverLetter;
+}
+
+function renderDynamicRequirements(dynamicRequirements) {
+  if (!elements.dynamicRequirementsBlock) return;
+
+  const mustHave = Array.isArray(dynamicRequirements?.mustHave) ? dynamicRequirements.mustHave : [];
+  const expectedWork = Array.isArray(dynamicRequirements?.expectedWork) ? dynamicRequirements.expectedWork : [];
+  const hasContent = mustHave.length || expectedWork.length;
+
+  elements.dynamicRequirementsBlock.classList.toggle("hidden", !hasContent);
+  if (!hasContent) return;
+
+  renderRequirementItems(elements.dynamicMustHave, mustHave.slice(0, 5));
+  renderList(elements.dynamicExpectedWork, expectedWork.slice(0, 4));
+}
+
+function renderRequirementItems(container, items) {
+  if (!container) return;
+
+  container.innerHTML = "";
+  if (!items.length) {
+    const li = document.createElement("li");
+    li.textContent = "No clear must-have requirements extracted.";
+    container.appendChild(li);
+    return;
+  }
+
+  for (const item of items) {
+    const li = document.createElement("li");
+    li.className = item.matched ? "requirementMatched" : "requirementMissing";
+    li.textContent = `${item.requirement}${item.matched ? " - found" : ""}`;
+    container.appendChild(li);
+  }
 }
 
 function renderResultMeta(data) {
@@ -824,6 +861,9 @@ async function copyReport() {
 
   const analysis = lastReport.analysis;
   const enrichment = lastReport.enrichment || {};
+  const dynamicRequirements = analysis.dynamicRequirements || {};
+  const mustHave = Array.isArray(dynamicRequirements.mustHave) ? dynamicRequirements.mustHave : [];
+  const expectedWork = Array.isArray(dynamicRequirements.expectedWork) ? dynamicRequirements.expectedWork : [];
   const lines = [
     "RoleGuage fit report",
     `Decision: ${analysis.decision} (${analysis.score}/100)`,
@@ -831,6 +871,8 @@ async function copyReport() {
     `Next step: ${enrichment.nextStep || analysis.nextStep}`,
     `Matched: ${analysis.matchedSkills.join(", ") || "None"}`,
     `Gaps: ${analysis.missingSkills.join(", ") || "None"}`,
+    mustHave.length ? `Main requirements:\n${mustHave.slice(0, 7).map((item) => `- ${item.requirement}${item.matched ? " (found)" : ""}`).join("\n")}` : "",
+    expectedWork.length ? `Expected work:\n${expectedWork.slice(0, 5).map((item) => `- ${item}`).join("\n")}` : "",
     enrichment.coverLetter ? `Cover letter:\n${enrichment.coverLetter}` : "",
   ];
 

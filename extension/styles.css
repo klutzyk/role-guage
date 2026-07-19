@@ -610,6 +610,38 @@ textarea:focus {
   background: var(--yellow-soft);
 }
 
+.dynamicRequirementsBlock {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--soft);
+  padding: 11px 12px;
+}
+
+.dynamicRequirementsBlock ul {
+  margin: 7px 0 0;
+  padding-left: 18px;
+}
+
+.dynamicRequirementsBlock li {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.dynamicRequirementsBlock .requirementMissing {
+  color: #7a5900;
+}
+
+.dynamicRequirementsBlock .requirementMatched {
+  color: var(--blue);
+}
+
+.expectedWorkLabel {
+  margin-top: 12px;
+}
+
 ul {
   margin: 0;
   padding-left: 18px;

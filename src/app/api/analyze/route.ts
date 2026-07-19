@@ -6,6 +6,7 @@ import {
   maxResumeTextChars,
 } from "@/lib/request-limits";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { DynamicRequirement, DynamicRequirementReport, extractDynamicJobRequirements } from "@/lib/job-requirements";
 import { CandidateProfile, checkHardRequirements } from "@/lib/requirements";
 
 type SkillDefinition = {
@@ -186,9 +187,22 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({
-    ...analyzeResumeAgainstJob(resume, job, cleanCandidateProfile(body?.profile)),
+    ...(await analyzeResumeAgainstJobWithRequirements(resume, job, cleanCandidateProfile(body?.profile))),
     aiStatus: "disabled",
   });
+}
+
+export async function analyzeResumeAgainstJobWithRequirements(
+  resume: string,
+  job: string,
+  profile: CandidateProfile = {},
+) {
+  const baseAnalysis = analyzeResumeAgainstJob(resume, job, profile);
+  const dynamicRequirements = await extractDynamicJobRequirements(resume, job);
+
+  return dynamicRequirements
+    ? applyDynamicRequirements(baseAnalysis, dynamicRequirements)
+    : baseAnalysis;
 }
 
 export function analyzeResumeAgainstJob(resume: string, job: string, profile: CandidateProfile = {}) {
@@ -282,6 +296,177 @@ export function analyzeResumeAgainstJob(resume: string, job: string, profile: Ca
     atsNotes: buildAtsNotes(job, jobSkills, missingSkills, mustHaveMisses),
     summary: buildSummary(score, matchedSkills, missingSkills, mustHaveMisses, recommendation.action, roleFit, requirementChecks.findings),
   };
+}
+
+function applyDynamicRequirements(
+  analysis: ReturnType<typeof analyzeResumeAgainstJob>,
+  dynamicRequirements: DynamicRequirementReport,
+) {
+  const dynamicMustMissing = dynamicRequirements.mustHave.filter((item) => !item.matched);
+  const dynamicImportantMissing = dynamicRequirements.important.filter((item) => !item.matched);
+  const dynamicMatched = [
+    ...dynamicRequirements.mustHave,
+    ...dynamicRequirements.important,
+    ...dynamicRequirements.niceToHave,
+  ].filter((item) => item.matched);
+  const matchedSkills = mergeLabels(
+    analysis.matchedSkills,
+    dynamicMatched
+      .filter((item) => item.priority !== "nice_to_have")
+      .map((item) => item.requirement),
+    12,
+  );
+  const missingSkills = mergeLabels(
+    dynamicMustMissing.map((item) => item.requirement),
+    [...dynamicImportantMissing.map((item) => item.requirement), ...analysis.missingSkills],
+    12,
+  );
+  const dynamicPenalty = Math.min(dynamicMustMissing.length * 9 + dynamicImportantMissing.length * 3, 32);
+  const score = Math.max(25, analysis.score - dynamicPenalty);
+  const recommendation = getRecommendation(
+    score,
+    dynamicMustMissing.length || missingSkills.length,
+    dynamicMustMissing.length >= 2 ? 18 : 0,
+    analysis.hardRequirements,
+  );
+
+  return {
+    ...analysis,
+    score,
+    level: recommendation.level,
+    decision: recommendation.decision,
+    nextStep: dynamicMustMissing.length
+      ? `Check the must-have gap: ${dynamicMustMissing[0].requirement}.`
+      : recommendation.nextStep,
+    timeToApply: recommendation.timeToApply,
+    confidence: dynamicMustMissing.length ? "Medium" : recommendation.confidence,
+    matchedSkills,
+    missingSkills,
+    dynamicRequirements,
+    scoreBreakdown: updateScoreBreakdown(analysis.scoreBreakdown, dynamicMustMissing, dynamicImportantMissing),
+    skillGroups: {
+      ...analysis.skillGroups,
+      coreMatched: mergeLabels(analysis.skillGroups.coreMatched, matchedSkills, 8),
+      coreMissing: mergeLabels(dynamicMustMissing.map((item) => item.requirement), analysis.skillGroups.coreMissing, 8),
+    },
+    bullets: buildDynamicActionItems(analysis.bullets, dynamicMustMissing, dynamicImportantMissing, matchedSkills),
+    keywordPlan: {
+      ...analysis.keywordPlan,
+      add: mergeLabels(dynamicMustMissing.map((item) => item.requirement), analysis.keywordPlan.add, 8),
+      headline: matchedSkills.slice(0, 3).join(" + ") || analysis.keywordPlan.headline,
+    },
+    resumeBullets: buildDynamicResumeBullets(analysis.resumeBullets, dynamicMustMissing, dynamicImportantMissing),
+    interviewPrep: buildDynamicInterviewPrep(analysis.interviewPrep, dynamicRequirements),
+    atsNotes: buildDynamicAtsNotes(analysis.atsNotes, dynamicMustMissing),
+    summary: buildDynamicSummary(analysis.summary, dynamicRequirements, score),
+  };
+}
+
+function mergeLabels(primary: string[], secondary: string[], limit: number) {
+  return [...primary, ...secondary]
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .filter((item, index, items) => items.findIndex((other) => other.toLowerCase() === item.toLowerCase()) === index)
+    .slice(0, limit);
+}
+
+function updateScoreBreakdown(
+  scoreBreakdown: ReturnType<typeof analyzeResumeAgainstJob>["scoreBreakdown"],
+  mustMissing: DynamicRequirement[],
+  importantMissing: DynamicRequirement[],
+) {
+  return scoreBreakdown.map((item) =>
+    item.label === "Required gaps"
+      ? {
+          ...item,
+          value: mustMissing.length ? `-${mustMissing.length * 9}` : item.value,
+          detail: mustMissing.length
+            ? `${mustMissing.length} extracted must-have gap detected`
+            : importantMissing.length
+              ? `${importantMissing.length} important extracted gap detected`
+              : item.detail,
+        }
+      : item,
+  );
+}
+
+function buildDynamicActionItems(
+  baseItems: string[],
+  mustMissing: DynamicRequirement[],
+  importantMissing: DynamicRequirement[],
+  matchedSkills: string[],
+) {
+  if (!mustMissing.length && !importantMissing.length) return baseItems;
+
+  const firstGap = mustMissing[0] ?? importantMissing[0];
+
+  return [
+    `Check whether you have real evidence for ${firstGap.requirement}; if not, treat it as a gap.`,
+    `Lead with the strongest verified overlap: ${matchedSkills.slice(0, 3).join(", ") || "your closest matching evidence"}.`,
+    ...baseItems,
+  ].slice(0, 3);
+}
+
+function buildDynamicResumeBullets(
+  baseItems: string[],
+  mustMissing: DynamicRequirement[],
+  importantMissing: DynamicRequirement[],
+) {
+  const gaps = [...mustMissing, ...importantMissing];
+  if (!gaps.length) return baseItems;
+
+  return [
+    `Only add ${gaps[0].requirement} if you can support it with real resume evidence.`,
+    ...baseItems,
+  ].slice(0, 3);
+}
+
+function buildDynamicInterviewPrep(
+  baseItems: string[],
+  requirements: DynamicRequirementReport,
+) {
+  const mustHave = requirements.mustHave[0]?.requirement;
+  const expectedWork = requirements.expectedWork[0];
+
+  return [
+    ...(mustHave ? [`Prepare a direct answer for your evidence around ${mustHave}.`] : []),
+    ...(expectedWork ? [`Be ready to explain how your experience maps to ${expectedWork}.`] : []),
+    ...baseItems,
+  ].slice(0, 3);
+}
+
+function buildDynamicAtsNotes(baseItems: string[], mustMissing: DynamicRequirement[]) {
+  return [
+    ...(mustMissing.length
+      ? [`Do not hide the extracted must-have gap: ${mustMissing[0].requirement}. Address it honestly.`]
+      : []),
+    ...baseItems,
+  ].slice(0, 4);
+}
+
+function buildDynamicSummary(
+  baseSummary: string,
+  requirements: DynamicRequirementReport,
+  score: number,
+) {
+  const missingMust = requirements.mustHave.filter((item) => !item.matched);
+  const matched = [...requirements.mustHave, ...requirements.important].filter((item) => item.matched);
+
+  if (missingMust.length) {
+    return `This role has some overlap, but the main requirements need review. Missing or unclear must-have evidence includes ${missingMust
+      .slice(0, 3)
+      .map((item) => item.requirement)
+      .join(", ")}.`;
+  }
+
+  if (matched.length) {
+    return `This role matches verified evidence around ${matched
+      .slice(0, 3)
+      .map((item) => item.requirement)
+      .join(", ")}. ${requirements.roleSummary || baseSummary}`;
+  }
+
+  return score >= 70 ? baseSummary : requirements.roleSummary || baseSummary;
 }
 
 function extractSkills(text: string) {
