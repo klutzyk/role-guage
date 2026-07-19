@@ -397,13 +397,17 @@ function matchRequirementWithStructuredProfile(
 
   const normalizedRequirement = normalize(requirement.requirement);
   const normalizedEvidence = normalize(evidenceText);
-  const keywordMatch = requirement.keywords.find((keyword) => hasAlias(normalizedEvidence, keyword));
+  const requiredYears = extractExperienceYears(normalizedRequirement);
 
-  if (keywordMatch) {
+  if (isPermanentWorkRightsRequirement(normalizedRequirement) && isTemporaryWorkRights(profile.workRights)) {
+    return requirement;
+  }
+
+  if (isEducationRequirement(normalizedRequirement) && profile.education.length) {
     return {
       ...requirement,
       matched: true,
-      evidence: `Structured resume profile includes ${keywordMatch}.`,
+      evidence: `Structured resume profile includes education: ${profile.education[0]}.`,
     };
   }
 
@@ -412,7 +416,6 @@ function matchRequirementWithStructuredProfile(
     profile.totalCommercialExperienceYears >= 1 &&
     hasAlias(normalizedEvidence, "software")
   ) {
-    const requiredYears = extractExperienceYears(normalizedRequirement);
     if (!requiredYears || profile.totalCommercialExperienceYears >= requiredYears) {
       return {
         ...requirement,
@@ -422,7 +425,92 @@ function matchRequirementWithStructuredProfile(
     }
   }
 
+  const specificKeywords = getSpecificRequirementKeywords(requirement);
+  const matchedKeywords = specificKeywords.filter((keyword) => hasAlias(normalizedEvidence, keyword));
+  const techThreshold = getTechnologyMatchThreshold(requirement, specificKeywords);
+
+  if (techThreshold && matchedKeywords.length >= techThreshold) {
+    return {
+      ...requirement,
+      matched: true,
+      evidence: `Structured resume profile includes ${matchedKeywords.slice(0, 4).join(", ")}.`,
+    };
+  }
+
+  if (!techThreshold && matchedKeywords.length) {
+    return {
+      ...requirement,
+      matched: true,
+      evidence: `Structured resume profile includes ${matchedKeywords[0]}.`,
+    };
+  }
+
   return requirement;
+}
+
+function getSpecificRequirementKeywords(requirement: DynamicRequirement) {
+  return requirement.keywords
+    .map((keyword) => keyword.trim())
+    .filter(Boolean)
+    .filter((keyword, index, items) => items.findIndex((other) => other.toLowerCase() === keyword.toLowerCase()) === index)
+    .filter((keyword) => !isGenericRequirementKeyword(keyword));
+}
+
+function getTechnologyMatchThreshold(requirement: DynamicRequirement, keywords: string[]) {
+  if (requirement.category !== "technology" && !looksLikeTechnologyList(requirement.requirement)) return 0;
+  if (keywords.length <= 1) return keywords.length;
+
+  return Math.max(2, Math.ceil(keywords.length * 0.65));
+}
+
+function looksLikeTechnologyList(text: string) {
+  const normalizedText = normalize(text);
+  const techHits = [
+    "php",
+    "javascript",
+    "typescript",
+    "html",
+    "css",
+    "sass",
+    "vue",
+    "react",
+    "node",
+    ".net",
+    "c#",
+    "java",
+    "spring",
+    "sql",
+    "rest",
+    "grpc",
+    "soap",
+    "sharepoint",
+    "power automate",
+    "power bi",
+  ].filter((term) => hasAlias(normalizedText, term)).length;
+
+  return techHits >= 2;
+}
+
+function isGenericRequirementKeyword(keyword: string) {
+  return /^(?:experience|knowledge|understanding|skills?|work|working|strong|solid|commercial|professional|development|applications?|software|similar|modern|relevant|using|with|and|or)$/i.test(
+    keyword.trim(),
+  );
+}
+
+function isPermanentWorkRightsRequirement(normalizedRequirement: string) {
+  return /\b(?:permanent rights|permanent work rights|permanent resident|citizen|citizenship|pr only)\b/.test(
+    normalizedRequirement,
+  );
+}
+
+function isTemporaryWorkRights(workRights: string) {
+  return /\b(?:temporary|485|visa|subclass)\b/i.test(workRights);
+}
+
+function isEducationRequirement(normalizedRequirement: string) {
+  return /\b(?:tertiary qualification|degree|computer science|software development|programming|related field|data science)\b/.test(
+    normalizedRequirement,
+  );
 }
 
 function mergeLabels(primary: string[], secondary: string[], limit: number) {

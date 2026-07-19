@@ -97,9 +97,10 @@ function normalizeRequirement(item: RawRequirement, resume: string): DynamicRequ
   const requirement = cleanOneLine(item.requirement).slice(0, 90);
   if (!requirement || requirement.length < 2) return null;
 
-  const priority = item.priority === "must_have" || item.priority === "important" || item.priority === "nice_to_have"
+  const rawPriority = item.priority === "must_have" || item.priority === "important" || item.priority === "nice_to_have"
     ? item.priority
     : "important";
+  const priority = adjustRequirementPriority(requirement, rawPriority);
   const category = isKnownCategory(item.category) ? item.category : "other";
   const keywords = toCleanArray(item.keywords)
     .flatMap(splitKeyword)
@@ -197,6 +198,8 @@ Rules:
 - Mark requirements as must_have only when the ad uses clear language such as required, must, need, you'll need, to be considered, minimum, 3+ years, full working rights, based in, or similar.
 - Important means strongly relevant but not explicitly mandatory.
 - Nice_to_have means optional, preferred, advantage, exposure, bonus, or similar.
+- Do not mark soft traits such as communication, curiosity, mindset, collaboration, or problem-solving as must_have unless they are explicit screening criteria.
+- If the ad says the candidate can obtain a licence/check after applying, mark it important rather than must_have.
 - Include experience years, core technologies, work rights, location constraints, and role expectations.
 - Do not include company benefits, culture praise, application instructions, or generic traits unless they are clearly selection criteria.
 - Keep requirements concise.
@@ -279,6 +282,27 @@ function toCleanArray(value: unknown) {
 
 function cleanOneLine(value: unknown) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function adjustRequirementPriority(
+  requirement: string,
+  priority: DynamicRequirementPriority,
+): DynamicRequirementPriority {
+  if (priority !== "must_have") return priority;
+
+  if (/\b(?:willingness to obtain|willing to obtain|ability to obtain|or obtain|or are willing)\b/i.test(requirement)) {
+    return "important";
+  }
+
+  if (
+    /\b(?:problem[- ]?solving|communication|collaborative|mindset|attitude|curious|positive|detail[- ]?oriented|eye for detail)\b/i.test(
+      requirement,
+    )
+  ) {
+    return "important";
+  }
+
+  return priority;
 }
 
 function isKnownCategory(value: unknown): value is DynamicRequirement["category"] {

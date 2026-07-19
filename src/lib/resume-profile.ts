@@ -63,31 +63,36 @@ export function emptyStructuredResumeProfile(): StructuredResumeProfile {
 export function cleanStructuredResumeProfile(value: unknown): StructuredResumeProfile | null {
   if (!isRecord(value)) return null;
 
-  const status = value.currentEmploymentStatus;
-  const currentEmploymentStatus =
-    status === "employed" || status === "not_currently_employed" || status === "unclear"
-      ? status
-      : "unclear";
   const skills = isRecord(value.skills) ? value.skills : {};
+  const roles = toArray(value.roles)
+    .map((role) => {
+      const record = isRecord(role) ? role : {};
+      const endDate = cleanOneLine(record.endDate, 40);
+      const isCurrent =
+        record.isCurrent === true || /\b(?:present|current|now)\b/i.test(endDate);
+
+      return {
+        title: cleanOneLine(record.title, 120),
+        employer: cleanOneLine(record.employer, 120),
+        startDate: cleanOneLine(record.startDate, 40),
+        endDate,
+        isCurrent,
+        evidence: toStringArray(record.evidence, 6, 220),
+      };
+    })
+    .filter((role) => role.title || role.employer)
+    .slice(0, 8);
+  const currentEmploymentStatus = roles.some((role) => role.isCurrent)
+    ? "employed"
+    : roles.length
+      ? "not_currently_employed"
+      : cleanEmploymentStatus(value.currentEmploymentStatus);
 
   return {
     summary: cleanOneLine(value.summary, 500),
     totalCommercialExperienceYears: cleanNumber(value.totalCommercialExperienceYears),
     currentEmploymentStatus,
-    roles: toArray(value.roles)
-      .map((role) => {
-        const record = isRecord(role) ? role : {};
-        return {
-          title: cleanOneLine(record.title, 120),
-          employer: cleanOneLine(record.employer, 120),
-          startDate: cleanOneLine(record.startDate, 40),
-          endDate: cleanOneLine(record.endDate, 40),
-          isCurrent: record.isCurrent === true,
-          evidence: toStringArray(record.evidence, 6, 220),
-        };
-      })
-      .filter((role) => role.title || role.employer)
-      .slice(0, 8),
+    roles,
     skills: {
       languages: toStringArray(skills.languages, 24, 60),
       frameworks: toStringArray(skills.frameworks, 24, 60),
@@ -329,15 +334,45 @@ function toArray(value: unknown) {
 
 function toStringArray(value: unknown, limit: number, itemMaxLength: number) {
   return toArray(value)
-    .map((item) => cleanOneLine(item, itemMaxLength))
+    .map((item) => cleanOneLine(formatResumeArrayItem(item), itemMaxLength))
     .filter(Boolean)
     .filter((item, index, items) => items.findIndex((other) => other.toLowerCase() === item.toLowerCase()) === index)
     .slice(0, limit);
 }
 
+function formatResumeArrayItem(value: unknown) {
+  if (typeof value === "string" || typeof value === "number") return String(value);
+
+  if (isRecord(value)) {
+    const preferredFields = [
+      "degree",
+      "qualification",
+      "field",
+      "institution",
+      "school",
+      "university",
+      "name",
+      "title",
+      "summary",
+    ];
+    return preferredFields
+      .map((field) => cleanOneLine(value[field], 120))
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  return "";
+}
+
 function cleanNumber(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.min(Math.max(number, 0), 60) : 0;
+}
+
+function cleanEmploymentStatus(value: unknown): StructuredResumeProfile["currentEmploymentStatus"] {
+  return value === "employed" || value === "not_currently_employed" || value === "unclear"
+    ? value
+    : "unclear";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
