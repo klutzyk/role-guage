@@ -132,9 +132,9 @@ const aiCache = new Map<string, { expiresAt: number; value: unknown }>();
 const groqModelCooldowns = new Map<string, number>();
 const defaultGeminiModel = "gemini-2.5-flash";
 const defaultGroqModel = "openai/gpt-oss-20b";
-const defaultGroqAnalysisModel = "meta-llama/llama-4-scout-17b-16e-instruct";
+const defaultGroqAnalysisModel = "qwen/qwen3.6-27b";
 const defaultGroqCoverLetterModel = "openai/gpt-oss-120b";
-const defaultGroqRepairModel = "meta-llama/llama-4-scout-17b-16e-instruct";
+const defaultGroqRepairModel = "llama-3.3-70b-versatile";
 const aiTimeoutMs = getConfiguredTimeout();
 const cacheTtlMs = 1000 * 60 * 60 * 12;
 
@@ -218,9 +218,8 @@ function getAiModelCandidates(task: AiTask = "analysis") {
           process.env.GROQ_ANALYSIS_FALLBACK_MODELS,
         ]),
         ...fallbackModels,
-        "meta-llama/llama-4-scout-17b-16e-instruct",
+        "qwen/qwen3.6-27b",
         "llama-3.3-70b-versatile",
-        "qwen/qwen3-32b",
         "llama-3.1-8b-instant",
       ]),
     );
