@@ -183,6 +183,11 @@ function getAiModelCandidates(task: AiTask = "analysis") {
     ]);
 
     if (task === "coverLetter") {
+      const coverModels = parseModelList([
+        process.env.GROQ_COVER_LETTER_MODEL,
+        process.env.GROQ_MODEL,
+        defaultGroqCoverLetterModel,
+      ]);
       const coverFallbacks = parseModelList([
         process.env.GROQ_COVER_LETTER_FALLBACK_MODEL,
         process.env.GROQ_COVER_LETTER_FALLBACK_MODELS,
@@ -190,9 +195,7 @@ function getAiModelCandidates(task: AiTask = "analysis") {
 
       return filterAvailableModelCandidates(Array.from(
         new Set([
-          process.env.GROQ_COVER_LETTER_MODEL ||
-            process.env.GROQ_MODEL ||
-            defaultGroqCoverLetterModel,
+          ...coverModels,
           ...coverFallbacks,
           "llama-3.3-70b-versatile",
         ]),
@@ -200,6 +203,10 @@ function getAiModelCandidates(task: AiTask = "analysis") {
     }
 
     if (task === "repair") {
+      const repairModels = parseModelList([
+        process.env.GROQ_REPAIR_MODEL,
+        defaultGroqRepairModel,
+      ]);
       const repairFallbacks = parseModelList([
         process.env.GROQ_REPAIR_FALLBACK_MODEL,
         process.env.GROQ_REPAIR_FALLBACK_MODELS,
@@ -207,16 +214,21 @@ function getAiModelCandidates(task: AiTask = "analysis") {
 
       return filterAvailableModelCandidates(Array.from(
         new Set([
-          process.env.GROQ_REPAIR_MODEL || defaultGroqRepairModel,
+          ...repairModels,
           ...repairFallbacks,
           "llama-3.3-70b-versatile",
         ]),
       ));
     }
 
+    const analysisModels = parseModelList([
+      process.env.GROQ_ANALYSIS_MODEL,
+      defaultGroqAnalysisModel,
+    ]);
+
     return filterAvailableModelCandidates(Array.from(
       new Set([
-        process.env.GROQ_ANALYSIS_MODEL || defaultGroqAnalysisModel,
+        ...analysisModels,
         ...parseModelList([
           process.env.GROQ_ANALYSIS_FALLBACK_MODEL,
           process.env.GROQ_ANALYSIS_FALLBACK_MODELS,
