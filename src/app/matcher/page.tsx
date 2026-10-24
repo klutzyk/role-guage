@@ -11,6 +11,7 @@ import {
   Link,
   ListChecks,
   Loader2,
+  RefreshCw,
   SearchCheck,
   Target,
   Upload,
@@ -26,6 +27,7 @@ import {
 } from "@/lib/cover-letter-preferences";
 import { downloadDocx, downloadPdf } from "@/lib/document-export";
 import { readJsonResponse } from "@/lib/http";
+import { isValidGeneratedCoverLetter } from "@/lib/ai-reliability";
 import { getBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { SharedFooter } from "../shared-footer";
 import { SharedHeader } from "../shared-header";
@@ -61,6 +63,8 @@ type AnalysisResult = {
   aiStatus?: "generated" | "fallback" | "disabled";
   fitReasoning?: string[];
   coverLetter?: string;
+  coverLetterStatus?: "generated" | "failed";
+  coverLetterFailureCode?: string;
   salary?: string | null;
   hardRequirements?: RequirementFinding[];
   dynamicRequirements?: DynamicRequirementReport;
@@ -208,22 +212,25 @@ export default function Home() {
   const [isImportingJob, setIsImportingJob] = useState(false);
   const [isExtractingResume, setIsExtractingResume] = useState(false);
   const [copiedCoverLetter, setCopiedCoverLetter] = useState(false);
+  const [isRetryingCoverLetter, setIsRetryingCoverLetter] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const activeRequest = useRef(0);
 
   useEffect(() => {
-    const savedResume =
-      window.localStorage.getItem(resumeProfileStorageKey) ??
-      window.localStorage.getItem(legacyResumeProfileStorageKey);
+    const timeoutId = window.setTimeout(() => {
+      const savedResume =
+        window.localStorage.getItem(resumeProfileStorageKey) ??
+        window.localStorage.getItem(legacyResumeProfileStorageKey);
 
-    if (!savedResume) {
-      return;
-    }
+      if (!savedResume) return;
 
-    const savedName = window.localStorage.getItem(resumeProfileNameStorageKey) ?? "Saved resume profile";
-    setResume(savedResume);
-    setResumeFileName(savedName);
+      const savedName = window.localStorage.getItem(resumeProfileNameStorageKey) ?? "Saved resume profile";
+      setResume(savedResume);
+      setResumeFileName(savedName);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, []);
 
   useEffect(() => {
@@ -262,7 +269,8 @@ export default function Home() {
     [resume, job],
   );
   const isPreparingReport = Boolean(result && isEnrichingReport);
-  const coverLetter = result?.coverLetter?.trim() ?? "";
+  const coverLetterCandidate = result?.coverLetter?.trim() ?? "";
+  const coverLetter = isValidGeneratedCoverLetter(coverLetterCandidate) ? coverLetterCandidate : "";
 
   async function analyzeRole(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -336,6 +344,7 @@ export default function Home() {
         summary: shouldKeepLocalBlockerCopy ? baseResult.summary : enrichment.summary ?? baseResult.summary,
         nextStep: shouldKeepLocalBlockerCopy ? baseResult.nextStep : enrichment.nextStep ?? baseResult.nextStep,
         coverLetter: enrichment.coverLetter?.trim() ?? "",
+        coverLetterStatus: enrichment.coverLetterStatus ?? (enrichment.coverLetter?.trim() ? "generated" : "failed"),
       };
       setResult(enrichedResult);
       saveMatchToHistory(enrichedResult, inferJobMeta(jobText, jobMeta));
@@ -344,6 +353,7 @@ export default function Home() {
         const fallbackResult = {
           ...baseResult,
           coverLetter: "",
+          coverLetterStatus: "failed" as const,
           aiStatus: "fallback" as const,
         };
         setResult(fallbackResult);
@@ -447,6 +457,50 @@ export default function Home() {
     setCopiedCoverLetter(true);
     setMessage("Cover letter copied.");
     window.setTimeout(() => setCopiedCoverLetter(false), 1800);
+  }
+
+  async function retryCoverLetter() {
+    if (!result || isRetryingCoverLetter) return;
+
+    setError("");
+    setMessage("");
+    setIsRetryingCoverLetter(true);
+
+    try {
+      const response = await fetch("/api/generate-cover-letter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resume,
+          job,
+          profile: readCandidateProfile(),
+          structuredResumeProfile,
+          analysis: result,
+          coverLetterInstructions: readCoverLetterPreferences(),
+          coverLetterExamples: readCoverLetterExamples(),
+        }),
+      });
+      const payload = await readJsonResponse<Partial<AnalysisResult> & { error?: string }>(response);
+      const generatedCoverLetter = payload.coverLetter?.trim() ?? "";
+
+      if (!response.ok || !isValidGeneratedCoverLetter(generatedCoverLetter)) {
+        throw new Error(payload.error ?? "Cover letter generation failed.");
+      }
+
+      const updatedResult: AnalysisResult = {
+        ...result,
+        coverLetter: generatedCoverLetter,
+        coverLetterStatus: "generated",
+        coverLetterFailureCode: undefined,
+      };
+      setResult(updatedResult);
+      saveMatchToHistory(updatedResult, inferJobMeta(job, jobMeta));
+      setMessage("Cover letter generated without changing the rest of your report.");
+    } catch {
+      setError("The cover letter could not be generated yet. Your report has been preserved; please try the cover letter again.");
+    } finally {
+      setIsRetryingCoverLetter(false);
+    }
   }
 
   function exportCoverLetterDocx() {
@@ -709,6 +763,17 @@ export default function Home() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h3 className="text-xl font-extrabold">Cover letter draft</h3>
                   <div className="flex flex-wrap gap-2">
+                    {!coverLetter && !isPreparingReport ? (
+                      <button
+                        type="button"
+                        onClick={retryCoverLetter}
+                        disabled={isRetryingCoverLetter}
+                        className="inline-flex h-10 items-center gap-2 rounded-md bg-[#043873] px-3 text-sm font-bold text-white transition hover:bg-[#072B61] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <RefreshCw size={16} className={isRetryingCoverLetter ? "animate-spin" : ""} aria-hidden="true" />
+                        {isRetryingCoverLetter ? "Retrying" : "Retry cover letter"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={copyCoverLetter}
@@ -743,9 +808,9 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="mt-4 whitespace-pre-line rounded-xl border border-[#BFD6FF] bg-[#F8FBFF]/88 p-4 text-sm leading-7 text-[#4F5F6F]">
-                  {isPreparingReport
+                  {isPreparingReport || isRetryingCoverLetter
                     ? "Writing a role-specific cover letter from your resume evidence..."
-                    : coverLetter || "The cover letter could not be generated this time. Try generating the report again."}
+                    : coverLetter || "The cover letter could not be generated this time. Your report is saved; retry only the cover letter."}
                 </div>
               </section>
               <div className="grid gap-5 lg:grid-cols-2">

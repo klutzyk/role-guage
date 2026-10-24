@@ -52,17 +52,21 @@ export default function AuthPage() {
   );
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const next = params.get("next");
+    const timeoutId = window.setTimeout(() => {
+      const params = new URLSearchParams(window.location.search);
+      const next = params.get("next");
 
-    if (next?.startsWith("/") && !next.startsWith("//")) {
-      setRedirectTo(next);
-    }
+      if (next?.startsWith("/") && !next.startsWith("//")) {
+        setRedirectTo(next);
+      }
 
-    const requestedMode = params.get("mode");
-    if (requestedMode === "sign-up" || requestedMode === "reset" || requestedMode === "update-password") {
-      setMode(requestedMode);
-    }
+      const requestedMode = params.get("mode");
+      if (requestedMode === "sign-up" || requestedMode === "reset" || requestedMode === "update-password") {
+        setMode(requestedMode);
+      }
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, []);
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { generateFitEnrichment, getAiModel } from "@/lib/ai";
+import { getSafeAiDiagnostic } from "@/lib/ai-reliability";
 import { accountProfileFromRow, AccountProfileRow } from "@/lib/account-profile";
 import { cleanCoverLetterExamples, cleanCoverLetterPreferences } from "@/lib/cover-letter-preferences";
 import {
@@ -123,7 +124,6 @@ export async function POST(request: NextRequest) {
     job,
     coverLetterInstructions,
     coverLetterExamples,
-    profileLocation: accountProfile.candidateProfile?.location ?? "",
     resumeSource,
     profileUpdatedAt: accountProfile.updatedAt ?? "",
   });
@@ -142,8 +142,6 @@ export async function POST(request: NextRequest) {
       namedProjectCount: countNamedProjectSignals(resume),
       hasCoverLetterInstructions: coverLetterInstructions.length > 0,
       structuredResumeProfilePresent: Boolean(structuredResumeProfile),
-      firstExamplePreview: coverLetterExamples[0]?.slice(0, 150) ?? "",
-      instructionsPreview: coverLetterInstructions.slice(0, 150),
       debugContext,
     });
   }
@@ -166,13 +164,15 @@ export async function POST(request: NextRequest) {
         analysis,
         enrichment: aiEnrichment
           ? {
-              aiStatus: "generated",
+              aiStatus: aiEnrichment.aiStatus,
               aiModel: aiEnrichment.aiModel ?? getAiModel(),
               summary: aiEnrichment.summary,
               nextStep: aiEnrichment.nextStep,
               fitReasoning: aiEnrichment.fitReasoning,
               resumeBullets: aiEnrichment.resumeBullets ?? [],
               coverLetter: aiEnrichment.coverLetter ?? "",
+              coverLetterStatus: aiEnrichment.coverLetterStatus,
+              coverLetterFailureCode: aiEnrichment.coverLetterFailureCode,
               interviewPrep: aiEnrichment.interviewPrep ?? [],
               outreachMessage: aiEnrichment.outreachMessage ?? "",
               atsNotes: aiEnrichment.atsNotes ?? [],
@@ -184,7 +184,10 @@ export async function POST(request: NextRequest) {
       { headers: corsHeaders },
     );
   } catch (error) {
-    console.error("Extension enrichment failed", getErrorSummary(error));
+    console.error("Extension enrichment failed", {
+      requestId: debugContext.requestId,
+      ...getSafeAiDiagnostic(error),
+    });
 
     return NextResponse.json(
       {
@@ -196,6 +199,7 @@ export async function POST(request: NextRequest) {
         enrichment: {
           aiStatus: "fallback",
           aiModel: getAiModel(),
+          coverLetterStatus: "failed",
         },
         ...(process.env.NODE_ENV !== "production" ? { debugContext } : {}),
       },
@@ -209,7 +213,6 @@ function buildDebugContext({
   job,
   coverLetterInstructions,
   coverLetterExamples,
-  profileLocation,
   resumeSource,
   profileUpdatedAt,
 }: {
@@ -217,16 +220,15 @@ function buildDebugContext({
   job: string;
   coverLetterInstructions: string;
   coverLetterExamples: string[];
-  profileLocation: string;
   resumeSource: string;
   profileUpdatedAt: string;
 }) {
   return {
+    requestId: hashDebugValue(`${resume}\n${job}`),
     resumeHash: hashDebugValue(resume),
     jobHash: hashDebugValue(job),
     instructionHash: hashDebugValue(coverLetterInstructions),
     exampleCount: coverLetterExamples.length,
-    profileLocation: profileLocation ? cleanOneLine(profileLocation, 80) : "",
     profileUpdatedAt: profileUpdatedAt ? cleanOneLine(profileUpdatedAt, 80) : "",
     resumeSource,
     namedProjectCount: countNamedProjectSignals(resume),
@@ -244,17 +246,6 @@ function countNamedProjectSignals(resume: string) {
 
 function hashDebugValue(value: string) {
   return createHash("sha256").update(value).digest("hex").slice(0, 10);
-}
-
-function getErrorSummary(error: unknown) {
-  if (!(error instanceof Error)) return String(error);
-
-  const status =
-    "status" in error
-      ? ` status=${String((error as Error & { status?: unknown }).status)}`
-      : "";
-
-  return `${error.message}${status}`;
 }
 
 function getCorsHeaders(request: NextRequest) {
@@ -298,9 +289,6 @@ async function readAccountProfile(userId: string) {
     console.error("Extension analyze profile read failed", {
       userHash: hashDebugValue(userId),
       code: error.code,
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
     });
     return null;
   }

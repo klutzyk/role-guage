@@ -134,27 +134,31 @@ export default function ProfilePage() {
   );
 
   useEffect(() => {
-    const savedResume =
-      window.localStorage.getItem(resumeProfileStorageKey) ??
-      window.localStorage.getItem(legacyResumeProfileStorageKey) ??
-      "";
-    const savedHistory = readMatchHistory();
-    const savedCandidateProfile = readCandidateProfile();
-    const savedResumeFileName = window.localStorage.getItem(resumeProfileNameStorageKey) ?? "";
-    const savedCoverLetterPreferences = window.localStorage.getItem(coverLetterPreferencesStorageKey);
-    const savedCoverLetterExamples = readCoverLetterExamples();
+    const timeoutId = window.setTimeout(() => {
+      const savedResume =
+        window.localStorage.getItem(resumeProfileStorageKey) ??
+        window.localStorage.getItem(legacyResumeProfileStorageKey) ??
+        "";
+      const savedHistory = readMatchHistory();
+      const savedCandidateProfile = readCandidateProfile();
+      const savedResumeFileName = window.localStorage.getItem(resumeProfileNameStorageKey) ?? "";
+      const savedCoverLetterPreferences = window.localStorage.getItem(coverLetterPreferencesStorageKey);
+      const savedCoverLetterExamples = readCoverLetterExamples();
 
-    setResume(savedResume);
-    setResumeFileName(savedResumeFileName);
-    setHistory(savedHistory);
-    setCandidateProfile(savedCandidateProfile);
-    setCoverLetterExamples(savedCoverLetterExamples);
-    setCoverLetterPreferences(
-      savedCoverLetterPreferences
-        ? cleanCoverLetterPreferences(savedCoverLetterPreferences) || defaultCoverLetterPreferences
-        : defaultCoverLetterPreferences,
-    );
-    setSelectedId(savedHistory[0]?.id ?? "");
+      setResume(savedResume);
+      setResumeFileName(savedResumeFileName);
+      setHistory(savedHistory);
+      setCandidateProfile(savedCandidateProfile);
+      setCoverLetterExamples(savedCoverLetterExamples);
+      setCoverLetterPreferences(
+        savedCoverLetterPreferences
+          ? cleanCoverLetterPreferences(savedCoverLetterPreferences) || defaultCoverLetterPreferences
+          : defaultCoverLetterPreferences,
+      );
+      setSelectedId(savedHistory[0]?.id ?? "");
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, []);
 
   async function extractResumeFromPdf(event: ChangeEvent<HTMLInputElement>) {

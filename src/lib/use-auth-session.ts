@@ -6,16 +6,13 @@ import { getBrowserSupabaseClient, isBrowserSupabaseConfigured } from "@/lib/sup
 export function useAuthSession() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
   const isConfigured = isBrowserSupabaseConfigured();
+  const [isLoading, setIsLoading] = useState(isConfigured);
 
   useEffect(() => {
     const supabase = getBrowserSupabaseClient();
 
-    if (!supabase) {
-      setIsLoading(false);
-      return;
-    }
+    if (!supabase) return;
 
     let mounted = true;
 

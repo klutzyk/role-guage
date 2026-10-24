@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
-import { generateFitEnrichment, getAiModel } from "@/lib/ai";
+import { generateFitEnrichment, getAiModel, isAnalysisLike } from "@/lib/ai";
+import { getSafeAiDiagnostic } from "@/lib/ai-reliability";
 import { cleanCandidateProfile } from "@/lib/account-profile";
 import { StructuredResumeProfile, extractStructuredResumeProfile } from "@/lib/resume-profile";
 import { cleanCoverLetterExamples, cleanCoverLetterPreferences } from "@/lib/cover-letter-preferences";
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
         coverLetterInstructions?: string;
         coverLetterExamples?: string[];
         structuredResumeProfile?: StructuredResumeProfile | null;
+        analysis?: unknown;
       }
     | null;
 
@@ -44,8 +46,14 @@ export async function POST(request: NextRequest) {
   }
 
   const profile = cleanCandidateProfile(body?.profile);
-  const structuredResumeProfile = body?.structuredResumeProfile ?? (await extractStructuredResumeProfile(resume));
-  const analysis = await analyzeResumeAgainstJobWithRequirements(resume, job, profile, structuredResumeProfile);
+  const analysis = isAnalysisLike(body?.analysis)
+    ? body.analysis
+    : await analyzeResumeAgainstJobWithRequirements(
+        resume,
+        job,
+        profile,
+        body?.structuredResumeProfile ?? (await extractStructuredResumeProfile(resume)),
+      );
   const coverLetterInstructions = cleanCoverLetterPreferences(body?.coverLetterInstructions);
   const coverLetterExamples = cleanCoverLetterExamples(body?.coverLetterExamples);
   const debugContext = buildDebugContext({
@@ -53,7 +61,6 @@ export async function POST(request: NextRequest) {
     job,
     coverLetterInstructions,
     coverLetterExamples,
-    profileLocation: profile.location ?? "",
   });
 
   if (process.env.NODE_ENV !== "production") {
@@ -63,10 +70,7 @@ export async function POST(request: NextRequest) {
       coverLetterExamplesCount: coverLetterExamples.length,
       resumeLength: resume.length,
       jobLength: job.length,
-      resumeHasRoleGuage: /\bRoleGuage\b/i.test(resume),
-      resumeHasGamblr: /\bGamblr\b/i.test(resume),
-      firstExamplePreview: coverLetterExamples[0]?.slice(0, 150) ?? "",
-      instructionsPreview: coverLetterInstructions.slice(0, 150),
+      reusedSubmittedAnalysis: isAnalysisLike(body?.analysis),
       debugContext,
     });
   }
@@ -87,7 +91,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
-      aiStatus: "generated",
+      aiStatus: aiEnrichment.aiStatus,
       aiModel: aiEnrichment.aiModel ?? getAiModel(),
       summary: aiEnrichment.summary,
       nextStep: aiEnrichment.nextStep,
@@ -95,6 +99,10 @@ export async function POST(request: NextRequest) {
       fitReasoning: aiEnrichment.fitReasoning,
       ...(aiEnrichment.resumeBullets ? { resumeBullets: aiEnrichment.resumeBullets } : {}),
       ...(aiEnrichment.coverLetter ? { coverLetter: aiEnrichment.coverLetter } : {}),
+      coverLetterStatus: aiEnrichment.coverLetterStatus,
+      ...(aiEnrichment.coverLetterFailureCode
+        ? { coverLetterFailureCode: aiEnrichment.coverLetterFailureCode }
+        : {}),
       ...(aiEnrichment.interviewPrep ? { interviewPrep: aiEnrichment.interviewPrep } : {}),
       ...(aiEnrichment.outreachMessage ? { outreachMessage: aiEnrichment.outreachMessage } : {}),
       ...(aiEnrichment.atsNotes ? { atsNotes: aiEnrichment.atsNotes } : {}),
@@ -102,12 +110,15 @@ export async function POST(request: NextRequest) {
       ...(process.env.NODE_ENV !== "production" ? { debugContext } : {}),
     });
   } catch (error) {
-    console.error("Fit report enrichment failed", getErrorSummary(error));
+    console.error("Fit report enrichment failed", {
+      requestId: debugContext.requestId,
+      ...getSafeAiDiagnostic(error),
+    });
 
     return NextResponse.json({
       aiStatus: "fallback",
       aiModel: getAiModel(),
-      ...(process.env.NODE_ENV !== "production" ? { aiError: getErrorSummary(error) } : {}),
+      coverLetterStatus: "failed",
       ...(process.env.NODE_ENV !== "production" ? { debugContext } : {}),
     });
   }
@@ -118,37 +129,22 @@ function buildDebugContext({
   job,
   coverLetterInstructions,
   coverLetterExamples,
-  profileLocation,
 }: {
   resume: string;
   job: string;
   coverLetterInstructions: string;
   coverLetterExamples: string[];
-  profileLocation: string;
 }) {
   return {
+    requestId: hashDebugValue(`${resume}\n${job}`),
     resumeHash: hashDebugValue(resume),
     jobHash: hashDebugValue(job),
     instructionHash: hashDebugValue(coverLetterInstructions),
     exampleCount: coverLetterExamples.length,
-    profileLocation,
-    resumeHasRoleGuage: /\bRoleGuage\b/i.test(resume),
-    resumeHasGamblr: /\bGamblr\b/i.test(resume),
     firstExampleHash: hashDebugValue(coverLetterExamples[0] ?? ""),
   };
 }
 
 function hashDebugValue(value: string) {
   return createHash("sha256").update(value).digest("hex").slice(0, 10);
-}
-
-function getErrorSummary(error: unknown) {
-  if (!(error instanceof Error)) return String(error);
-
-  const status =
-    "status" in error
-      ? ` status=${String((error as Error & { status?: unknown }).status)}`
-      : "";
-
-  return `${error.message}${status}`;
 }
